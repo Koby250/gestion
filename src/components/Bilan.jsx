@@ -3,8 +3,9 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   TrendingUp, TrendingDown, Scissors, DollarSign,
-  ChevronLeft, ChevronRight, BarChart2, Package
+  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2
 } from 'lucide-react';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 // ── Helper : premier et dernier jour d'un mois ────────────────────────────
 const getMonthBounds = (year, month) => {
@@ -25,14 +26,22 @@ const Bilan = () => {
   const [viewYear,  setViewYear]  = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth()); // 0-based
   const [transactions, setTransactions] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [historyForm, setHistoryForm] = useState({ month: '', year: now.getFullYear().toString(), ca: '', depenses: '' });
+  const [isSavingHistory, setIsSavingHistory] = useState(false);
 
-  // ── Chargement des transactions ──────────────────────────────────────────
+  // ── Chargement des transactions et de l'historique ───────────────────────
   useEffect(() => {
     const q = query(collection(db, 'transactions'), orderBy('date', 'asc'));
     const unsub = onSnapshot(q, snap =>
       setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
-    return () => unsub();
+
+    const unsubHist = onSnapshot(collection(db, 'historique_mensuel'), snap => {
+      setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.id.localeCompare(b.id)));
+    });
+
+    return () => { unsub(); unsubHist(); };
   }, []);
 
   // ── Navigation mois ──────────────────────────────────────────────────────
@@ -117,6 +126,69 @@ const Bilan = () => {
       bg: beneficeNet >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)'
     },
   ];
+
+  // ── Handlers Historique ──────────────────────────────────────────────────
+  const handleSaveHistory = async (e) => {
+    e.preventDefault();
+    if (!historyForm.month || !historyForm.year || !historyForm.ca || !historyForm.depenses) return;
+    setIsSavingHistory(true);
+    
+    const docId = `${historyForm.year}-${historyForm.month.padStart(2, '0')}`;
+    await setDoc(doc(db, 'historique_mensuel', docId), {
+      ca: Number(historyForm.ca),
+      depenses: Number(historyForm.depenses),
+      benefice: Number(historyForm.ca) - Number(historyForm.depenses)
+    });
+    
+    setHistoryForm({ month: '', year: now.getFullYear().toString(), ca: '', depenses: '' });
+    setIsSavingHistory(false);
+  };
+
+  const handleDeleteHistory = async (id) => {
+    if (window.confirm('Supprimer cet historique ?')) {
+      await deleteDoc(doc(db, 'historique_mensuel', id));
+    }
+  };
+
+  // ── Préparation données pour le Graphique SVG ────────────────────────────
+  // On prend l'historique enregistré + le mois en cours calculé (s'il n'est pas déjà dans l'historique)
+  const chartData = [...history];
+  const currentMonthId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  
+  if (!chartData.find(d => d.id === currentMonthId)) {
+    // Calculer le CA du mois en cours depuis les transactions
+    const startCurr = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endCurr = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    let currCa = 0, currDep = 0;
+    transactions.forEach(t => {
+      const d = new Date(t.date);
+      if (d >= startCurr && d <= endCurr) {
+        if (t.type === 'prestation') currCa += Number(t.montant);
+        if (t.type === 'depense') currDep += Number(t.montant);
+      }
+    });
+    chartData.push({
+      id: currentMonthId,
+      ca: currCa,
+      depenses: currDep,
+      benefice: currCa - currDep,
+      isCurrent: true
+    });
+  }
+
+  // Calculs pour SVG
+  const CHART_WIDTH = 600;
+  const CHART_HEIGHT = 200;
+  const PADDING = 20;
+  
+  const maxVal = Math.max(...chartData.map(d => Math.max(d.ca, d.depenses)), 100000); // minimum scale
+  
+  const getX = (index) => PADDING + (index * ((CHART_WIDTH - 2*PADDING) / Math.max(chartData.length - 1, 1)));
+  const getY = (val) => CHART_HEIGHT - PADDING - ((val / maxVal) * (CHART_HEIGHT - 2*PADDING));
+
+  const pathCA = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.ca)}`).join(' ');
+  const pathDep = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.depenses)}`).join(' ');
+  const pathBen = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(d.benefice)}`).join(' ');
 
   return (
     <div className="view-container">
@@ -351,6 +423,109 @@ const Bilan = () => {
             </table>
           </div>
         )}
+      </div>
+
+      {/* ── TENDANCES & HISTORIQUE MULTI-MOIS ──────────────────────────────── */}
+      <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)' }}>
+          <LineChart size={20} color="var(--accent-color)" />
+          <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+            Évolution & Tendances
+          </h2>
+        </div>
+
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+          
+          {/* Graphique SVG */}
+          <div style={{ flex: 2, minWidth: '350px', overflowX: 'auto', backgroundColor: 'var(--bg-input)', padding: '20px', borderRadius: '12px' }}>
+            <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '15px' }}>Évolution du Chiffre d'Affaires et des Dépenses</h3>
+            
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: 'var(--success)', borderRadius: '3px' }}></div> Chiffre d'Affaires</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: 'var(--danger)', borderRadius: '3px' }}></div> Dépenses</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: 'var(--accent-color)', borderRadius: '3px' }}></div> Bénéfice Net</div>
+            </div>
+
+            {chartData.length < 2 ? (
+              <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                Pas assez de données pour afficher un graphique.
+              </div>
+            ) : (
+              <svg viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+                {/* Lignes de repère */}
+                {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
+                  const y = CHART_HEIGHT - PADDING - (ratio * (CHART_HEIGHT - 2*PADDING));
+                  return (
+                    <g key={ratio}>
+                      <line x1={PADDING} y1={y} x2={CHART_WIDTH - PADDING} y2={y} stroke="var(--border-color)" strokeWidth="1" strokeDasharray="4 4" />
+                      <text x={0} y={y + 4} fontSize="10" fill="var(--text-muted)">{fmt(maxVal * ratio)}</text>
+                    </g>
+                  );
+                })}
+
+                {/* Courbes */}
+                <path d={pathCA} fill="none" stroke="var(--success)" strokeWidth="3" />
+                <path d={pathDep} fill="none" stroke="var(--danger)" strokeWidth="3" />
+                <path d={pathBen} fill="none" stroke="var(--accent-color)" strokeWidth="2" strokeDasharray="4 4" />
+
+                {/* Points & Labels */}
+                {chartData.map((d, i) => {
+                  const x = getX(i);
+                  return (
+                    <g key={i}>
+                      <circle cx={x} cy={getY(d.ca)} r="4" fill="var(--success)" />
+                      <circle cx={x} cy={getY(d.depenses)} r="4" fill="var(--danger)" />
+                      <text x={x} y={CHART_HEIGHT} fontSize="10" fill="var(--text-muted)" textAnchor="middle">
+                        {d.isCurrent ? 'En cours' : `${d.id.split('-')[1]}/${d.id.split('-')[0].slice(2)}`}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            )}
+          </div>
+
+          {/* Formulaire Historique */}
+          <div style={{ flex: 1, minWidth: '300px' }}>
+            <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '15px' }}>Saisir un mois précédent</h3>
+            <form onSubmit={handleSaveHistory} style={{ backgroundColor: 'var(--bg-input)', padding: '15px', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Mois (1-12)</label>
+                  <input type="number" min="1" max="12" className="input-control" value={historyForm.month} onChange={e => setHistoryForm({...historyForm, month: e.target.value})} required />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Année</label>
+                  <input type="number" className="input-control" value={historyForm.year} onChange={e => setHistoryForm({...historyForm, year: e.target.value})} required />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Chiffre d'Affaires (FCFA)</label>
+                <input type="number" className="input-control" value={historyForm.ca} onChange={e => setHistoryForm({...historyForm, ca: e.target.value})} required />
+              </div>
+              <div className="form-group">
+                <label>Dépenses (FCFA)</label>
+                <input type="number" className="input-control" value={historyForm.depenses} onChange={e => setHistoryForm({...historyForm, depenses: e.target.value})} required />
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={isSavingHistory}>
+                {isSavingHistory ? 'Enregistrement...' : <><Save size={16} /> Enregistrer ce mois</>}
+              </button>
+            </form>
+
+            {/* Liste des historiques saisis */}
+            <div style={{ marginTop: '15px', maxHeight: '150px', overflowY: 'auto' }}>
+              {history.map(h => (
+                <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
+                  <span style={{ fontWeight: '600' }}>{h.id}</span>
+                  <span style={{ color: 'var(--success)' }}>{fmt(h.ca)} F</span>
+                  <button onClick={() => handleDeleteHistory(h.id)} className="btn btn-small" style={{ color: 'var(--danger)', padding: '4px' }}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>

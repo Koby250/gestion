@@ -4,6 +4,7 @@ import { db, auth } from '../firebase';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck } from 'lucide-react';
+import { logEvent } from '../utils/audit';
 
 const Parametres = () => {
   // Collection States
@@ -11,8 +12,10 @@ const Parametres = () => {
   const [categories, setCategories] = useState([]);
   const [employes, setEmployes] = useState([]);
   
-  // Daily Goal State
+  // Daily & Monthly Goal State
   const [dailyGoal,    setDailyGoal]    = useState('');
+  const [monthlyGoal,  setMonthlyGoal]  = useState('');
+  const [monthRevenue, setMonthRevenue] = useState(0);
   const [isGoalSaving, setIsGoalSaving] = useState(false);
 
   // Admin creation state
@@ -51,9 +54,28 @@ const Parametres = () => {
     });
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
-      if (docSnap.exists() && docSnap.data().objectifJournalier) {
-        setDailyGoal(docSnap.data().objectifJournalier);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.objectifJournalier) setDailyGoal(data.objectifJournalier);
+        if (data.objectifMensuel)    setMonthlyGoal(data.objectifMensuel);
       }
+    });
+
+    // Fetch transactions for the current month to calculate remaining goal
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+    
+    // We fetch all transactions to filter by month (can be optimized if needed)
+    const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snapshot) => {
+      let rev = 0;
+      snapshot.docs.forEach(d => {
+        const t = d.data();
+        if (t.type === 'prestation' && t.date >= startOfMonth && t.date <= endOfMonth) {
+          rev += Number(t.montant);
+        }
+      });
+      setMonthRevenue(rev);
     });
 
     return () => {
@@ -61,6 +83,7 @@ const Parametres = () => {
       unsubCategories();
       unsubEmployes();
       unsubSettings();
+      unsubTransactions();
     };
   }, []);
 
@@ -92,7 +115,10 @@ const Parametres = () => {
   // Handlers Goal
   const handleSaveGoal = async () => {
     setIsGoalSaving(true);
-    await setDoc(doc(db, 'settings', 'general'), { objectifJournalier: Number(dailyGoal) }, { merge: true });
+    await setDoc(doc(db, 'settings', 'general'), { 
+      objectifJournalier: Number(dailyGoal),
+      objectifMensuel: Number(monthlyGoal)
+    }, { merge: true });
     setIsGoalSaving(false);
   };
 
@@ -141,6 +167,7 @@ const Parametres = () => {
   };
   const saveEditService = async (id) => {
     await updateDoc(doc(db, 'services', id), { nom: editServiceForm.nom, prixDefaut: Number(editServiceForm.prix) });
+    await logEvent('PARAMETRE_UPDATE', `Modification du service: ${editServiceForm.nom} (${editServiceForm.prix} FCFA)`);
     setEditingServiceId(null);
   };
 
@@ -151,6 +178,7 @@ const Parametres = () => {
   };
   const saveEditCategory = async (id) => {
     await updateDoc(doc(db, 'depenses_categories', id), { nom: editCategoryForm.nom });
+    await logEvent('PARAMETRE_UPDATE', `Modification de la catégorie: ${editCategoryForm.nom}`);
     setEditingCategoryId(null);
   };
 
@@ -179,25 +207,83 @@ const Parametres = () => {
     }
   };
 
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysLeft = lastDay - now.getDate() + 1;
+  const remainingAmount = Math.max(0, Number(monthlyGoal) - monthRevenue);
+  const dailyTarget = daysLeft > 0 ? Math.round(remainingAmount / daysLeft) : 0;
+  const progressPct = Number(monthlyGoal) > 0 ? Math.min((monthRevenue / Number(monthlyGoal)) * 100, 100) : 0;
+
   return (
     <div className="view-container">
       
-      {/* OBJECTIF JOURNALIER */}
+      {/* OBJECTIFS & CALCULATEUR */}
       <div className="card">
-        <h2 className="card-title">Objectif Journalier du Salon</h2>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <input 
-            type="number" 
-            className="input-control" 
-            placeholder="Objectif en FCFA (ex: 50000)" 
-            value={dailyGoal} 
-            onChange={(e) => setDailyGoal(e.target.value)}
-            style={{ maxWidth: '300px' }}
-          />
-          <button onClick={handleSaveGoal} className="btn btn-primary">
-            {isGoalSaving ? 'Enregistrement...' : <><Save size={18} /> Sauvegarder</>}
-          </button>
+        <h2 className="card-title">Objectifs & Réréajustement</h2>
+        
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '20px' }}>
+          <div className="form-group" style={{ flex: 1, minWidth: '250px', margin: 0 }}>
+            <label>Objectif Mensuel (FCFA)</label>
+            <input 
+              type="number" 
+              className="input-control" 
+              placeholder="ex: 1000000" 
+              value={monthlyGoal} 
+              onChange={(e) => setMonthlyGoal(e.target.value)}
+            />
+          </div>
+          <div className="form-group" style={{ flex: 1, minWidth: '250px', margin: 0 }}>
+            <label>Objectif Journalier Fixe (FCFA)</label>
+            <input 
+              type="number" 
+              className="input-control" 
+              placeholder="ex: 50000" 
+              value={dailyGoal} 
+              onChange={(e) => setDailyGoal(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button onClick={handleSaveGoal} className="btn btn-primary" style={{ height: '42px' }}>
+              {isGoalSaving ? 'Enregistrement...' : <><Save size={18} /> Sauvegarder</>}
+            </button>
+          </div>
         </div>
+
+        {/* Calculateur Intelligent */}
+        {Number(monthlyGoal) > 0 && (
+          <div style={{ backgroundColor: 'var(--bg-input)', padding: '20px', borderRadius: '12px' }}>
+            <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', marginBottom: '15px' }}>Calculateur de Cible Journalière (Mois en cours)</h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+              <div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Progression (CA Actuel)</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--success)' }}>
+                  {monthRevenue.toLocaleString('fr-FR')} FCFA <span style={{ fontSize: '0.9rem' }}>({Math.round(progressPct)}%)</span>
+                </div>
+                <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--bg-card)', borderRadius: '4px', marginTop: '5px' }}>
+                  <div style={{ height: '100%', width: `${progressPct}%`, backgroundColor: 'var(--success)', borderRadius: '4px' }}></div>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Reste à réaliser</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--danger)' }}>
+                  {remainingAmount.toLocaleString('fr-FR')} FCFA
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {daysLeft} jour(s) restant(s)
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: 'var(--bg-card)', padding: '10px 15px', borderRadius: '8px', borderLeft: '4px solid var(--accent-color)' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Nouveau Cible Jour</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>
+                  {dailyTarget.toLocaleString('fr-FR')} FCFA
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SECTION SERVICES */}

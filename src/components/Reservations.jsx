@@ -4,8 +4,10 @@ import { db } from '../firebase';
 import {
   Calendar, Clock, User, Phone,
   CheckCircle, AlertCircle, PlusCircle,
-  Trash2, CreditCard, X
+  Trash2, CreditCard, X, FileText
 } from 'lucide-react';
+import { logEvent } from '../utils/audit';
+import FactureModal from './FactureModal';
 
 const Reservations = () => {
   // Collections state
@@ -16,8 +18,8 @@ const Reservations = () => {
   // Tabs state
   const [activeTab, setActiveTab] = useState('aujourd_hui');
 
-  // Modal encaissement state
   const [encaissementModal, setEncaissementModal] = useState(null);
+  const [factureModal, setFactureModal]           = useState(null);
   const [modeEncaissement, setModeEncaissement]   = useState('Cash');
   const [encaissementLoading, setEncaissementLoading] = useState(false);
 
@@ -112,6 +114,8 @@ const Reservations = () => {
         statut, acomptePaye, createdAt: nowISO
       });
       console.log('[Reservations] Réservation créée avec statut:', statut);
+      
+      await logEvent('RESERVATION_CREATE', `Réservation pour ${clientNom} (${service.nom}) par ${employe.nom}. Statut: ${statut}`);
 
     } catch (err) {
       console.error('[Reservations] Erreur lors de la création:', err);
@@ -157,12 +161,13 @@ const Reservations = () => {
       });
       console.log('[Reservations] Transaction solde créée:', resteAPayer, 'FCFA via', modeEncaissement);
 
-      // 2. Mettre à jour la réservation → statut "encaisse"
       await updateDoc(doc(db, 'reservations', res.id), {
         statut:      'encaisse',
         acomptePaye: res.prixTotal
       });
       console.log('[Reservations] Statut réservation mis à jour → encaisse');
+      
+      await logEvent('RESERVATION_UPDATE', `Encaissement du solde (${resteAPayer} FCFA) pour ${res.clientNom}. Mode: ${modeEncaissement}`);
 
     } catch (err) {
       console.error('[Reservations] Erreur lors de l\'encaissement:', err);
@@ -179,6 +184,7 @@ const Reservations = () => {
       try {
         await deleteDoc(doc(db, 'reservations', id));
         console.log('[Reservations] Réservation supprimée:', id);
+        await logEvent('RESERVATION_DELETE', `Suppression de la réservation ID: ${id}`);
       } catch (err) {
         console.error('[Reservations] Erreur suppression:', err);
       }
@@ -409,6 +415,14 @@ const Reservations = () => {
                       <td style={{ padding: '10px' }}>{renderBadge(res)}</td>
                       <td style={{ padding: '10px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                          <button
+                            onClick={() => setFactureModal(res)}
+                            className="btn btn-small"
+                            style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
+                            title="Générer Facture"
+                          >
+                            <FileText size={14} /> Facture
+                          </button>
                           {isNonEncaisse(res.statut) && (
                             <button
                               onClick={() => handleEncaisserSolde(res)}
@@ -520,6 +534,15 @@ const Reservations = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── MODAL FACTURE ─────────────────────────────────────────────────── */}
+      {factureModal && (
+        <FactureModal 
+          data={factureModal} 
+          type="reservation" 
+          onClose={() => setFactureModal(null)} 
+        />
       )}
     </>
   );

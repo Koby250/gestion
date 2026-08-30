@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { logEvent } from '../utils/audit';
+import FactureModal from './FactureModal';
 
 const Caisse = () => {
   // State for reference data
@@ -19,9 +21,9 @@ const Caisse = () => {
   const [modePaiement, setModePaiement] = useState('Cash');
   const [selectedEmployeId, setSelectedEmployeId] = useState('');
 
-  // History Tab & Accordion State
   const [activeHistoryTab, setActiveHistoryTab] = useState('aujourd_hui'); // 'aujourd_hui', 'cette_semaine', 'ce_mois'
   const [expandedDays, setExpandedDays] = useState({});
+  const [factureModal, setFactureModal] = useState(null);
 
   // Fetch reference data
   useEffect(() => {
@@ -101,6 +103,7 @@ const Caisse = () => {
     };
 
     await addDoc(collection(db, 'transactions'), newTransaction);
+    await logEvent('TRANSACTION_CREATE', `Nouvelle transaction (${typeTransaction}) de ${montant} FCFA. Motif: ${motif}. Mode: ${modePaiement}`);
 
     // Reset fields
     setMontant('');
@@ -109,9 +112,10 @@ const Caisse = () => {
     setSelectedCategoryId('');
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, typeTransaction, montant, motif) => {
     if (window.confirm("Voulez-vous vraiment supprimer cette opération ?")) {
       await deleteDoc(doc(db, 'transactions', id));
+      await logEvent('TRANSACTION_DELETE', `Suppression transaction (${typeTransaction}) de ${montant} FCFA. Motif: ${motif}`);
     }
   };
 
@@ -243,13 +247,24 @@ const Caisse = () => {
                   {t.type === 'depense' ? '-' : ''}{t.montant} FCFA
                 </td>
                 <td style={{ padding: '10px', textAlign: 'center' }}>
-                  <button 
-                    onClick={() => handleDelete(t.id)}
-                    style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}
-                    title="Supprimer"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                    {t.type === 'prestation' && (
+                      <button 
+                        onClick={() => setFactureModal(t)}
+                        style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer' }}
+                        title="Reçu"
+                      >
+                        <FileText size={18} />
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => handleDelete(t.id, t.type, t.montant, t.motif)}
+                      style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}
+                      title="Supprimer"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))
@@ -445,6 +460,14 @@ const Caisse = () => {
           </p>
         </div>
       </div>
+
+      {factureModal && (
+        <FactureModal 
+          data={factureModal} 
+          type="transaction" 
+          onClose={() => setFactureModal(null)} 
+        />
+      )}
     </div>
   );
 };
