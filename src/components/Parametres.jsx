@@ -5,6 +5,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck } from 'lucide-react';
 import { logEvent } from '../utils/audit';
+import BulkActionBar from './BulkActionBar';
 
 const Parametres = () => {
   // Collection States
@@ -43,6 +44,12 @@ const Parametres = () => {
 
   const [editingChargeId, setEditingChargeId] = useState(null);
   const [editChargeForm, setEditChargeForm] = useState({ nom: '', montant: '' });
+
+  // Bulk Selection States
+  const [selectedServices, setSelectedServices] = useState([]);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedEmployes, setSelectedEmployes] = useState([]);
+  const [selectedCharges, setSelectedCharges] = useState([]);
 
   // Load Data
   useEffect(() => {
@@ -178,8 +185,16 @@ const Parametres = () => {
     }
   };
 
+  // Bulk Selection Helpers
+  const toggleSelection = (id, selected, setSelected) => {
+    setSelected(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+  const toggleAll = (e, list, setSelected) => {
+    if (e.target.checked) setSelected(list.map(item => item.id));
+    else setSelected([]);
+  };
 
-  // Handlers Edit (Services)
+  // Handlers Global Settings)
   const startEditService = (service) => {
     setEditingServiceId(service.id);
     setEditServiceForm({ nom: service.nom, prix: service.prixDefaut.toString() });
@@ -342,10 +357,24 @@ const Parametres = () => {
           <button type="submit" className="btn btn-primary"><Plus size={18} /> Ajouter</button>
         </form>
 
+        <BulkActionBar 
+          selectedIds={selectedServices} 
+          collectionName="services" 
+          onClearSelection={() => setSelectedServices([])} 
+        />
+        {services.length > 0 && (
+          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input type="checkbox" id="selectAllServices" onChange={e => toggleAll(e, services, setSelectedServices)} checked={services.length > 0 && selectedServices.length === services.length} style={{ cursor: 'pointer' }} />
+            <label htmlFor="selectAllServices" style={{ fontSize: '0.85rem', cursor: 'pointer', color: 'var(--text-muted)' }}>Tout sélectionner</label>
+          </div>
+        )}
+
         <div className="list-container">
           {services.map(service => (
-            <div key={service.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
+            <div key={service.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px', backgroundColor: selectedServices.includes(service.id) ? 'rgba(37,99,235,0.05)' : 'transparent' }}>
               
+              <input type="checkbox" checked={selectedServices.includes(service.id)} onChange={() => toggleSelection(service.id, selectedServices, setSelectedServices)} style={{ cursor: 'pointer', marginRight: '5px' }} />
+
               {editingServiceId === service.id ? (
                 <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
                   <input type="text" className="input-control" value={editServiceForm.nom} onChange={e => setEditServiceForm({...editServiceForm, nom: e.target.value})} />
@@ -395,10 +424,24 @@ const Parametres = () => {
           <button type="submit" className="btn btn-primary"><Plus size={18} /> Ajouter</button>
         </form>
 
+        <BulkActionBar 
+          selectedIds={selectedCategories} 
+          collectionName="depenses_categories" 
+          onClearSelection={() => setSelectedCategories([])} 
+        />
+        {categories.length > 0 && (
+          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input type="checkbox" id="selectAllCategories" onChange={e => toggleAll(e, categories, setSelectedCategories)} checked={categories.length > 0 && selectedCategories.length === categories.length} style={{ cursor: 'pointer' }} />
+            <label htmlFor="selectAllCategories" style={{ fontSize: '0.85rem', cursor: 'pointer', color: 'var(--text-muted)' }}>Tout sélectionner</label>
+          </div>
+        )}
+
         <div className="list-container">
           {categories.map(cat => (
-            <div key={cat.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
+            <div key={cat.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px', backgroundColor: selectedCategories.includes(cat.id) ? 'rgba(37,99,235,0.05)' : 'transparent' }}>
               
+              <input type="checkbox" checked={selectedCategories.includes(cat.id)} onChange={() => toggleSelection(cat.id, selectedCategories, setSelectedCategories)} style={{ cursor: 'pointer', marginRight: '5px' }} />
+
               {editingCategoryId === cat.id ? (
                 <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
                   <input type="text" className="input-control" value={editCategoryForm.nom} onChange={e => setEditCategoryForm({...editCategoryForm, nom: e.target.value})} />
@@ -442,10 +485,24 @@ const Parametres = () => {
           <button type="submit" className="btn btn-primary" style={{ gridColumn: '1 / -1' }}><Plus size={18} /> Ajouter un membre</button>
         </form>
 
+        <BulkActionBar 
+          selectedIds={selectedEmployes} 
+          collectionName="employes" 
+          onClearSelection={() => setSelectedEmployes([])} 
+        />
+        {employes.length > 0 && (
+          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input type="checkbox" id="selectAllEmployes" onChange={e => toggleAll(e, employes, setSelectedEmployes)} checked={employes.length > 0 && selectedEmployes.length === employes.length} style={{ cursor: 'pointer' }} />
+            <label htmlFor="selectAllEmployes" style={{ fontSize: '0.85rem', cursor: 'pointer', color: 'var(--text-muted)' }}>Tout sélectionner</label>
+          </div>
+        )}
+
         <div className="list-container">
           {employes.map(emp => (
-            <div key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
+            <div key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px', backgroundColor: selectedEmployes.includes(emp.id) ? 'rgba(37,99,235,0.05)' : 'transparent' }}>
               
+              <input type="checkbox" checked={selectedEmployes.includes(emp.id)} onChange={() => toggleSelection(emp.id, selectedEmployes, setSelectedEmployes)} style={{ cursor: 'pointer', marginRight: '5px' }} />
+
               {editingEmployeId === emp.id ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto auto', gap: '10px', flex: 1, alignItems: 'center' }}>
                   <input type="text" className="input-control" value={editEmployeForm.nom} onChange={e => setEditEmployeForm({...editEmployeForm, nom: e.target.value})} />
@@ -514,10 +571,24 @@ const Parametres = () => {
           <button type="submit" className="btn btn-primary"><Plus size={18} /> Ajouter</button>
         </form>
 
+        <BulkActionBar 
+          selectedIds={selectedCharges} 
+          collectionName="charges_fixes" 
+          onClearSelection={() => setSelectedCharges([])} 
+        />
+        {chargesFixes.length > 0 && (
+          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input type="checkbox" id="selectAllCharges" onChange={e => toggleAll(e, chargesFixes, setSelectedCharges)} checked={chargesFixes.length > 0 && selectedCharges.length === chargesFixes.length} style={{ cursor: 'pointer' }} />
+            <label htmlFor="selectAllCharges" style={{ fontSize: '0.85rem', cursor: 'pointer', color: 'var(--text-muted)' }}>Tout sélectionner</label>
+          </div>
+        )}
+
         <div className="list-container">
           {chargesFixes.map(charge => (
-            <div key={charge.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
+            <div key={charge.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px', backgroundColor: selectedCharges.includes(charge.id) ? 'rgba(37,99,235,0.05)' : 'transparent' }}>
               
+              <input type="checkbox" checked={selectedCharges.includes(charge.id)} onChange={() => toggleSelection(charge.id, selectedCharges, setSelectedCharges)} style={{ cursor: 'pointer', marginRight: '5px' }} />
+
               {editingChargeId === charge.id ? (
                 <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
                   <input type="text" className="input-control" value={editChargeForm.nom} onChange={e => setEditChargeForm({...editChargeForm, nom: e.target.value})} />

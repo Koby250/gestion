@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Users, AlertTriangle, CheckCircle, ShieldAlert, Plus, Trash2, Calendar } from 'lucide-react';
+import BulkActionBar from './BulkActionBar';
 
 const RH = () => {
   const [employes, setEmployes] = useState([]);
@@ -9,6 +10,9 @@ const RH = () => {
   const [chargesFixes, setChargesFixes] = useState([]);
   const [monthRevenue, setMonthRevenue] = useState(0);
   const [monthDepenses, setMonthDepenses] = useState(0);
+
+  // Bulk Selection State
+  const [selectedAvances, setSelectedAvances] = useState([]);
 
   const [formAvance, setFormAvance] = useState({
     employeId: '',
@@ -112,6 +116,15 @@ const RH = () => {
     for (const emp of defaults) {
       await addDoc(collection(db, 'employes'), emp);
     }
+  };
+
+  // Bulk Selection Helpers
+  const toggleSelection = (id) => {
+    setSelectedAvances(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+  const toggleAll = (e) => {
+    if (e.target.checked) setSelectedAvances(avances.map(a => a.id));
+    else setSelectedAvances([]);
   };
 
   // Calculs Globaux Trésorerie
@@ -355,10 +368,25 @@ const RH = () => {
         {/* HISTORIQUE DES AVANCES */}
         <div className="card" style={{ flex: 2, minWidth: '350px' }}>
           <h2 className="card-title">Historique des Avances</h2>
+          
+          <BulkActionBar 
+            selectedIds={selectedAvances} 
+            collectionName="avances_salaires" 
+            onClearSelection={() => setSelectedAvances([])} 
+          />
+
           <div className="desktop-table" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  <th style={{ padding: '12px 10px', width: '40px' }}>
+                    <input 
+                      type="checkbox" 
+                      onChange={toggleAll}
+                      checked={avances.length > 0 && selectedAvances.length === avances.length}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
                   <th style={{ padding: '12px 10px' }}>Date</th>
                   <th style={{ padding: '12px 10px' }}>Employé</th>
                   <th style={{ padding: '12px 10px' }}>Montant</th>
@@ -368,12 +396,23 @@ const RH = () => {
               </thead>
               <tbody>
                 {avances.length === 0 ? (
-                  <tr><td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Aucune avance enregistrée.</td></tr>
+                  <tr><td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Aucune avance enregistrée.</td></tr>
                 ) : (
                   avances.map(av => {
                     const d = new Date(av.date);
                     return (
-                      <tr key={av.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <tr key={av.id} style={{ 
+                        borderBottom: '1px solid var(--border-color)',
+                        backgroundColor: selectedAvances.includes(av.id) ? 'rgba(37,99,235,0.05)' : 'transparent'
+                      }}>
+                        <td style={{ padding: '12px 10px' }}>
+                          <input 
+                            type="checkbox"
+                            checked={selectedAvances.includes(av.id)}
+                            onChange={() => toggleSelection(av.id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
                         <td style={{ padding: '12px 10px' }}>{d.toLocaleDateString('fr-FR')}</td>
                         <td style={{ padding: '12px 10px', fontWeight: '600' }}>{av.employeNom}</td>
                         <td style={{ padding: '12px 10px', color: 'var(--accent-color)', fontWeight: 'bold' }}>{Number(av.montant).toLocaleString('fr-FR')} FCFA</td>

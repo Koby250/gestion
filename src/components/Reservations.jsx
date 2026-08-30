@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
+import BulkActionBar from './BulkActionBar';
 
 const Reservations = () => {
   // Collections state
@@ -34,6 +35,9 @@ const Reservations = () => {
   const [montantAcompte, setMontantAcompte] = useState('');
   const [modePaiement,   setModePaiement]   = useState('Cash');
   const [notes,          setNotes]          = useState('');
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState([]);
 
   // ── Chargement des données Firestore ──────────────────────────────────────
   useEffect(() => {
@@ -211,6 +215,20 @@ const Reservations = () => {
   });
 
   // ── Helpers statut ────────────────────────────────────────────────────────
+  const handleToggleSelect = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedIds(filteredReservations.map(r => r.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
   const isNonEncaisse = (statut) => statut !== 'encaisse' && statut !== 'paye_totalement';
 
   const renderBadge = (res) => {
@@ -377,6 +395,12 @@ const Reservations = () => {
 
         {/* ── LISTE DES RÉSERVATIONS ────────────────────────────────────── */}
         <div className="card">
+          <BulkActionBar 
+            selectedIds={selectedIds} 
+            collectionName="reservations" 
+            onClearSelection={() => setSelectedIds([])} 
+          />
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
             <h2 className="card-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>Agenda des Rendez-vous</h2>
             <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px' }}>
@@ -387,7 +411,7 @@ const Reservations = () => {
               ].map(t => (
                 <button key={t.key}
                   className={`nav-btn ${activeTab === t.key ? 'active' : ''}`}
-                  onClick={() => setActiveTab(t.key)}
+                  onClick={() => { setActiveTab(t.key); setSelectedIds([]); }}
                   style={{ fontSize: '0.85rem', padding: '6px 12px' }}>
                   {t.label}
                 </button>
@@ -399,6 +423,14 @@ const Reservations = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                  <th style={{ padding: '10px', width: '40px' }}>
+                    <input 
+                      type="checkbox" 
+                      onChange={handleSelectAll}
+                      checked={filteredReservations.length > 0 && selectedIds.length === filteredReservations.length}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
                   <th style={{ padding: '10px' }}>Date & Heure</th>
                   <th style={{ padding: '10px' }}>Client</th>
                   <th style={{ padding: '10px' }}>Prestation</th>
@@ -416,7 +448,18 @@ const Reservations = () => {
                   </tr>
                 ) : (
                   filteredReservations.map(res => (
-                    <tr key={res.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <tr key={res.id} style={{ 
+                      borderBottom: '1px solid var(--border-color)',
+                      backgroundColor: selectedIds.includes(res.id) ? 'rgba(37,99,235,0.05)' : 'transparent'
+                    }}>
+                      <td style={{ padding: '10px' }}>
+                        <input 
+                          type="checkbox"
+                          checked={selectedIds.includes(res.id)}
+                          onChange={() => handleToggleSelect(res.id)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </td>
                       <td style={{ padding: '10px', fontWeight: '500' }}>
                         {res.datePrevue} à {res.heurePrevue}
                       </td>

@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
+import BulkActionBar from './BulkActionBar';
 
 const Caisse = () => {
   // State for reference data
@@ -24,6 +25,7 @@ const Caisse = () => {
   const [activeHistoryTab, setActiveHistoryTab] = useState('aujourd_hui'); // 'aujourd_hui', 'cette_semaine', 'ce_mois'
   const [expandedDays, setExpandedDays] = useState({});
   const [factureModal, setFactureModal] = useState(null);
+  const [selectedTransactions, setSelectedTransactions] = useState([]);
 
   // Fetch reference data
   useEffect(() => {
@@ -199,12 +201,29 @@ const Caisse = () => {
     return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Bulk Selection Helpers
+  const toggleSelection = (id) => {
+    setSelectedTransactions(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+  const toggleAll = (e, txList) => {
+    if (e.target.checked) setSelectedTransactions(txList.map(t => t.id));
+    else setSelectedTransactions([]);
+  };
+
   // Reusable component for Transaction Table
   const TransactionTable = ({ txList }) => (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+            <th style={{ padding: '10px', width: '40px' }}>
+              <input 
+                type="checkbox" 
+                onChange={(e) => toggleAll(e, txList)}
+                checked={txList.length > 0 && txList.every(t => selectedTransactions.includes(t.id))}
+                style={{ cursor: 'pointer' }}
+              />
+            </th>
             <th style={{ padding: '10px' }}>Heure</th>
             <th style={{ padding: '10px' }}>Type</th>
             <th style={{ padding: '10px' }}>Motif</th>
@@ -223,7 +242,18 @@ const Caisse = () => {
             </tr>
           ) : (
             txList.map(t => (
-              <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <tr key={t.id} style={{ 
+                borderBottom: '1px solid var(--border-color)',
+                backgroundColor: selectedTransactions.includes(t.id) ? 'rgba(37,99,235,0.05)' : 'transparent'
+              }}>
+                <td style={{ padding: '10px' }}>
+                  <input 
+                    type="checkbox"
+                    checked={selectedTransactions.includes(t.id)}
+                    onChange={() => toggleSelection(t.id)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </td>
                 <td style={{ padding: '10px', fontSize: '0.9rem' }}>{formatTime(t.date)}</td>
                 <td style={{ padding: '10px' }}>
                   <span style={{ 
@@ -398,21 +428,27 @@ const Caisse = () => {
           <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px' }}>
             <button 
               className={`nav-btn ${activeHistoryTab === 'aujourd_hui' ? 'active' : ''}`}
-              onClick={() => setActiveHistoryTab('aujourd_hui')}
+              onClick={() => { setActiveHistoryTab('aujourd_hui'); setSelectedTransactions([]); }}
               style={{ fontSize: '0.85rem', padding: '6px 12px' }}
             >Aujourd'hui</button>
             <button 
               className={`nav-btn ${activeHistoryTab === 'cette_semaine' ? 'active' : ''}`}
-              onClick={() => setActiveHistoryTab('cette_semaine')}
+              onClick={() => { setActiveHistoryTab('cette_semaine'); setSelectedTransactions([]); }}
               style={{ fontSize: '0.85rem', padding: '6px 12px' }}
             >Cette Semaine</button>
             <button 
               className={`nav-btn ${activeHistoryTab === 'ce_mois' ? 'active' : ''}`}
-              onClick={() => setActiveHistoryTab('ce_mois')}
+              onClick={() => { setActiveHistoryTab('ce_mois'); setSelectedTransactions([]); }}
               style={{ fontSize: '0.85rem', padding: '6px 12px' }}
             >Ce Mois</button>
           </div>
         </div>
+
+        <BulkActionBar 
+          selectedIds={selectedTransactions} 
+          collectionName="transactions" 
+          onClearSelection={() => setSelectedTransactions([])} 
+        />
 
         {activeHistoryTab === 'aujourd_hui' ? (
           <TransactionTable txList={filteredTransactions} />
