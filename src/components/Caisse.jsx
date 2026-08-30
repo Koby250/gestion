@@ -242,7 +242,14 @@ const Caisse = () => {
                   {t.type === 'depense' && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.categorie}</span>}
                 </td>
                 <td style={{ padding: '10px' }}>{t.employeNom}</td>
-                <td style={{ padding: '10px' }}>{t.modePaiement}</td>
+                <td style={{ padding: '10px' }}>
+                  <span style={{ 
+                    padding: '4px 8px', borderRadius: '8px', fontSize: '0.8rem',
+                    backgroundColor: 'var(--bg-input)', fontWeight: '600', color: 'var(--text-main)'
+                  }}>
+                    {t.modePaiement}
+                  </span>
+                </td>
                 <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: t.type === 'prestation' ? 'var(--success)' : 'var(--text-main)' }}>
                   {t.type === 'depense' ? '-' : ''}{t.montant} FCFA
                 </td>
@@ -359,8 +366,9 @@ const Caisse = () => {
                 onChange={(e) => setModePaiement(e.target.value)}
               >
                 <option value="Cash">Cash</option>
-                <option value="Nita">Nita</option>
-                <option value="Transfert">Transfert</option>
+                <option value="NITA">NITA</option>
+                <option value="AMANA">AMANA</option>
+                <option value="Carte VISA">Carte VISA</option>
               </select>
             </div>
 

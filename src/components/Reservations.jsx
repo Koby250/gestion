@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import {
   Calendar, Clock, User, Phone,
   CheckCircle, AlertCircle, PlusCircle,
-  Trash2, CreditCard, X, FileText
+  Trash2, CreditCard, X, FileText, MessageSquare
 } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
@@ -33,6 +33,7 @@ const Reservations = () => {
   const [optionPaiement, setOptionPaiement] = useState('a_payer');
   const [montantAcompte, setMontantAcompte] = useState('');
   const [modePaiement,   setModePaiement]   = useState('Cash');
+  const [notes,          setNotes]          = useState('');
 
   // ── Chargement des données Firestore ──────────────────────────────────────
   useEffect(() => {
@@ -111,7 +112,9 @@ const Reservations = () => {
         serviceNom: service.nom, prixTotal,
         datePrevue, heurePrevue,
         employeId, employeNom: employe.nom,
-        statut, acomptePaye, createdAt: nowISO
+        statut, acomptePaye,
+        notes: notes.trim(),
+        createdAt: nowISO
       });
       console.log('[Reservations] Réservation créée avec statut:', statut);
       
@@ -127,6 +130,7 @@ const Reservations = () => {
     setClientNom(''); setClientTel(''); setServiceId('');
     setDatePrevue(''); setHeurePrevue(''); setEmployeId('');
     setOptionPaiement('a_payer'); setMontantAcompte(''); setModePaiement('Cash');
+    setNotes('');
   };
 
   // ── Ouvrir le modal d'encaissement ───────────────────────────────────────
@@ -299,12 +303,21 @@ const Reservations = () => {
                   value={heurePrevue} onChange={e => setHeurePrevue(e.target.value)} />
               </div>
 
-              {/* ── OPTIONS DE PAIEMENT ─────────────────────────────────── */}
-              <div className="form-group" style={{
-                gridColumn: '1 / -1',
-                backgroundColor: 'var(--bg-input)',
-                padding: '15px', borderRadius: '12px'
-              }}>
+              {/* ── NOTES / COMMENTAIRES ───────────────────────────────── */}
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label><MessageSquare size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Notes / Commentaires (Optionnel)</label>
+                <textarea
+                  className="input-control"
+                  placeholder="Ex: Coupe dégradée à blanc, cuir chevelu sensible..."
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  rows={2}
+                  style={{ resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+
+              {/* ── OPTIONS DE PAIEMENT ───────────────────────────────── */}
+              <div style={{ gridColumn: '1 / -1', backgroundColor: 'var(--bg-input)', padding: '15px', borderRadius: '12px' }}>
                 <label style={{ color: 'var(--text-main)', fontSize: '0.95rem', fontWeight: '600', display: 'block', marginBottom: '12px' }}>
                   Encaissement immédiat
                 </label>
@@ -345,8 +358,9 @@ const Reservations = () => {
                         onChange={e => setModePaiement(e.target.value)}
                         style={{ backgroundColor: 'var(--bg-card)' }}>
                         <option value="Cash">Cash</option>
-                        <option value="Nita">Nita</option>
-                        <option value="Transfert">Transfert</option>
+                        <option value="NITA">NITA</option>
+                        <option value="AMANA">AMANA</option>
+                        <option value="Carte VISA">Carte VISA</option>
                       </select>
                     </div>
                   </div>
@@ -409,6 +423,14 @@ const Reservations = () => {
                       <td style={{ padding: '10px' }}>
                         <div style={{ fontWeight: 'bold' }}>{res.clientNom}</div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{res.clientTel}</div>
+                        {res.notes && (
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', marginTop: '4px', fontSize: '0.78rem',
+                            color: 'var(--text-muted)', backgroundColor: 'rgba(37,99,235,0.06)',
+                            padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(37,99,235,0.12)', maxWidth: '200px' }}>
+                            <MessageSquare size={10} style={{ marginTop: '2px', flexShrink: 0, color: 'var(--accent-color)' }} />
+                            <span style={{ fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{res.notes}</span>
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '10px' }}>{res.serviceNom}</td>
                       <td style={{ padding: '10px', color: 'var(--text-muted)' }}>{res.employeNom}</td>
@@ -498,7 +520,7 @@ const Reservations = () => {
             <div className="form-group">
               <label>Mode de règlement</label>
               <div style={{ display: 'flex', gap: '10px' }}>
-                {['Cash', 'Nita', 'Transfert'].map(mode => (
+                {['Cash', 'NITA', 'AMANA', 'Carte VISA'].map(mode => (
                   <button key={mode} type="button"
                     onClick={() => setModeEncaissement(mode)}
                     style={{

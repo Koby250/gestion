@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Wallet, ArrowRightLeft, Edit2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Wallet, ArrowRightLeft, Edit2, CheckCircle } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 
 const accountsList = [
@@ -14,7 +14,6 @@ const accountsList = [
 
 const Tresorerie = () => {
   const [soldes, setSoldes] = useState({ cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 });
-  const [theorique, setTheorique] = useState({ cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 });
   
   // Editing state
   const [editingAccount, setEditingAccount] = useState(null);
@@ -27,55 +26,79 @@ const Tresorerie = () => {
   const [transferMsg, setTransferMsg] = useState(null);
 
   useEffect(() => {
-    // 1. Fetch real balances
-    const unsubSoldes = onSnapshot(doc(db, 'tresorerie', 'soldes'), (docSnap) => {
-      if (docSnap.exists()) {
-        setSoldes({ cash: 0, nita: 0, amana: 0, visa: 0, autre: 0, ...docSnap.data() });
-      }
-    });
 
-    // 2. Calculate theoretical from this month's transactions
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    
-    const unsubTx = onSnapshot(collection(db, 'transactions'), (snapshot) => {
+    const getModeKey = (m) => {
+      if (!m) return 'cash';
+      const lower = m.toLowerCase();
+      if (lower.includes('visa')) return 'visa';
+      if (lower.includes('nita')) return 'nita';
+      if (lower.includes('amana')) return 'amana';
+      if (lower.includes('cash')) return 'cash';
+      return 'autre';
+    };
+
+    let txData = [];
+    let avancesData = [];
+
+    const calcTheo = () => {
       const theo = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
-      snapshot.docs.forEach(d => {
-        const t = d.data();
-        if (t.date >= startOfMonth) {
-          const mode = (t.modePaiement || 'cash').toLowerCase();
-          const amount = Number(t.montant) || 0;
-          if (t.type === 'prestation') {
-            if (theo[mode] !== undefined) theo[mode] += amount;
-            else theo.autre += amount;
-          } else if (t.type === 'depense') {
-            if (theo[mode] !== undefined) theo[mode] -= amount;
-            else theo.autre -= amount;
-          }
+      txData.forEach(t => {
+        const amount = Number(t.montant) || 0;
+        if (t.type === 'prestation') {
+          theo[getModeKey(t.modePaiement)] += amount;
+        } else if (t.type === 'depense') {
+          theo[getModeKey(t.modePaiement)] -= amount;
+        } else if (t.type === 'transfert') {
+          if (theo[t.fromAccount] !== undefined) theo[t.fromAccount] -= amount;
+          if (theo[t.toAccount] !== undefined) theo[t.toAccount] += amount;
+        } else if (t.type === 'ajustement') {
+          theo[getModeKey(t.modePaiement)] += amount;
         }
       });
-      setTheorique(theo);
+      avancesData.forEach(a => {
+        const amount = Number(a.montant) || 0;
+        theo[getModeKey(a.modePaiement)] -= amount;
+      });
+      setSoldes(theo);
+    };
+
+    const unsubTx = onSnapshot(collection(db, 'transactions'), (snapshot) => {
+      txData = snapshot.docs.map(d => d.data());
+      calcTheo();
+    });
+
+    const unsubAv = onSnapshot(collection(db, 'avances_salaires'), (snapshot) => {
+      avancesData = snapshot.docs.map(d => d.data());
+      calcTheo();
     });
 
     return () => {
-      unsubSoldes();
       unsubTx();
+      unsubAv();
     };
   }, []);
 
   const totalReel = Object.values(soldes).reduce((a, b) => a + Number(b), 0);
-  const totalTheorique = Object.values(theorique).reduce((a, b) => a + Number(b), 0);
 
   const handleUpdateSolde = async (accountId) => {
     const newVal = Number(editValue);
     if (isNaN(newVal)) return;
     
     const oldVal = Number(soldes[accountId] || 0);
-    const newSoldes = { ...soldes, [accountId]: newVal };
-    await setDoc(doc(db, 'tresorerie', 'soldes'), newSoldes, { merge: true });
+    const diff = newVal - oldVal;
     
-    const accountName = accountsList.find(a => a.id === accountId)?.label || accountId;
-    await logEvent('TRESORERIE_UPDATE', `Ajustement manuel du compte ${accountName}. Ancien: ${oldVal} F, Nouveau: ${newVal} F`);
+    if (diff !== 0) {
+      await addDoc(collection(db, 'transactions'), {
+        type: 'ajustement',
+        montant: diff,
+        modePaiement: accountId,
+        motif: 'Ajustement de caisse / Erreur',
+        date: new Date().toISOString()
+      });
+      
+      const accountName = accountsList.find(a => a.id === accountId)?.label || accountId;
+      await logEvent('TRESORERIE_UPDATE', `Ajustement du compte ${accountName}. Différence: ${diff > 0 ? '+' : ''}${diff} F`);
+    }
     
     setEditingAccount(null);
   };
@@ -99,14 +122,18 @@ const Tresorerie = () => {
     }
 
     try {
-      const newSoldes = { ...soldes };
-      newSoldes[transferFrom] = Number(newSoldes[transferFrom]) - amount;
-      newSoldes[transferTo] = Number(newSoldes[transferTo]) + amount;
-      
-      await setDoc(doc(db, 'tresorerie', 'soldes'), newSoldes, { merge: true });
-      
       const accFrom = accountsList.find(a => a.id === transferFrom)?.label || transferFrom;
       const accTo = accountsList.find(a => a.id === transferTo)?.label || transferTo;
+
+      await addDoc(collection(db, 'transactions'), {
+        type: 'transfert',
+        montant: amount,
+        motif: `Transfert de ${accFrom} vers ${accTo}`,
+        fromAccount: transferFrom,
+        toAccount: transferTo,
+        date: new Date().toISOString()
+      });
+
       await logEvent('TRESORERIE_TRANSFERT', `Transfert de ${amount} FCFA de [${accFrom}] vers [${accTo}]`);
       
       setTransferAmount('');
@@ -130,14 +157,10 @@ const Tresorerie = () => {
             <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Soldes des Comptes</h2>
           </div>
 
-          <div style={{ backgroundColor: 'var(--bg-input)', padding: '20px', borderRadius: '12px', marginBottom: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Solde Total Réel</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--text-main)' }}>{totalReel.toLocaleString('fr-FR')} FCFA</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Théorique (Mois)</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>{totalTheorique.toLocaleString('fr-FR')} FCFA</div>
+          <div style={{ backgroundColor: 'var(--bg-input)', padding: '20px', borderRadius: '12px', marginBottom: '25px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Solde Total Actuel</div>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>{totalReel.toLocaleString('fr-FR')} FCFA</div>
             </div>
           </div>
 
@@ -146,20 +169,16 @@ const Tresorerie = () => {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                   <th style={{ padding: '12px 10px' }}>Compte</th>
-                  <th style={{ padding: '12px 10px' }}>Théorique (Mois)</th>
-                  <th style={{ padding: '12px 10px' }}>Solde Réel</th>
+                  <th style={{ padding: '12px 10px' }}>Solde Actuel</th>
                   <th style={{ padding: '12px 10px', textAlign: 'right' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {accountsList.map(acc => {
                   const sReal = Number(soldes[acc.id]) || 0;
-                  const sTheo = Number(theorique[acc.id]) || 0;
-                  const diff = sReal - sTheo;
                   return (
                     <tr key={acc.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                       <td style={{ padding: '15px 10px', fontWeight: '600', color: 'var(--text-main)' }}>{acc.label}</td>
-                      <td style={{ padding: '15px 10px', color: 'var(--text-muted)' }}>{sTheo.toLocaleString('fr-FR')} FCFA</td>
                       <td style={{ padding: '15px 10px' }}>
                         {editingAccount === acc.id ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -180,12 +199,9 @@ const Tresorerie = () => {
                           </div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{sReal.toLocaleString('fr-FR')} FCFA</span>
-                            {diff !== 0 && (
-                              <span style={{ fontSize: '0.75rem', color: diff > 0 ? 'var(--success)' : 'var(--danger)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                <AlertCircle size={12} /> {diff > 0 ? '+' : ''}{diff.toLocaleString('fr-FR')}
-                              </span>
-                            )}
+                            <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
+                              {sReal.toLocaleString('fr-FR')} FCFA
+                            </span>
                           </div>
                         )}
                       </td>

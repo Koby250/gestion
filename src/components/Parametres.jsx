@@ -11,6 +11,7 @@ const Parametres = () => {
   const [services, setServices] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employes, setEmployes] = useState([]);
+  const [chargesFixes, setChargesFixes] = useState([]);
   
   // Daily & Monthly Goal State
   const [dailyGoal,    setDailyGoal]    = useState('');
@@ -28,6 +29,7 @@ const Parametres = () => {
   const [newService, setNewService] = useState({ nom: '', prix: '' });
   const [newCategory, setNewCategory] = useState({ nom: '' });
   const [newEmploye, setNewEmploye] = useState({ nom: '', role: '', commission: '', salaire: '' });
+  const [newCharge, setNewCharge] = useState({ nom: '', montant: '' });
 
   // Edit States
   const [editingServiceId, setEditingServiceId] = useState(null);
@@ -38,6 +40,9 @@ const Parametres = () => {
 
   const [editingEmployeId, setEditingEmployeId] = useState(null);
   const [editEmployeForm, setEditEmployeForm] = useState({ nom: '', role: '', commission: '', salaire: '' });
+
+  const [editingChargeId, setEditingChargeId] = useState(null);
+  const [editChargeForm, setEditChargeForm] = useState({ nom: '', montant: '' });
 
   // Load Data
   useEffect(() => {
@@ -51,6 +56,10 @@ const Parametres = () => {
 
     const unsubEmployes = onSnapshot(collection(db, 'employes'), (snapshot) => {
       setEmployes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubCharges = onSnapshot(collection(db, 'charges_fixes'), (snapshot) => {
+      setChargesFixes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
@@ -84,6 +93,7 @@ const Parametres = () => {
       unsubEmployes();
       unsubSettings();
       unsubTransactions();
+      unsubCharges();
     };
   }, []);
 
@@ -110,6 +120,15 @@ const Parametres = () => {
       commission: Number(newEmploye.commission) || 0, salaireFixe: Number(newEmploye.salaire) || 0, actif: true
     });
     setNewEmploye({ nom: '', role: '', commission: '', salaire: '' });
+  };
+
+  const handleAddCharge = async (e) => {
+    e.preventDefault();
+    if (!newCharge.nom || !newCharge.montant) return;
+    await addDoc(collection(db, 'charges_fixes'), {
+      nom: newCharge.nom, montant: Number(newCharge.montant), actif: true
+    });
+    setNewCharge({ nom: '', montant: '' });
   };
 
   // Handlers Goal
@@ -195,6 +214,19 @@ const Parametres = () => {
       salaireFixe: Number(editEmployeForm.salaire) 
     });
     setEditingEmployeId(null);
+  };
+
+  // Handlers Edit (Charges Fixes)
+  const startEditCharge = (charge) => {
+    setEditingChargeId(charge.id);
+    setEditChargeForm({ nom: charge.nom, montant: charge.montant.toString() });
+  };
+  const saveEditCharge = async (id) => {
+    await updateDoc(doc(db, 'charges_fixes', id), { 
+      nom: editChargeForm.nom, 
+      montant: Number(editChargeForm.montant) 
+    });
+    setEditingChargeId(null);
   };
 
   // Handlers Status / Delete
@@ -444,6 +476,72 @@ const Parametres = () => {
                     {emp.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
                   </button>
                   <button onClick={() => handleDelete('employes', emp.id)} className="btn btn-small btn-danger" title="Supprimer">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION CHARGES FIXES */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Gestion des Charges Fixes</h2>
+          <div style={{ fontWeight: 'bold', color: 'var(--danger)', fontSize: '1.1rem' }}>
+            Total Mensuel : {chargesFixes.filter(c => c.actif).reduce((acc, c) => acc + Number(c.montant), 0).toLocaleString('fr-FR')} FCFA
+          </div>
+        </div>
+        
+        <form onSubmit={handleAddCharge} style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <input 
+            type="text" 
+            className="input-control" 
+            placeholder="Nom (ex: Loyer, Nigelec)" 
+            value={newCharge.nom} 
+            onChange={(e) => setNewCharge({...newCharge, nom: e.target.value})}
+            style={{ flex: 1, minWidth: '150px' }}
+          />
+          <input 
+            type="number" 
+            className="input-control" 
+            placeholder="Montant mensuel (FCFA)" 
+            value={newCharge.montant} 
+            onChange={(e) => setNewCharge({...newCharge, montant: e.target.value})}
+            style={{ width: '200px' }}
+          />
+          <button type="submit" className="btn btn-primary"><Plus size={18} /> Ajouter</button>
+        </form>
+
+        <div className="list-container">
+          {chargesFixes.map(charge => (
+            <div key={charge.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
+              
+              {editingChargeId === charge.id ? (
+                <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
+                  <input type="text" className="input-control" value={editChargeForm.nom} onChange={e => setEditChargeForm({...editChargeForm, nom: e.target.value})} />
+                  <input type="number" className="input-control" value={editChargeForm.montant} onChange={e => setEditChargeForm({...editChargeForm, montant: e.target.value})} style={{ width: '150px' }} />
+                  <button onClick={() => saveEditCharge(charge.id)} className="btn btn-success btn-small"><CheckCircle size={14} /></button>
+                  <button onClick={() => setEditingChargeId(null)} className="btn btn-small" style={{background:'var(--bg-input)'}}><X size={14}/></button>
+                </div>
+              ) : (
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 'bold', color: charge.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>{charge.nom}</span>
+                  <span style={{ marginLeft: '10px', color: 'var(--danger)', fontWeight: 'bold' }}>{charge.montant.toLocaleString('fr-FR')} FCFA</span>
+                  {!charge.actif && <span style={{ marginLeft: '10px', fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
+                </div>
+              )}
+
+              {editingChargeId !== charge.id && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => startEditCharge(charge)} className="btn btn-small" style={{backgroundColor: 'var(--bg-input)', color: 'var(--text-main)'}} title="Modifier">
+                    <Edit2 size={14} />
+                  </button>
+                  <button onClick={() => toggleStatus('charges_fixes', charge.id, charge.actif)} className={`btn btn-small ${charge.actif ? 'btn-danger' : 'btn-success'}`} title={charge.actif ? "Archiver" : "Activer"}>
+                    {charge.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
+                  </button>
+                  <button onClick={() => handleDelete('charges_fixes', charge.id)} className="btn btn-small btn-danger" title="Supprimer">
                     <Trash2 size={14} />
                   </button>
                 </div>

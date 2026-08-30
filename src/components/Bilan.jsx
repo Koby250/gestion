@@ -29,6 +29,8 @@ const Bilan = () => {
   const [history, setHistory] = useState([]);
   const [historyForm, setHistoryForm] = useState({ month: '', year: now.getFullYear().toString(), ca: '', depenses: '' });
   const [isSavingHistory, setIsSavingHistory] = useState(false);
+  const [employes, setEmployes] = useState([]);
+  const [chargesFixes, setChargesFixes] = useState([]);
 
   // ── Chargement des transactions et de l'historique ───────────────────────
   useEffect(() => {
@@ -41,7 +43,15 @@ const Bilan = () => {
       setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.id.localeCompare(b.id)));
     });
 
-    return () => { unsub(); unsubHist(); };
+    const unsubEmp = onSnapshot(collection(db, 'employes'), snap => {
+      setEmployes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    const unsubCharges = onSnapshot(collection(db, 'charges_fixes'), snap => {
+      setChargesFixes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsub(); unsubHist(); unsubEmp(); unsubCharges(); };
   }, []);
 
   // ── Navigation mois ──────────────────────────────────────────────────────
@@ -69,6 +79,19 @@ const Bilan = () => {
   const totalDepenses = depenses.reduce((s, t) => s + Number(t.montant), 0);
   const beneficeNet   = totalCA - totalDepenses;
   const nbPrestations = prestations.length;
+
+  const totalSalaires     = employes.reduce((acc, emp) => acc + (Number(emp.salaireFixe) || 0), 0);
+  const totalChargesFixes = chargesFixes.filter(c => c.actif).reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
+
+  // Trésorerie Nette = CA - Salaires - Charges Fixes
+  const tresorerieNette   = totalCA - totalSalaires - totalChargesFixes;
+  const tresoreriePositive = tresorerieNette >= 0;
+
+  const pctSalaires     = totalCA > 0 ? Math.min((totalSalaires     / totalCA) * 100, 100) : 0;
+  const pctChargesFixes = totalCA > 0 ? Math.min((totalChargesFixes / totalCA) * 100, 100) : 0;
+  const pctDepenses     = totalCA > 0 ? Math.min((totalDepenses     / totalCA) * 100, 100) : 0;
+  const margeRestante   = Math.max(0, totalCA - totalSalaires - totalChargesFixes - totalDepenses);
+  const pctMarge        = totalCA > 0 ? (margeRestante / totalCA) * 100 : 0;
 
   // ── Analyse par service ──────────────────────────────────────────────────
   const serviceMap = {};
@@ -251,6 +274,119 @@ const Bilan = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ── VENTILATION & RÉPARTITION ─────────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: '24px' }}>
+        <h2 className="card-title">Répartition des Recettes — {MOIS_FR[viewMonth]} {viewYear}</h2>
+
+        {/* Grille 3 colonnes */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+
+          {/* Masse Salariale */}
+          <div style={{ backgroundColor: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: '12px', padding: '16px' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--accent-color)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+              Masse Salariale — {employes.filter(e => e.actif).length} agents
+            </div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>{totalSalaires.toLocaleString('fr-FR')} F</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.82rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Part du CA</span>
+              <span style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{totalCA > 0 ? Math.round(pctSalaires) : 0}%</span>
+            </div>
+            <div style={{ marginTop: '6px', height: '4px', backgroundColor: 'var(--bg-input)', borderRadius: '4px' }}>
+              <div style={{ height: '100%', width: `${Math.min(pctSalaires, 100)}%`, backgroundColor: 'var(--accent-color)', borderRadius: '4px' }} />
+            </div>
+            <div style={{ marginTop: '12px', borderTop: '1px solid rgba(37,99,235,0.15)', paddingTop: '10px' }}>
+              {employes.filter(e => e.actif).map(e => (
+                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', padding: '2px 0' }}>
+                  <span>{e.nom}</span>
+                  <span style={{ fontWeight: '600', color: 'var(--text-main)' }}>{Number(e.salaireFixe).toLocaleString('fr-FR')} F</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Charges Fixes */}
+          <div style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '12px', padding: '16px' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Charges Fixes Mensuelles</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: 'var(--danger)' }}>{totalChargesFixes.toLocaleString('fr-FR')} F</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.82rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Part du CA</span>
+              <span style={{ fontWeight: 'bold', color: 'var(--danger)' }}>{totalCA > 0 ? Math.round(pctChargesFixes) : 0}%</span>
+            </div>
+            <div style={{ marginTop: '6px', height: '4px', backgroundColor: 'var(--bg-input)', borderRadius: '4px' }}>
+              <div style={{ height: '100%', width: `${Math.min(pctChargesFixes, 100)}%`, backgroundColor: 'var(--danger)', borderRadius: '4px' }} />
+            </div>
+            {chargesFixes.filter(c => c.actif).length > 0 ? (
+              <div style={{ marginTop: '12px', borderTop: '1px solid rgba(239,68,68,0.15)', paddingTop: '10px' }}>
+                {chargesFixes.filter(c => c.actif).map(c => (
+                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', padding: '2px 0' }}>
+                    <span>{c.nom}</span>
+                    <span style={{ fontWeight: '600', color: 'var(--text-main)' }}>{Number(c.montant).toLocaleString('fr-FR')} F</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ marginTop: '10px', fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Aucune charge configurée. Voir Paramètres.</div>
+            )}
+          </div>
+
+          {/* Dépenses variables */}
+          <div style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '12px', padding: '16px' }}>
+            <div style={{ fontSize: '0.75rem', color: '#F59E0B', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Dépenses Variables</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#F59E0B' }}>{totalDepenses.toLocaleString('fr-FR')} F</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.82rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Part du CA</span>
+              <span style={{ fontWeight: 'bold', color: '#F59E0B' }}>{totalCA > 0 ? Math.round(pctDepenses) : 0}%</span>
+            </div>
+            <div style={{ marginTop: '6px', height: '4px', backgroundColor: 'var(--bg-input)', borderRadius: '4px' }}>
+              <div style={{ height: '100%', width: `${Math.min(pctDepenses, 100)}%`, backgroundColor: '#F59E0B', borderRadius: '4px' }} />
+            </div>
+            <div style={{ marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Achats, fournitures, divers enregistrés en Caisse.</div>
+          </div>
+        </div>
+
+        {/* Jauge Globale 4 segments */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '8px', fontSize: '0.82rem', fontWeight: 'bold', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--accent-color)' }}>Salaires : {Math.round(pctSalaires)}%</span>
+            <span style={{ color: 'var(--danger)' }}>Charges Fixes : {Math.round(pctChargesFixes)}%</span>
+            <span style={{ color: '#F59E0B' }}>Dépenses variables : {Math.round(pctDepenses)}%</span>
+            <span style={{ color: 'var(--success)' }}>Marge nette : {Math.round(pctMarge)}%</span>
+          </div>
+          <div style={{ width: '100%', height: '14px', display: 'flex', borderRadius: '10px', overflow: 'hidden', backgroundColor: 'var(--bg-input)' }}>
+            <div style={{ width: `${pctSalaires}%`, backgroundColor: 'var(--accent-color)', transition: 'width 0.5s ease' }} />
+            <div style={{ width: `${pctChargesFixes}%`, backgroundColor: 'var(--danger)', transition: 'width 0.5s ease' }} />
+            <div style={{ width: `${pctDepenses}%`, backgroundColor: '#F59E0B', transition: 'width 0.5s ease' }} />
+            <div style={{ width: `${pctMarge}%`, backgroundColor: 'var(--success)', transition: 'width 0.5s ease' }} />
+          </div>
+        </div>
+
+        {/* Trésorerie Nette du Mois */}
+        <div style={{
+          padding: '20px',
+          borderRadius: '12px',
+          backgroundColor: tresoreriePositive ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${tresoreriePositive ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`
+        }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '8px' }}>
+            Trésorerie Nette du Mois = CA − Salaires − Charges Fixes
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '2rem', fontWeight: '800', color: tresoreriePositive ? 'var(--success)' : 'var(--danger)' }}>
+              {tresorerieNette >= 0 ? '+' : ''}{tresorerieNette.toLocaleString('fr-FR')} FCFA
+            </div>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              {fmt(totalCA)} − {fmt(totalSalaires)} − {fmt(totalChargesFixes)} = {tresorerieNette >= 0 ? '+' : ''}{fmt(tresorerieNette)} F
+            </div>
+          </div>
+          <div style={{ fontSize: '0.85rem', marginTop: '8px', color: tresoreriePositive ? 'var(--success)' : 'var(--danger)', fontWeight: '600' }}>
+            {tresoreriePositive
+              ? `Le CA couvre intégralement les charges fixes et les salaires. Marge disponible : ${fmt(margeRestante)} F.`
+              : `Attention : le CA actuel ne couvre pas encore toutes les charges du mois (déficit de ${fmt(Math.abs(tresorerieNette))} F).`
+            }
+          </div>
+        </div>
       </div>
 
       {/* ── ANALYSE PAR PRESTATION ────────────────────────────────────────── */}

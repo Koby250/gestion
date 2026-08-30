@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   Calculator, BarChart3, Settings, Scissors, Calendar,
-  LogOut, User, Wallet, Users, History
+  LogOut, User, Wallet, Users, History, Menu, X, LayoutDashboard
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from './firebase';
 import './index.css';
 import Login        from './components/Login';
+import Accueil      from './components/Accueil';
 import Parametres   from './components/Parametres';
 import Caisse       from './components/Caisse';
 import Reservations from './components/Reservations';
@@ -17,13 +18,14 @@ import RH           from './components/RH';
 import Tracabilite  from './components/Tracabilite';
 
 function App() {
-  const [activeTab,     setActiveTab]     = useState('caisse');
+  const [activeTab,     setActiveTab]     = useState('accueil');
   const [dailyGoal,     setDailyGoal]     = useState(0);
   const [monthlyGoal,   setMonthlyGoal]   = useState(0);
   const [todayRevenue,  setTodayRevenue]  = useState(0);
   const [monthRevenue,  setMonthRevenue]  = useState(0);
   const [user,          setUser]          = useState(null);
   const [authLoading,   setAuthLoading]   = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -87,16 +89,15 @@ function App() {
 
   if (!user) return <Login />;
 
-  // ── Calculs barre topbar ──────────────────────────────────────────────────
-  const dailyPct   = dailyGoal   > 0 ? Math.min((todayRevenue  / dailyGoal)   * 100, 100) : 0;
-  const monthlyPct = monthlyGoal > 0 ? Math.min((monthRevenue  / monthlyGoal) * 100, 100) : 0;
-
-  // Cible journalière recalculée
+  // Cible journalière dynamique
   const now = new Date();
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysLeft = lastDay - now.getDate() + 1;
   const remainingAmount = Math.max(0, monthlyGoal - monthRevenue);
-  const dailyTarget = daysLeft > 0 ? Math.round(remainingAmount / daysLeft) : 0;
+  const dynamicDailyGoal = daysLeft > 0 ? Math.round(remainingAmount / daysLeft) : 0;
+
+  const dailyPct   = dynamicDailyGoal > 0 ? Math.min((todayRevenue  / dynamicDailyGoal)   * 100, 100) : 0;
+  const monthlyPct = monthlyGoal > 0 ? Math.min((monthRevenue  / monthlyGoal) * 100, 100) : 0;
 
   const todayStr = now.toLocaleDateString('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
@@ -104,6 +105,7 @@ function App() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'accueil':      return <Accueil />;
       case 'caisse':       return <Caisse />;
       case 'reservations': return <Reservations />;
       case 'bilan':        return <Bilan />;
@@ -111,29 +113,41 @@ function App() {
       case 'rh':           return <RH />;
       case 'tracabilite':  return <Tracabilite />;
       case 'parametres':   return <Parametres />;
-      default:             return <Caisse />;
+      default:             return <Accueil />;
     }
   };
 
   const MOIS_FR = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Août','Sep','Oct','Nov','Déc'];
 
   const navItems = [
-    { key: 'caisse',       label: 'Caisse & Journal', icon: <Calculator size={20} /> },
-    { key: 'reservations', label: 'Réservations',     icon: <Calendar size={20} /> },
-    { key: 'bilan',        label: 'Bilan Mensuel',    icon: <BarChart3 size={20} /> },
-    { key: 'tresorerie',   label: 'Trésorerie',       icon: <Wallet size={20} /> },
-    { key: 'rh',           label: 'RH & Avances',     icon: <Users size={20} /> },
-    { key: 'tracabilite',  label: 'Traçabilité',      icon: <History size={20} /> },
-    { key: 'parametres',   label: 'Paramètres',       icon: <Settings size={20} /> },
+    { key: 'accueil',      label: 'Accueil',           icon: <LayoutDashboard size={20} /> },
+    { key: 'caisse',       label: 'Caisse & Journal',  icon: <Calculator size={20} /> },
+    { key: 'reservations', label: 'Réservations',      icon: <Calendar size={20} /> },
+    { key: 'bilan',        label: 'Bilan Mensuel',     icon: <BarChart3 size={20} /> },
+    { key: 'tresorerie',   label: 'Trésorerie',        icon: <Wallet size={20} /> },
+    { key: 'rh',           label: 'RH & Avances',      icon: <Users size={20} /> },
+    { key: 'tracabilite',  label: 'Traçabilité',       icon: <History size={20} /> },
+    { key: 'parametres',   label: 'Paramètres',        icon: <Settings size={20} /> },
   ];
 
   return (
     <div className="app-container">
 
+      {/* ── OVERLAY MOBILE ──────────────────────────────────────────────── */}
+      {isSidebarOpen && (
+        <div 
+          className="sidebar-overlay"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* ── SIDEBAR ─────────────────────────────────────────────────────── */}
-      <aside className="sidebar">
-        <div className="sidebar-header">
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
           <h1><Scissors color="var(--accent-color)" /> Barber Control</h1>
+          <button className="close-sidebar-btn" onClick={() => setIsSidebarOpen(false)}>
+            <X size={24} />
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -141,7 +155,7 @@ function App() {
             <button
               key={item.key}
               className={`nav-btn ${activeTab === item.key ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.key)}
+              onClick={() => { setActiveTab(item.key); setIsSidebarOpen(false); }}
             >
               {item.icon} {item.label}
             </button>
@@ -166,8 +180,13 @@ function App() {
       <div className="main-wrapper">
 
         <header className="topbar">
-          <div className="topbar-date">
-            {todayStr.charAt(0).toUpperCase() + todayStr.slice(1)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <button className="hamburger-btn" onClick={() => setIsSidebarOpen(true)}>
+              <Menu size={24} />
+            </button>
+            <div className="topbar-date">
+              {todayStr.charAt(0).toUpperCase() + todayStr.slice(1)}
+            </div>
           </div>
 
           {/* Widget double objectif */}
@@ -175,9 +194,9 @@ function App() {
             {/* Objectif Journalier */}
             <div className="topbar-goal">
               <div className="goal-labels">
-                <span>Objectif Jour</span>
+                <span>Objectif Jour (Ajusté)</span>
                 <span style={{ color: dailyPct >= 100 ? 'var(--success)' : 'inherit' }}>
-                  {todayRevenue.toLocaleString('fr-FR')} / {dailyGoal.toLocaleString('fr-FR')} FCFA
+                  {todayRevenue.toLocaleString('fr-FR')} / {dynamicDailyGoal.toLocaleString('fr-FR')} FCFA
                 </span>
               </div>
               <div className="goal-progress-bar">
@@ -198,11 +217,6 @@ function App() {
                   <div className="goal-progress-fill"
                     style={{ width: `${monthlyPct}%`, backgroundColor: monthlyPct >= 100 ? 'var(--success)' : 'var(--accent-color)' }} />
                 </div>
-                {monthlyGoal > 0 && monthRevenue < monthlyGoal && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '3px' }}>
-                    Cible/jour restant : <strong style={{ color: 'var(--accent-color)' }}>{dailyTarget.toLocaleString('fr-FR')} FCFA</strong> ({daysLeft}j)
-                  </div>
-                )}
               </div>
             )}
           </div>
