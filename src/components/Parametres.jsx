@@ -1,0 +1,433 @@
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, setDoc } from 'firebase/firestore';
+import { db, auth } from '../firebase';
+import { initializeApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck } from 'lucide-react';
+
+const Parametres = () => {
+  // Collection States
+  const [services, setServices] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [employes, setEmployes] = useState([]);
+  
+  // Daily Goal State
+  const [dailyGoal,    setDailyGoal]    = useState('');
+  const [isGoalSaving, setIsGoalSaving] = useState(false);
+
+  // Admin creation state
+  const [adminEmail,    setAdminEmail]    = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminLoading,  setAdminLoading]  = useState(false);
+  const [adminMsg,      setAdminMsg]      = useState(null); // { type: 'success'|'error', text }
+
+  // Forms States (Add)
+  const [newService, setNewService] = useState({ nom: '', prix: '' });
+  const [newCategory, setNewCategory] = useState({ nom: '' });
+  const [newEmploye, setNewEmploye] = useState({ nom: '', role: '', commission: '', salaire: '' });
+
+  // Edit States
+  const [editingServiceId, setEditingServiceId] = useState(null);
+  const [editServiceForm, setEditServiceForm] = useState({ nom: '', prix: '' });
+
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [editCategoryForm, setEditCategoryForm] = useState({ nom: '' });
+
+  const [editingEmployeId, setEditingEmployeId] = useState(null);
+  const [editEmployeForm, setEditEmployeForm] = useState({ nom: '', role: '', commission: '', salaire: '' });
+
+  // Load Data
+  useEffect(() => {
+    const unsubServices = onSnapshot(collection(db, 'services'), (snapshot) => {
+      setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    
+    const unsubCategories = onSnapshot(collection(db, 'depenses_categories'), (snapshot) => {
+      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubEmployes = onSnapshot(collection(db, 'employes'), (snapshot) => {
+      setEmployes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().objectifJournalier) {
+        setDailyGoal(docSnap.data().objectifJournalier);
+      }
+    });
+
+    return () => {
+      unsubServices();
+      unsubCategories();
+      unsubEmployes();
+      unsubSettings();
+    };
+  }, []);
+
+  // Handlers Add
+  const handleAddService = async (e) => {
+    e.preventDefault();
+    if (!newService.nom || !newService.prix) return;
+    await addDoc(collection(db, 'services'), { nom: newService.nom, prixDefaut: Number(newService.prix), actif: true });
+    setNewService({ nom: '', prix: '' });
+  };
+
+  const handleAddCategory = async (e) => {
+    e.preventDefault();
+    if (!newCategory.nom) return;
+    await addDoc(collection(db, 'depenses_categories'), { nom: newCategory.nom, actif: true });
+    setNewCategory({ nom: '' });
+  };
+
+  const handleAddEmploye = async (e) => {
+    e.preventDefault();
+    if (!newEmploye.nom || !newEmploye.role) return;
+    await addDoc(collection(db, 'employes'), {
+      nom: newEmploye.nom, role: newEmploye.role, 
+      commission: Number(newEmploye.commission) || 0, salaireFixe: Number(newEmploye.salaire) || 0, actif: true
+    });
+    setNewEmploye({ nom: '', role: '', commission: '', salaire: '' });
+  };
+
+  // Handlers Goal
+  const handleSaveGoal = async () => {
+    setIsGoalSaving(true);
+    await setDoc(doc(db, 'settings', 'general'), { objectifJournalier: Number(dailyGoal) }, { merge: true });
+    setIsGoalSaving(false);
+  };
+
+  // Création d'un admin secondaire sans déconnecter la session principale
+  // On utilise une SecondaryApp Firebase isolée pour ne pas perturber auth principal
+  const handleCreateAdmin = async () => {
+    if (!adminEmail || !adminPassword) {
+      setAdminMsg({ type: 'error', text: 'Veuillez renseigner un email et un mot de passe.' });
+      return;
+    }
+    if (adminPassword.length < 6) {
+      setAdminMsg({ type: 'error', text: 'Le mot de passe doit contenir au moins 6 caractères.' });
+      return;
+    }
+    setAdminLoading(true);
+    setAdminMsg(null);
+    try {
+      // App Firebase temporaire isolée pour ne pas déconnecter l'admin actuel
+      const secondaryApp  = initializeApp(auth.app.options, 'SecondaryAdminApp_' + Date.now());
+      const secondaryAuth = getAuth(secondaryApp);
+      await createUserWithEmailAndPassword(secondaryAuth, adminEmail, adminPassword);
+      await secondaryAuth.signOut();
+
+      setAdminMsg({ type: 'success', text: `Compte créé avec succès pour ${adminEmail}. Il peut maintenant se connecter.` });
+      setAdminEmail('');
+      setAdminPassword('');
+      console.log('[Parametres] Admin secondaire créé:', adminEmail);
+    } catch (err) {
+      console.error('[Parametres] Erreur création admin:', err.code);
+      const messages = {
+        'auth/email-already-in-use': 'Cet email est déjà utilisé par un compte existant.',
+        'auth/invalid-email':        'L\'adresse email n\'est pas valide.',
+        'auth/weak-password':        'Le mot de passe est trop faible (min. 6 caractères).',
+      };
+      setAdminMsg({ type: 'error', text: messages[err.code] || `Erreur : ${err.message}` });
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+
+  // Handlers Edit (Services)
+  const startEditService = (service) => {
+    setEditingServiceId(service.id);
+    setEditServiceForm({ nom: service.nom, prix: service.prixDefaut.toString() });
+  };
+  const saveEditService = async (id) => {
+    await updateDoc(doc(db, 'services', id), { nom: editServiceForm.nom, prixDefaut: Number(editServiceForm.prix) });
+    setEditingServiceId(null);
+  };
+
+  // Handlers Edit (Category)
+  const startEditCategory = (cat) => {
+    setEditingCategoryId(cat.id);
+    setEditCategoryForm({ nom: cat.nom });
+  };
+  const saveEditCategory = async (id) => {
+    await updateDoc(doc(db, 'depenses_categories', id), { nom: editCategoryForm.nom });
+    setEditingCategoryId(null);
+  };
+
+  // Handlers Edit (Employes)
+  const startEditEmploye = (emp) => {
+    setEditingEmployeId(emp.id);
+    setEditEmployeForm({ nom: emp.nom, role: emp.role, commission: emp.commission.toString(), salaire: emp.salaireFixe.toString() });
+  };
+  const saveEditEmploye = async (id) => {
+    await updateDoc(doc(db, 'employes', id), { 
+      nom: editEmployeForm.nom, 
+      role: editEmployeForm.role, 
+      commission: Number(editEmployeForm.commission), 
+      salaireFixe: Number(editEmployeForm.salaire) 
+    });
+    setEditingEmployeId(null);
+  };
+
+  // Handlers Status / Delete
+  const toggleStatus = async (collectionName, id, currentStatus) => {
+    await updateDoc(doc(db, collectionName, id), { actif: !currentStatus });
+  };
+  const handleDelete = async (collectionName, id) => {
+    if (window.confirm("Voulez-vous vraiment supprimer cet élément définitivement ?")) {
+      await deleteDoc(doc(db, collectionName, id));
+    }
+  };
+
+  return (
+    <div className="view-container">
+      
+      {/* OBJECTIF JOURNALIER */}
+      <div className="card">
+        <h2 className="card-title">Objectif Journalier du Salon</h2>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <input 
+            type="number" 
+            className="input-control" 
+            placeholder="Objectif en FCFA (ex: 50000)" 
+            value={dailyGoal} 
+            onChange={(e) => setDailyGoal(e.target.value)}
+            style={{ maxWidth: '300px' }}
+          />
+          <button onClick={handleSaveGoal} className="btn btn-primary">
+            {isGoalSaving ? 'Enregistrement...' : <><Save size={18} /> Sauvegarder</>}
+          </button>
+        </div>
+      </div>
+
+      {/* SECTION SERVICES */}
+      <div className="card">
+        <h2 className="card-title">Prestations & Services</h2>
+        
+        <form onSubmit={handleAddService} style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <input 
+            type="text" 
+            className="input-control" 
+            placeholder="Nom du service" 
+            value={newService.nom} 
+            onChange={(e) => setNewService({...newService, nom: e.target.value})}
+            style={{ flex: 1, minWidth: '150px' }}
+          />
+          <input 
+            type="number" 
+            className="input-control" 
+            placeholder="Prix (FCFA)" 
+            value={newService.prix} 
+            onChange={(e) => setNewService({...newService, prix: e.target.value})}
+            style={{ width: '150px' }}
+          />
+          <button type="submit" className="btn btn-primary"><Plus size={18} /> Ajouter</button>
+        </form>
+
+        <div className="list-container">
+          {services.map(service => (
+            <div key={service.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
+              
+              {editingServiceId === service.id ? (
+                <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
+                  <input type="text" className="input-control" value={editServiceForm.nom} onChange={e => setEditServiceForm({...editServiceForm, nom: e.target.value})} />
+                  <input type="number" className="input-control" value={editServiceForm.prix} onChange={e => setEditServiceForm({...editServiceForm, prix: e.target.value})} style={{ width: '100px' }} />
+                  <button onClick={() => saveEditService(service.id)} className="btn btn-success btn-small"><CheckCircle size={14} /></button>
+                  <button onClick={() => setEditingServiceId(null)} className="btn btn-small" style={{background:'var(--bg-input)'}}><X size={14}/></button>
+                </div>
+              ) : (
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 'bold', color: service.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>{service.nom}</span>
+                  <span style={{ marginLeft: '10px', color: 'var(--accent-color)', fontWeight: 'bold' }}>{service.prixDefaut} FCFA</span>
+                  {!service.actif && <span style={{ marginLeft: '10px', fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
+                </div>
+              )}
+
+              {editingServiceId !== service.id && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => startEditService(service)} className="btn btn-small" style={{backgroundColor: 'var(--bg-input)', color: 'var(--text-main)'}} title="Modifier">
+                    <Edit2 size={14} />
+                  </button>
+                  <button onClick={() => toggleStatus('services', service.id, service.actif)} className={`btn btn-small ${service.actif ? 'btn-danger' : 'btn-success'}`} title={service.actif ? "Archiver" : "Activer"}>
+                    {service.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
+                  </button>
+                  <button onClick={() => handleDelete('services', service.id)} className="btn btn-small btn-danger" title="Supprimer">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION CATÉGORIES DE DÉPENSES */}
+      <div className="card">
+        <h2 className="card-title">Catégories de dépenses</h2>
+        
+        <form onSubmit={handleAddCategory} style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <input 
+            type="text" 
+            className="input-control" 
+            placeholder="Nom de la catégorie" 
+            value={newCategory.nom} 
+            onChange={(e) => setNewCategory({...newCategory, nom: e.target.value})}
+            style={{ flex: 1, minWidth: '150px' }}
+          />
+          <button type="submit" className="btn btn-primary"><Plus size={18} /> Ajouter</button>
+        </form>
+
+        <div className="list-container">
+          {categories.map(cat => (
+            <div key={cat.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
+              
+              {editingCategoryId === cat.id ? (
+                <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
+                  <input type="text" className="input-control" value={editCategoryForm.nom} onChange={e => setEditCategoryForm({...editCategoryForm, nom: e.target.value})} />
+                  <button onClick={() => saveEditCategory(cat.id)} className="btn btn-success btn-small"><CheckCircle size={14} /></button>
+                  <button onClick={() => setEditingCategoryId(null)} className="btn btn-small" style={{background:'var(--bg-input)'}}><X size={14}/></button>
+                </div>
+              ) : (
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 'bold', color: cat.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>{cat.nom}</span>
+                  {!cat.actif && <span style={{ marginLeft: '10px', fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
+                </div>
+              )}
+
+              {editingCategoryId !== cat.id && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => startEditCategory(cat)} className="btn btn-small" style={{backgroundColor: 'var(--bg-input)', color: 'var(--text-main)'}} title="Modifier">
+                    <Edit2 size={14} />
+                  </button>
+                  <button onClick={() => toggleStatus('depenses_categories', cat.id, cat.actif)} className={`btn btn-small ${cat.actif ? 'btn-danger' : 'btn-success'}`} title={cat.actif ? "Archiver" : "Activer"}>
+                    {cat.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
+                  </button>
+                  <button onClick={() => handleDelete('depenses_categories', cat.id)} className="btn btn-small btn-danger" title="Supprimer">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION ÉQUIPE */}
+      <div className="card">
+        <h2 className="card-title">Membres de l'équipe</h2>
+        
+        <form onSubmit={handleAddEmploye} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+          <input type="text" className="input-control" placeholder="Nom" value={newEmploye.nom} onChange={(e) => setNewEmploye({...newEmploye, nom: e.target.value})} />
+          <input type="text" className="input-control" placeholder="Rôle (ex: Coiffeur)" value={newEmploye.role} onChange={(e) => setNewEmploye({...newEmploye, role: e.target.value})} />
+          <input type="number" className="input-control" placeholder="Commission (%)" value={newEmploye.commission} onChange={(e) => setNewEmploye({...newEmploye, commission: e.target.value})} />
+          <input type="number" className="input-control" placeholder="Salaire (FCFA)" value={newEmploye.salaire} onChange={(e) => setNewEmploye({...newEmploye, salaire: e.target.value})} />
+          <button type="submit" className="btn btn-primary" style={{ gridColumn: '1 / -1' }}><Plus size={18} /> Ajouter un membre</button>
+        </form>
+
+        <div className="list-container">
+          {employes.map(emp => (
+            <div key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
+              
+              {editingEmployeId === emp.id ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto auto', gap: '10px', flex: 1, alignItems: 'center' }}>
+                  <input type="text" className="input-control" value={editEmployeForm.nom} onChange={e => setEditEmployeForm({...editEmployeForm, nom: e.target.value})} />
+                  <input type="text" className="input-control" value={editEmployeForm.role} onChange={e => setEditEmployeForm({...editEmployeForm, role: e.target.value})} />
+                  <input type="number" className="input-control" value={editEmployeForm.commission} onChange={e => setEditEmployeForm({...editEmployeForm, commission: e.target.value})} />
+                  <input type="number" className="input-control" value={editEmployeForm.salaire} onChange={e => setEditEmployeForm({...editEmployeForm, salaire: e.target.value})} />
+                  <button onClick={() => saveEditEmploye(emp.id)} className="btn btn-success btn-small"><CheckCircle size={14} /></button>
+                  <button onClick={() => setEditingEmployeId(null)} className="btn btn-small" style={{background:'var(--bg-input)'}}><X size={14}/></button>
+                </div>
+              ) : (
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 'bold', color: emp.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                    {emp.nom} - <span style={{fontSize: '0.9rem', color: 'var(--text-muted)'}}>{emp.role}</span>
+                    {!emp.actif && <span style={{ marginLeft: '10px', fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--accent-color)', fontWeight: '600' }}>
+                    Comm: {emp.commission}% | Salaire: {emp.salaireFixe} FCFA
+                  </div>
+                </div>
+              )}
+
+              {editingEmployeId !== emp.id && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => startEditEmploye(emp)} className="btn btn-small" style={{backgroundColor: 'var(--bg-input)', color: 'var(--text-main)'}} title="Modifier">
+                    <Edit2 size={14} />
+                  </button>
+                  <button onClick={() => toggleStatus('employes', emp.id, emp.actif)} className={`btn btn-small ${emp.actif ? 'btn-danger' : 'btn-success'}`} title={emp.actif ? "Archiver" : "Activer"}>
+                    {emp.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
+                  </button>
+                  <button onClick={() => handleDelete('employes', emp.id)} className="btn btn-small btn-danger" title="Supprimer">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* ── GESTION DES ADMINISTRATEURS ─────────────────────────────────── */}
+      <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)' }}>
+          <ShieldCheck size={20} color="var(--accent-color)" />
+          <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Gestion des Administrateurs</h2>
+        </div>
+
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>
+          Créer un nouveau compte administrateur. La session actuelle reste active.
+        </p>
+
+        {adminMsg && (
+          <div style={{
+            padding: '12px 16px', borderRadius: '12px', marginBottom: '16px',
+            backgroundColor: adminMsg.type === 'success' ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+            color: adminMsg.type === 'success' ? 'var(--success)' : 'var(--danger)',
+            border: `1px solid ${adminMsg.type === 'success' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+            fontSize: '0.9rem'
+          }}>
+            {adminMsg.text}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="form-group" style={{ flex: 1, minWidth: '200px', margin: 0 }}>
+            <label>Email du nouvel administrateur</label>
+            <input
+              type="email"
+              className="input-control"
+              placeholder="admin2@barbershop.com"
+              value={adminEmail}
+              onChange={e => { setAdminEmail(e.target.value); setAdminMsg(null); }}
+            />
+          </div>
+          <div className="form-group" style={{ flex: 1, minWidth: '200px', margin: 0 }}>
+            <label>Mot de passe (min. 6 caractères)</label>
+            <input
+              type="password"
+              className="input-control"
+              placeholder="••••••••"
+              value={adminPassword}
+              onChange={e => { setAdminPassword(e.target.value); setAdminMsg(null); }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '0' }}>
+            <button
+              onClick={handleCreateAdmin}
+              className="btn btn-primary"
+              disabled={adminLoading}
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {adminLoading
+                ? 'Création...'
+                : <><UserPlus size={16} /> Créer le compte</>
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
+export default Parametres;
