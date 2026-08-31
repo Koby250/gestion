@@ -10,6 +10,7 @@ import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
 import BulkActionBar from './BulkActionBar';
 import RechercheExpress from './RechercheExpress';
+import AgendaVisuel from './AgendaVisuel';
 
 const Reservations = () => {
   // Collections state
@@ -19,6 +20,10 @@ const Reservations = () => {
 
   // Tabs state
   const [activeTab, setActiveTab] = useState('aujourd_hui');
+  const [viewMode, setViewMode]   = useState('liste'); // 'liste' | 'agenda'
+
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [eventDetailsModal, setEventDetailsModal] = useState(null);
 
   const [encaissementModal, setEncaissementModal] = useState(null);
   const [factureModal, setFactureModal]           = useState(null);
@@ -139,6 +144,14 @@ const Reservations = () => {
     setDatePrevue(''); setHeurePrevue(''); setEmployeId('');
     setOptionPaiement('a_payer'); setMontantAcompte(''); setModePaiement('Cash');
     setNotes('');
+    setIsFormModalOpen(false);
+  };
+
+  // ── Callbacks pour l'Agenda ──────────────────────────────────────────────
+  const handleTimeSlotClick = (dateStr, timeStr) => {
+    setDatePrevue(dateStr);
+    setHeurePrevue(timeStr);
+    setIsFormModalOpen(true);
   };
 
   // ── Ouvrir le modal d'encaissement ───────────────────────────────────────
@@ -317,160 +330,190 @@ const Reservations = () => {
     { value: 'avance',   icon: <CheckCircle size={15} />, label: 'Payé en totalité aujourd\'hui' },
   ];
 
+  // ── Formulaire partagé (liste + modal agenda) ─────────────────────────────
+  const renderReservationForm = () => (
+    <form onSubmit={handleSave}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+
+        <div className="form-group">
+          <label><User size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Client (Nom)</label>
+          <input type="text" className="input-control" placeholder="Nom du client"
+            value={clientNom} onChange={e => setClientNom(e.target.value)} />
+        </div>
+
+        <div className="form-group">
+          <label><Phone size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Téléphone</label>
+          <input type="text" className="input-control" placeholder="Numéro (Optionnel)"
+            value={clientTel} onChange={e => setClientTel(e.target.value)} />
+        </div>
+
+        <div className="form-group">
+          <label>Service</label>
+          <select className="input-control" value={serviceId} onChange={e => setServiceId(e.target.value)}>
+            <option value="">Sélectionner un service</option>
+            {services.map(s => <option key={s.id} value={s.id}>{s.nom} — {s.prixDefaut} FCFA</option>)}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label>Coiffeur assigné</label>
+          <select className="input-control" value={employeId} onChange={e => setEmployeId(e.target.value)}>
+            <option value="">Sélectionner un coiffeur</option>
+            {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label><Calendar size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Date Prévue</label>
+          <input type="date" className="input-control"
+            value={datePrevue} onChange={e => setDatePrevue(e.target.value)} />
+        </div>
+
+        <div className="form-group">
+          <label><Clock size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Heure</label>
+          <input type="time" className="input-control"
+            value={heurePrevue} onChange={e => setHeurePrevue(e.target.value)} />
+        </div>
+
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <label><MessageSquare size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Notes / Commentaires (Optionnel)</label>
+          <textarea
+            className="input-control"
+            placeholder="Ex: Coupe dégradée à blanc, cuir chevelu sensible..."
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={2}
+            style={{ resize: 'vertical', fontFamily: 'inherit' }}
+          />
+        </div>
+
+        <div style={{ gridColumn: '1 / -1', backgroundColor: 'var(--bg-input)', padding: '15px', borderRadius: '12px' }}>
+          <label style={{ color: 'var(--text-main)', fontSize: '0.95rem', fontWeight: '600', display: 'block', marginBottom: '12px' }}>
+            Encaissement immédiat
+          </label>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {paymentOptions.map(opt => (
+              <label key={opt.value} style={{
+                display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+                padding: '8px 14px', borderRadius: '10px', border: '2px solid',
+                borderColor: optionPaiement === opt.value ? 'var(--accent-color)' : 'var(--border-color)',
+                backgroundColor: optionPaiement === opt.value ? 'rgba(37,99,235,0.07)' : 'var(--bg-card)',
+                color: optionPaiement === opt.value ? 'var(--accent-color)' : 'var(--text-muted)',
+                fontWeight: optionPaiement === opt.value ? '700' : '400',
+                transition: 'all 0.2s ease'
+              }}>
+                <input type="radio" name="paiement" value={opt.value}
+                  checked={optionPaiement === opt.value}
+                  onChange={e => setOptionPaiement(e.target.value)}
+                  style={{ display: 'none' }} />
+                {opt.icon} {opt.label}
+              </label>
+            ))}
+          </div>
+
+          {(optionPaiement === 'acompte' || optionPaiement === 'avance') && (
+            <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
+              {optionPaiement === 'acompte' && (
+                <div className="form-group" style={{ margin: 0, flex: 1 }}>
+                  <label>Montant de l'acompte (FCFA)</label>
+                  <input type="number" className="input-control"
+                    value={montantAcompte}
+                    onChange={e => setMontantAcompte(e.target.value)}
+                    style={{ backgroundColor: 'var(--bg-card)' }} />
+                </div>
+              )}
+              <div className="form-group" style={{ margin: 0, flex: 1 }}>
+                <label>Mode de paiement</label>
+                <select className="input-control" value={modePaiement}
+                  onChange={e => setModePaiement(e.target.value)}
+                  style={{ backgroundColor: 'var(--bg-card)' }}>
+                  <option value="Cash">Cash</option>
+                  <option value="NITA">NITA</option>
+                  <option value="AMANA">AMANA</option>
+                  <option value="Carte VISA">Carte VISA</option>
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>
+
+      <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '15px' }}>
+        <PlusCircle size={18} /> Ajouter la Réservation
+      </button>
+    </form>
+  );
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
       <div className="view-container">
         <RechercheExpress reservations={reservations} />
 
-        {/* ── FORMULAIRE D'AJOUT ────────────────────────────────────────── */}
-        <div className="card">
-          <h2 className="card-title">Nouvelle Réservation</h2>
-
-          <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-
-              <div className="form-group">
-                <label><User size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Client (Nom)</label>
-                <input type="text" className="input-control" placeholder="Nom du client"
-                  value={clientNom} onChange={e => setClientNom(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label><Phone size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Téléphone</label>
-                <input type="text" className="input-control" placeholder="Numéro (Optionnel)"
-                  value={clientTel} onChange={e => setClientTel(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label>Service</label>
-                <select className="input-control" value={serviceId} onChange={e => setServiceId(e.target.value)}>
-                  <option value="">Sélectionner un service</option>
-                  {services.map(s => <option key={s.id} value={s.id}>{s.nom} — {s.prixDefaut} FCFA</option>)}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Coiffeur assigné</label>
-                <select className="input-control" value={employeId} onChange={e => setEmployeId(e.target.value)}>
-                  <option value="">Sélectionner un coiffeur</option>
-                  {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label><Calendar size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Date Prévue</label>
-                <input type="date" className="input-control"
-                  value={datePrevue} onChange={e => setDatePrevue(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label><Clock size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Heure</label>
-                <input type="time" className="input-control"
-                  value={heurePrevue} onChange={e => setHeurePrevue(e.target.value)} />
-              </div>
-
-              {/* ── NOTES / COMMENTAIRES ───────────────────────────────── */}
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label><MessageSquare size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Notes / Commentaires (Optionnel)</label>
-                <textarea
-                  className="input-control"
-                  placeholder="Ex: Coupe dégradée à blanc, cuir chevelu sensible..."
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  rows={2}
-                  style={{ resize: 'vertical', fontFamily: 'inherit' }}
-                />
-              </div>
-
-              {/* ── OPTIONS DE PAIEMENT ───────────────────────────────── */}
-              <div style={{ gridColumn: '1 / -1', backgroundColor: 'var(--bg-input)', padding: '15px', borderRadius: '12px' }}>
-                <label style={{ color: 'var(--text-main)', fontSize: '0.95rem', fontWeight: '600', display: 'block', marginBottom: '12px' }}>
-                  Encaissement immédiat
-                </label>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  {paymentOptions.map(opt => (
-                    <label key={opt.value} style={{
-                      display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
-                      padding: '8px 14px', borderRadius: '10px', border: '2px solid',
-                      borderColor: optionPaiement === opt.value ? 'var(--accent-color)' : 'var(--border-color)',
-                      backgroundColor: optionPaiement === opt.value ? 'rgba(37,99,235,0.07)' : 'var(--bg-card)',
-                      color: optionPaiement === opt.value ? 'var(--accent-color)' : 'var(--text-muted)',
-                      fontWeight: optionPaiement === opt.value ? '700' : '400',
-                      transition: 'all 0.2s ease'
-                    }}>
-                      <input type="radio" name="paiement" value={opt.value}
-                        checked={optionPaiement === opt.value}
-                        onChange={e => setOptionPaiement(e.target.value)}
-                        style={{ display: 'none' }} />
-                      {opt.icon} {opt.label}
-                    </label>
-                  ))}
-                </div>
-
-                {(optionPaiement === 'acompte' || optionPaiement === 'avance') && (
-                  <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
-                    {optionPaiement === 'acompte' && (
-                      <div className="form-group" style={{ margin: 0, flex: 1 }}>
-                        <label>Montant de l'acompte (FCFA)</label>
-                        <input type="number" className="input-control"
-                          value={montantAcompte}
-                          onChange={e => setMontantAcompte(e.target.value)}
-                          style={{ backgroundColor: 'var(--bg-card)' }} />
-                      </div>
-                    )}
-                    <div className="form-group" style={{ margin: 0, flex: 1 }}>
-                      <label>Mode de paiement</label>
-                      <select className="input-control" value={modePaiement}
-                        onChange={e => setModePaiement(e.target.value)}
-                        style={{ backgroundColor: 'var(--bg-card)' }}>
-                        <option value="Cash">Cash</option>
-                        <option value="NITA">NITA</option>
-                        <option value="AMANA">AMANA</option>
-                        <option value="Carte VISA">Carte VISA</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-            </div>
-
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '15px' }}>
-              <PlusCircle size={18} /> Ajouter la Réservation
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
+          <div style={{ display: 'flex', backgroundColor: 'var(--bg-input)', borderRadius: '8px', padding: '4px' }}>
+            <button
+              onClick={() => setViewMode('liste')}
+              className={`nav-btn ${viewMode === 'liste' ? 'active' : ''}`}
+              style={{ padding: '6px 15px', fontSize: '0.9rem' }}
+            >
+              Vue Liste
             </button>
-          </form>
+            <button
+              onClick={() => setViewMode('agenda')}
+              className={`nav-btn ${viewMode === 'agenda' ? 'active' : ''}`}
+              style={{ padding: '6px 15px', fontSize: '0.9rem' }}
+            >
+              Agenda Visuel
+            </button>
+          </div>
         </div>
 
-        {/* ── LISTE DES RÉSERVATIONS ────────────────────────────────────── */}
-        <div className="card">
-          <BulkActionBar 
-            selectedIds={selectedIds} 
-            collectionName="reservations" 
-            onClearSelection={() => setSelectedIds([])} 
-          />
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-            <h2 className="card-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>Agenda des Rendez-vous</h2>
-            <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px' }}>
-              {[
-                { key: 'aujourd_hui', label: "Aujourd'hui" },
-                { key: 'a_venir',     label: 'À venir' },
-                { key: 'historique',  label: 'Historique' },
-              ].map(t => (
-                <button key={t.key}
-                  className={`nav-btn ${activeTab === t.key ? 'active' : ''}`}
-                  onClick={() => { setActiveTab(t.key); setSelectedIds([]); }}
-                  style={{ fontSize: '0.85rem', padding: '6px 12px' }}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
+        {/* ── FORMULAIRE D'AJOUT (Vue Liste) ─────────────────────────────── */}
+        {viewMode === 'liste' && (
+          <div className="card">
+            <h2 className="card-title">Nouvelle Réservation</h2>
+            {renderReservationForm()}
           </div>
+        )}
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
-              <thead>
+        {/* ── LISTE OU AGENDA ────────────────────────────────────────────── */}
+        {viewMode === 'agenda' ? (
+          <AgendaVisuel 
+            reservations={reservations} 
+            onTimeSlotClick={handleTimeSlotClick} 
+            onEventClick={setEventDetailsModal} 
+          />
+        ) : (
+          <div className="card">
+            <BulkActionBar 
+              selectedIds={selectedIds} 
+              collectionName="reservations" 
+              onClearSelection={() => setSelectedIds([])} 
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+              <h2 className="card-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>Agenda des Rendez-vous</h2>
+              <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px' }}>
+                {[
+                  { key: 'aujourd_hui', label: "Aujourd'hui" },
+                  { key: 'a_venir',     label: 'À venir' },
+                  { key: 'historique',  label: 'Historique' },
+                ].map(t => (
+                  <button key={t.key}
+                    className={`nav-btn ${activeTab === t.key ? 'active' : ''}`}
+                    onClick={() => { setActiveTab(t.key); setSelectedIds([]); }}
+                    style={{ fontSize: '0.85rem', padding: '6px 12px' }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+                <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
                   <th style={{ padding: '10px', width: '40px' }}>
                     <input 
@@ -580,8 +623,77 @@ const Reservations = () => {
             </table>
           </div>
         </div>
-
+        )}
       </div>
+
+      {/* ── MODAL AJOUT (Vue Agenda) ──────────────────────────────────────── */}
+      {isFormModalOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
+            width: '100%', maxWidth: '700px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+            maxHeight: '90vh', overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <PlusCircle size={20} color="var(--accent-color)" /> Nouvelle Réservation
+              </h3>
+              <button onClick={() => setIsFormModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+            {renderReservationForm()}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL DÉTAILS ÉVÉNEMENT (Agenda) ──────────────────────────────── */}
+      {eventDetailsModal && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
+            width: '100%', maxWidth: '500px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0 }}>Détails de la réservation</h3>
+              <button onClick={() => setEventDetailsModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <p><strong>Client:</strong> {eventDetailsModal.clientNom} {eventDetailsModal.clientTel ? `(${eventDetailsModal.clientTel})` : ''}</p>
+              <p><strong>Prestation:</strong> {eventDetailsModal.serviceNom}</p>
+              <p><strong>Coiffeur:</strong> {eventDetailsModal.employeNom}</p>
+              <p><strong>Horaire:</strong> {eventDetailsModal.datePrevue} à {eventDetailsModal.heurePrevue}</p>
+              <p><strong>Statut:</strong> {renderBadge(eventDetailsModal)}</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button onClick={() => { setFactureModal(eventDetailsModal); setEventDetailsModal(null); }} className="btn btn-small" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', flex: 1 }}>
+                <FileText size={16} style={{ marginRight: '4px' }} /> Facture
+              </button>
+              <button onClick={() => { setNotesModal(eventDetailsModal); setEventDetailsModal(null); }} className="btn btn-small" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', flex: 1 }}>
+                <MessageSquare size={16} style={{ marginRight: '4px' }} /> Notes
+              </button>
+              <button onClick={() => { setEditModal(eventDetailsModal); setEventDetailsModal(null); }} className="btn btn-small" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', flex: 1 }}>
+                <Edit2 size={16} style={{ marginRight: '4px' }} /> Modifier
+              </button>
+              {isNonEncaisse(eventDetailsModal.statut) && (
+                <button onClick={() => { handleEncaisserSolde(eventDetailsModal); setEventDetailsModal(null); }} className="btn btn-success btn-small" style={{ flex: 1 }}>
+                  <CreditCard size={16} style={{ marginRight: '4px' }} /> Encaisser
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL ENCAISSEMENT ────────────────────────────────────────────── */}
       {encaissementModal && (
