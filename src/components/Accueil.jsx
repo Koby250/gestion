@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import {
   Calendar, Clock, User, Scissors,
   CreditCard, CheckCircle, AlertCircle,
-  TrendingUp, Wallet, MessageSquare, Filter
+  TrendingUp, Wallet, MessageSquare, Filter, Award
 } from 'lucide-react';
 import RechercheExpress from './RechercheExpress';
 
@@ -58,6 +58,27 @@ const Accueil = () => {
 
   const rdvJour    = reservations.filter(r => r.datePrevue === todayISO);
   const rdvAVenir  = reservations.filter(r => r.datePrevue > todayISO);
+
+  // ── Top 3 Agents (par nombre de soins ce mois) ─────────────────────────────────
+  const agentStats = {};
+  monthTx.forEach(t => {
+    if (t.lignes && t.lignes.length > 0) {
+      // Nouveau format multi-lignes
+      t.lignes.forEach(ligne => {
+        (ligne.agents || []).forEach(agent => {
+          if (!agentStats[agent.id]) agentStats[agent.id] = { nom: agent.nom, count: 0 };
+          agentStats[agent.id].count += 1;
+        });
+      });
+    } else if (t.employeId) {
+      // Ancien format mono-agent
+      if (!agentStats[t.employeId]) agentStats[t.employeId] = { nom: t.employeNom || 'Inconnu', count: 0 };
+      agentStats[t.employeId].count += 1;
+    }
+  });
+  const top3Agents = Object.values(agentStats)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
 
   // ── Filtres ────────────────────────────────────────────────────────────────
   const applyFilters = (list) => list.filter(r => {
@@ -183,6 +204,45 @@ const Accueil = () => {
           </div>
         </div>
       </div>
+
+      {/* ── TOP 3 AGENTS DU MOIS ────────────────────────────────────────── */}
+      {top3Agents.length > 0 && (
+        <div className="card" style={{ marginBottom: '20px', padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+            <Award size={18} color="var(--accent-color)" />
+            <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)' }}>Top Agents du Mois</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Classement par nombre de soins</span>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {top3Agents.map((agent, index) => {
+              const medals = ['1er', '2eme', '3eme'];
+              const colors = ['#f59e0b', '#9ca3af', '#cd7c3e'];
+              const bgColors = ['rgba(245,158,11,0.10)', 'rgba(156,163,175,0.10)', 'rgba(205,124,62,0.10)'];
+              return (
+                <div key={agent.nom} style={{
+                  flex: 1, minWidth: '130px',
+                  backgroundColor: bgColors[index],
+                  border: `2px solid ${colors[index]}`,
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '800', color: colors[index], textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+                    {medals[index]}
+                  </div>
+                  <div style={{ fontWeight: '700', color: 'var(--text-main)', fontSize: '1rem', marginBottom: '2px' }}>
+                    {agent.nom}
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '900', color: colors[index] }}>
+                    {agent.count}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>soin(s)</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── FILTRES RAPIDES ──────────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '20px', padding: '14px 20px' }}>

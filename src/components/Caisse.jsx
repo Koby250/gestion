@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, AlertTriangle, ShieldAlert, CheckCircle } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, ShieldAlert, CheckCircle } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
 import BulkActionBar from './BulkActionBar';
+import PanierPrestations from './PanierPrestations';
 
 const Caisse = () => {
   // State for reference data
@@ -15,19 +16,21 @@ const Caisse = () => {
   const [chargesFixes, setChargesFixes] = useState([]);
 
   // Form state
-  const [typeTransaction, setTypeTransaction] = useState('prestation'); // 'prestation' or 'depense'
-  const [montant, setMontant] = useState('');
-  const [selectedServiceId, setSelectedServiceId] = useState('');
-  const [motifDepense, setMotifDepense] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [typeTransaction, setTypeTransaction] = useState('prestation');
   const [modePaiement, setModePaiement] = useState('Cash');
   const [selectedEmployeId, setSelectedEmployeId] = useState('');
-
-  // Discount state
+  // Depense fields
+  const [montant, setMontant] = useState('');
+  const [motifDepense, setMotifDepense] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  // Discount state (for depense simulator only)
   const [hasDiscount, setHasDiscount] = useState(false);
-  const [discountType, setDiscountType] = useState('pourcentage'); // 'pourcentage', 'fixe', 'offert'
+  const [discountType, setDiscountType] = useState('pourcentage');
   const [discountValue, setDiscountValue] = useState('');
   const [discountMotif, setDiscountMotif] = useState('');
+  // Multi-service panier state
+  const [lignesPanier, setLignesPanier] = useState([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
+  const [clientNomCaisse, setClientNomCaisse] = useState('');
 
   const [activeHistoryTab, setActiveHistoryTab] = useState('aujourd_hui'); // 'aujourd_hui', 'cette_semaine', 'ce_mois'
   const [expandedDays, setExpandedDays] = useState({});
@@ -66,95 +69,82 @@ const Caisse = () => {
     };
   }, []);
 
-  // Auto-fill price when a service is selected
+  // Reset panier when switching to depense
   useEffect(() => {
-    if (typeTransaction === 'prestation' && selectedServiceId) {
-      const service = services.find(s => s.id === selectedServiceId);
-      if (service) {
-        setMontant(service.prixDefaut.toString());
-      }
+    if (typeTransaction === 'depense') {
+      setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
     }
-  }, [selectedServiceId, services, typeTransaction]);
+  }, [typeTransaction]);
 
   const handleSave = async (e) => {
     e.preventDefault();
 
-    if (!montant || isNaN(Number(montant)) || !selectedEmployeId) {
-      alert("Veuillez remplir le montant et assigner un membre de l'équipe.");
-      return;
-    }
-
-    const employe = employes.find(e => e.id === selectedEmployeId);
-    let motif = '';
-    let categoryName = '';
-    let prixFinal = Number(montant);
-
     if (typeTransaction === 'prestation') {
-      if (!selectedServiceId) {
-        alert("Veuillez sélectionner un service.");
-        return;
-      }
-      if (hasDiscount) {
-        if (discountType !== 'offert' && (!discountValue || isNaN(Number(discountValue)))) {
-          alert("Veuillez saisir une valeur de réduction valide.");
-          return;
-        }
-        if (!discountMotif.trim()) {
-          alert("Un motif est OBLIGATOIRE pour appliquer une réduction ou offrir un service.");
-          return;
-        }
-
-        if (discountType === 'offert') {
-          prixFinal = 0;
-        } else if (discountType === 'pourcentage') {
-          prixFinal = Math.max(0, prixFinal - (prixFinal * Number(discountValue) / 100));
-        } else if (discountType === 'fixe') {
-          prixFinal = Math.max(0, prixFinal - Number(discountValue));
-        }
+      // Validate panier
+      for (const ligne of lignesPanier) {
+        if (!ligne.serviceId) { alert('Veuillez sélectionner un service pour chaque prestation.'); return; }
+        if (!ligne.agents || ligne.agents.length === 0) { alert(`Veuillez assigner au moins un agent à la prestation : ${ligne.serviceNom || 'sans nom'}.`); return; }
+        if (ligne.remiseType !== 'aucune' && !ligne.remiseMotif.trim()) { alert(`Un motif de remise est obligatoire pour : ${ligne.serviceNom}.`); return; }
       }
 
-      const service = services.find(s => s.id === selectedServiceId);
-      motif = service ? service.nom : 'Service inconnu';
+      const totalMontant = lignesPanier.reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
+      const allAgentNoms = [...new Set(lignesPanier.flatMap(l => l.agents.map(a => a.nom)))];
+
+      const newTransaction = {
+        type: 'prestation',
+        montant: totalMontant,
+        motif: lignesPanier.length === 1 ? lignesPanier[0].serviceNom : `Forfait (${lignesPanier.length} prestations)`,
+        clientNom: clientNomCaisse.trim() || 'Client anonyme',
+        employeNom: allAgentNoms.join(', '),
+        employeId: lignesPanier[0].agents[0]?.id || '',
+        modePaiement,
+        date: new Date().toISOString(),
+        lignes: lignesPanier.map(l => ({
+          serviceId: l.serviceId,
+          serviceNom: l.serviceNom,
+          prixBase: Number(l.prixBase) || 0,
+          prixFinal: Number(l.prixFinal) || 0,
+          remiseType: l.remiseType,
+          remiseValeur: l.remiseValeur,
+          remiseMotif: l.remiseMotif,
+          agents: l.agents,
+        }))
+      };
+
+      await addDoc(collection(db, 'transactions'), newTransaction);
+      await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA. Agents: ${allAgentNoms.join(', ')}. Mode: ${modePaiement}`);
+
+      // Reset
+      setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
+      setClientNomCaisse('');
+
     } else {
-      if (!motifDepense || !selectedCategoryId) {
-        alert("Veuillez remplir le motif et la catégorie de la dépense.");
-        return;
-      }
-      motif = motifDepense;
+      // Dépense
+      if (!montant || isNaN(Number(montant))) { alert('Veuillez saisir un montant valide.'); return; }
+      if (!motifDepense || !selectedCategoryId) { alert('Veuillez remplir le motif et la catégorie de la dépense.'); return; }
+      if (!selectedEmployeId) { alert("Veuillez assigner un membre de l'équipe."); return; }
+
+      const employe = employes.find(e => e.id === selectedEmployeId);
       const cat = categories.find(c => c.id === selectedCategoryId);
-      categoryName = cat ? cat.nom : 'Inconnue';
+
+      const newTransaction = {
+        type: 'depense',
+        montant: Number(montant),
+        motif: motifDepense,
+        categorie: cat ? cat.nom : 'Inconnue',
+        employeId: selectedEmployeId,
+        employeNom: employe ? employe.nom : 'Inconnu',
+        modePaiement,
+        date: new Date().toISOString()
+      };
+
+      await addDoc(collection(db, 'transactions'), newTransaction);
+      await logEvent('TRANSACTION_CREATE', `Dépense de ${montant} FCFA. Motif: ${motifDepense}. Mode: ${modePaiement}`);
+
+      setMontant('');
+      setMotifDepense('');
+      setSelectedCategoryId('');
     }
-
-    const newTransaction = {
-      type: typeTransaction,
-      montant: prixFinal,
-      motif,
-      categorie: categoryName,
-      employeId: selectedEmployeId,
-      employeNom: employe ? employe.nom : 'Inconnu',
-      modePaiement,
-      date: new Date().toISOString()
-    };
-
-    if (typeTransaction === 'prestation' && hasDiscount) {
-      newTransaction.prixOriginal = Number(montant);
-      newTransaction.reductionActive = true;
-      newTransaction.reductionType = discountType;
-      newTransaction.reductionValeur = discountType === 'offert' ? Number(montant) : Number(discountValue);
-      newTransaction.reductionMotif = discountMotif;
-    }
-
-    await addDoc(collection(db, 'transactions'), newTransaction);
-    await logEvent('TRANSACTION_CREATE', `Nouvelle transaction (${typeTransaction}) de ${prixFinal} FCFA. Motif: ${motif}. Mode: ${modePaiement}`);
-
-    // Reset fields
-    setMontant('');
-    setSelectedServiceId('');
-    setMotifDepense('');
-    setSelectedCategoryId('');
-    setHasDiscount(false);
-    setDiscountValue('');
-    setDiscountMotif('');
   };
 
   const handleDelete = async (id, typeTransaction, montant, motif) => {
@@ -346,7 +336,17 @@ const Caisse = () => {
                 </td>
                 <td style={{ padding: '10px', fontWeight: '500' }}>
                   {t.motif}
+                  {t.clientNom && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Client : {t.clientNom}</span>}
                   {t.type === 'depense' && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.categorie}</span>}
+                  {t.lignes && t.lignes.length > 1 && (
+                    <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {t.lignes.map((l, i) => (
+                        <span key={i} style={{ fontSize: '0.75rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', display: 'inline-block' }}>
+                          {l.serviceNom} — {l.agents.map(a => a.nom).join(', ')} — {Number(l.prixFinal).toLocaleString('fr-FR')} FCFA
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '10px' }}>{t.employeNom}</td>
                 <td style={{ padding: '10px' }}>
@@ -414,141 +414,57 @@ const Caisse = () => {
         </div>
 
         <form onSubmit={handleSave}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-            
-            {typeTransaction === 'prestation' ? (
+          {typeTransaction === 'prestation' ? (
+            <PanierPrestations
+              lignes={lignesPanier}
+              setLignes={setLignesPanier}
+              services={services}
+              employes={employes}
+              clientNom={clientNomCaisse}
+              setClientNom={setClientNomCaisse}
+              modePaiement={modePaiement}
+              setModePaiement={setModePaiement}
+              showClientField={true}
+            />
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
               <div className="form-group">
-                <label>Service</label>
-                <select 
-                  className="input-control"
-                  value={selectedServiceId}
-                  onChange={(e) => setSelectedServiceId(e.target.value)}
-                >
-                  <option value="">Sélectionner un service</option>
-                  {services.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                <label>Motif de la dépense</label>
+                <input type="text" className="input-control" placeholder="Ex: Achat produits, Facture..."
+                  value={motifDepense} onChange={(e) => setMotifDepense(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Catégorie</label>
+                <select className="input-control" value={selectedCategoryId} onChange={(e) => setSelectedCategoryId(e.target.value)}>
+                  <option value="">Sélectionner une catégorie</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
                 </select>
               </div>
-            ) : (
-              <>
-                <div className="form-group">
-                  <label>Motif de la dépense</label>
-                  <input 
-                    type="text" 
-                    className="input-control" 
-                    placeholder="Ex: Achat produits, Facture..."
-                    value={motifDepense}
-                    onChange={(e) => setMotifDepense(e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Catégorie</label>
-                  <select 
-                    className="input-control"
-                    value={selectedCategoryId}
-                    onChange={(e) => setSelectedCategoryId(e.target.value)}
-                  >
-                    <option value="">Sélectionner une catégorie</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-                  </select>
-                </div>
-              </>
-            )}
-
-            <div className="form-group">
-              <label>Montant (FCFA)</label>
-              <input 
-                type="number" 
-                className="input-control" 
-                placeholder="Ex: 5000"
-                value={montant}
-                onChange={(e) => setMontant(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Mode de paiement</label>
-              <select 
-                className="input-control"
-                value={modePaiement}
-                onChange={(e) => setModePaiement(e.target.value)}
-              >
-                <option value="Cash">Cash</option>
-                <option value="NITA">NITA</option>
-                <option value="AMANA">AMANA</option>
-                <option value="Carte VISA">Carte VISA</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Membre de l'équipe</label>
-              <select 
-                className="input-control"
-                value={selectedEmployeId}
-                onChange={(e) => setSelectedEmployeId(e.target.value)}
-              >
-                <option value="">Assigner à...</option>
-                {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {typeTransaction === 'prestation' && (
-            <div style={{ backgroundColor: 'var(--bg-input)', padding: '16px', borderRadius: '12px', marginTop: '10px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                <input 
-                  type="checkbox" 
-                  checked={hasDiscount}
-                  onChange={(e) => setHasDiscount(e.target.checked)}
-                />
-                Appliquer une Réduction / Offre
-              </label>
-              
-              {hasDiscount && (
-                <div style={{ display: 'flex', gap: '15px', marginTop: '12px', flexWrap: 'wrap' }}>
-                  <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                    <label>Type de réduction</label>
-                    <select className="input-control" value={discountType} onChange={(e) => setDiscountType(e.target.value)}>
-                      <option value="pourcentage">Pourcentage (%)</option>
-                      <option value="fixe">Montant Fixe (FCFA)</option>
-                      <option value="offert">Prestation Offerte (0 FCFA)</option>
-                    </select>
-                  </div>
-
-                  {discountType !== 'offert' && (
-                    <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                      <label>Valeur ({discountType === 'pourcentage' ? '%' : 'FCFA'})</label>
-                      <input 
-                        type="number" 
-                        className="input-control" 
-                        value={discountValue}
-                        onChange={(e) => setDiscountValue(e.target.value)}
-                        placeholder="Ex: 10"
-                      />
-                    </div>
-                  )}
-
-                  <div className="form-group" style={{ flex: 2, margin: 0 }}>
-                    <label>Motif / Justificatif <span style={{ color: 'var(--danger)' }}>*</span></label>
-                    <input 
-                      type="text" 
-                      className="input-control" 
-                      value={discountMotif}
-                      onChange={(e) => setDiscountMotif(e.target.value)}
-                      placeholder="Ex: Geste commercial, Promotion Hadia Cup..."
-                    />
-                  </div>
-                </div>
-              )}
-
-              {hasDiscount && (
-                <div style={{ marginTop: '12px', fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--success)' }}>
-                  Nouveau Prix : {displayPrice} FCFA <span style={{ textDecoration: 'line-through', fontSize: '0.85rem', color: 'var(--text-muted)' }}>({montant || 0} FCFA)</span>
-                </div>
-              )}
+              <div className="form-group">
+                <label>Montant (FCFA)</label>
+                <input type="number" className="input-control" placeholder="Ex: 5000"
+                  value={montant} onChange={(e) => setMontant(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Mode de paiement</label>
+                <select className="input-control" value={modePaiement} onChange={(e) => setModePaiement(e.target.value)}>
+                  <option value="Cash">Cash</option>
+                  <option value="NITA">NITA</option>
+                  <option value="AMANA">AMANA</option>
+                  <option value="Carte VISA">Carte VISA</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Membre de l'équipe</label>
+                <select className="input-control" value={selectedEmployeId} onChange={(e) => setSelectedEmployeId(e.target.value)}>
+                  <option value="">Assigner à...</option>
+                  {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
+                </select>
+              </div>
             </div>
           )}
 
-          {simStatus && (
+          {typeTransaction === 'depense' && simStatus && (
             <div style={{
               padding: '12px', borderRadius: '8px', marginTop: '15px', fontSize: '0.9rem',
               backgroundColor: 'var(--bg-input)', color: simStatus.color, display: 'flex', alignItems: 'center', gap: '10px',
@@ -558,7 +474,7 @@ const Caisse = () => {
               <div style={{ fontWeight: '600', lineHeight: '1.4' }}>{simStatus.text}</div>
             </div>
           )}
-          
+
           <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '15px' }}>
             <Save size={18} /> Enregistrer
           </button>

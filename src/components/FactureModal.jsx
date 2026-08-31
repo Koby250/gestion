@@ -32,6 +32,7 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
 
   const dateFormatee = new Date(data.datePrevue || data.date || data.createdAt).toLocaleDateString('fr-FR');
   const heureFormatee = data.heurePrevue || new Date(data.date || data.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const totalFacture = data.lignes ? data.lignes.reduce((a, l) => a + Number(l.prixFinal || 0), 0) : (data.prixTotal || data.montant || 0);
 
   return (
     <div className="modal-overlay hide-on-print">
@@ -81,25 +82,53 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
                 </tr>
               </thead>
               <tbody>
-                <tr style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '15px 0', fontSize: '15px' }}>
-                    {data.serviceNom || data.motif || 'Vente'}
-                    {data.reductionActive && (
-                      <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-                        Remise appliquée : {data.reductionMotif}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '15px 0', textAlign: 'center', fontSize: '14px' }}>{data.employeNom || '-'}</td>
-                  <td style={{ padding: '15px 0', textAlign: 'right', fontWeight: 'bold' }}>
-                    {data.reductionActive && (
-                      <div style={{ textDecoration: 'line-through', color: '#aaa', fontSize: '12px', fontWeight: 'normal' }}>
-                        {data.prixOriginal} FCFA
-                      </div>
-                    )}
-                    {data.prixTotal || data.montant} FCFA
-                  </td>
-                </tr>
+                {data.lignes && data.lignes.length > 0 ? (
+                  // Multi-service format
+                  data.lignes.map((ligne, index) => (
+                    <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '10px 0', fontSize: '14px' }}>
+                        {ligne.serviceNom}
+                        {ligne.remiseType && ligne.remiseType !== 'aucune' && (
+                          <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                            Remise : {ligne.remiseMotif}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 0', textAlign: 'center', fontSize: '13px', color: '#555' }}>
+                        {ligne.agents && ligne.agents.map(a => a.nom).join(', ')}
+                      </td>
+                      <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 'bold' }}>
+                        {ligne.remiseType && ligne.remiseType !== 'aucune' && (
+                          <div style={{ textDecoration: 'line-through', color: '#aaa', fontSize: '12px', fontWeight: 'normal' }}>
+                            {Number(ligne.prixBase).toLocaleString('fr-FR')} FCFA
+                          </div>
+                        )}
+                        {Number(ligne.prixFinal).toLocaleString('fr-FR')} FCFA
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  // Legacy single-service format
+                  <tr style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '15px 0', fontSize: '15px' }}>
+                      {data.serviceNom || data.motif || 'Vente'}
+                      {data.reductionActive && (
+                        <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
+                          Remise appliquée : {data.reductionMotif}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '15px 0', textAlign: 'center', fontSize: '14px' }}>{data.employeNom || '-'}</td>
+                    <td style={{ padding: '15px 0', textAlign: 'right', fontWeight: 'bold' }}>
+                      {data.reductionActive && (
+                        <div style={{ textDecoration: 'line-through', color: '#aaa', fontSize: '12px', fontWeight: 'normal' }}>
+                          {data.prixOriginal} FCFA
+                        </div>
+                      )}
+                      {data.prixTotal || data.montant} FCFA
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -142,9 +171,11 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
                 <p style={{ margin: '0 0 5px 0', fontSize: '14px' }}>Acompte versé : {data.acomptePaye} FCFA</p>
               )}
               <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '2px solid #000' }}>
-                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>TOTAL DÛ : </span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold' }}>TOTAL DU : </span>
                 <span style={{ fontSize: '22px', fontWeight: '900' }}>
-                  {type === 'reservation' ? (data.prixTotal - (data.acomptePaye || 0)) : (data.montant)} FCFA
+                  {type === 'reservation'
+                    ? (data.prixTotal - (data.acomptePaye || 0))
+                    : Number(totalFacture).toLocaleString('fr-FR')} FCFA
                 </span>
               </div>
             </div>

@@ -219,9 +219,9 @@ function App() {
             {/* Objectif Journalier */}
             <div className="topbar-goal">
               <div className="goal-labels">
-                <span>Objectif Jour (Ajusté)</span>
-                <span style={{ color: dailyPct >= 100 ? 'var(--success)' : 'inherit' }}>
-                  {todayRevenue.toLocaleString('fr-FR')} / {dynamicDailyGoal.toLocaleString('fr-FR')} FCFA
+                <span>Obj. Jour</span>
+                <span style={{ color: dailyPct >= 100 ? 'var(--success)' : 'inherit', textAlign: 'right' }}>
+                  {todayRevenue.toLocaleString('fr-FR')} / {dynamicDailyGoal.toLocaleString('fr-FR')} F
                 </span>
               </div>
               <div className="goal-progress-bar">
@@ -233,9 +233,9 @@ function App() {
             {monthlyGoal > 0 && (
               <div className="topbar-goal">
                 <div className="goal-labels">
-                  <span>Objectif {MOIS_FR[now.getMonth()]}</span>
-                  <span style={{ color: monthlyPct >= 100 ? 'var(--success)' : 'inherit' }}>
-                    {monthRevenue.toLocaleString('fr-FR')} / {monthlyGoal.toLocaleString('fr-FR')} FCFA &mdash; {Math.round(monthlyPct)}%
+                  <span>Obj. {MOIS_FR[now.getMonth()]}</span>
+                  <span style={{ color: monthlyPct >= 100 ? 'var(--success)' : 'inherit', textAlign: 'right' }}>
+                    {monthRevenue.toLocaleString('fr-FR')} / {monthlyGoal.toLocaleString('fr-FR')} F ({Math.round(monthlyPct)}%)
                   </span>
                 </div>
                 <div className="goal-progress-bar">
