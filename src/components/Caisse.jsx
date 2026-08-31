@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, AlertTriangle, ShieldAlert, CheckCircle } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
 import BulkActionBar from './BulkActionBar';
@@ -12,6 +12,7 @@ const Caisse = () => {
   const [categories, setCategories] = useState([]);
   const [employes, setEmployes] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [chargesFixes, setChargesFixes] = useState([]);
 
   // Form state
   const [typeTransaction, setTypeTransaction] = useState('prestation'); // 'prestation' or 'depense'
@@ -21,6 +22,12 @@ const Caisse = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [modePaiement, setModePaiement] = useState('Cash');
   const [selectedEmployeId, setSelectedEmployeId] = useState('');
+
+  // Discount state
+  const [hasDiscount, setHasDiscount] = useState(false);
+  const [discountType, setDiscountType] = useState('pourcentage'); // 'pourcentage', 'fixe', 'offert'
+  const [discountValue, setDiscountValue] = useState('');
+  const [discountMotif, setDiscountMotif] = useState('');
 
   const [activeHistoryTab, setActiveHistoryTab] = useState('aujourd_hui'); // 'aujourd_hui', 'cette_semaine', 'ce_mois'
   const [expandedDays, setExpandedDays] = useState({});
@@ -46,11 +53,16 @@ const Caisse = () => {
       setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const unsubCharges = onSnapshot(collection(db, 'charges_fixes'), (snapshot) => {
+      setChargesFixes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => c.actif));
+    });
+
     return () => {
       unsubServices();
       unsubCategories();
       unsubEmployes();
       unsubTransactions();
+      unsubCharges();
     };
   }, []);
 
@@ -75,12 +87,32 @@ const Caisse = () => {
     const employe = employes.find(e => e.id === selectedEmployeId);
     let motif = '';
     let categoryName = '';
+    let prixFinal = Number(montant);
 
     if (typeTransaction === 'prestation') {
       if (!selectedServiceId) {
         alert("Veuillez sélectionner un service.");
         return;
       }
+      if (hasDiscount) {
+        if (discountType !== 'offert' && (!discountValue || isNaN(Number(discountValue)))) {
+          alert("Veuillez saisir une valeur de réduction valide.");
+          return;
+        }
+        if (!discountMotif.trim()) {
+          alert("Un motif est OBLIGATOIRE pour appliquer une réduction ou offrir un service.");
+          return;
+        }
+
+        if (discountType === 'offert') {
+          prixFinal = 0;
+        } else if (discountType === 'pourcentage') {
+          prixFinal = Math.max(0, prixFinal - (prixFinal * Number(discountValue) / 100));
+        } else if (discountType === 'fixe') {
+          prixFinal = Math.max(0, prixFinal - Number(discountValue));
+        }
+      }
+
       const service = services.find(s => s.id === selectedServiceId);
       motif = service ? service.nom : 'Service inconnu';
     } else {
@@ -95,7 +127,7 @@ const Caisse = () => {
 
     const newTransaction = {
       type: typeTransaction,
-      montant: Number(montant),
+      montant: prixFinal,
       motif,
       categorie: categoryName,
       employeId: selectedEmployeId,
@@ -104,14 +136,25 @@ const Caisse = () => {
       date: new Date().toISOString()
     };
 
+    if (typeTransaction === 'prestation' && hasDiscount) {
+      newTransaction.prixOriginal = Number(montant);
+      newTransaction.reductionActive = true;
+      newTransaction.reductionType = discountType;
+      newTransaction.reductionValeur = discountType === 'offert' ? Number(montant) : Number(discountValue);
+      newTransaction.reductionMotif = discountMotif;
+    }
+
     await addDoc(collection(db, 'transactions'), newTransaction);
-    await logEvent('TRANSACTION_CREATE', `Nouvelle transaction (${typeTransaction}) de ${montant} FCFA. Motif: ${motif}. Mode: ${modePaiement}`);
+    await logEvent('TRANSACTION_CREATE', `Nouvelle transaction (${typeTransaction}) de ${prixFinal} FCFA. Motif: ${motif}. Mode: ${modePaiement}`);
 
     // Reset fields
     setMontant('');
     setSelectedServiceId('');
     setMotifDepense('');
     setSelectedCategoryId('');
+    setHasDiscount(false);
+    setDiscountValue('');
+    setDiscountMotif('');
   };
 
   const handleDelete = async (id, typeTransaction, montant, motif) => {
@@ -200,6 +243,40 @@ const Caisse = () => {
     const d = new Date(isoString);
     return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   };
+
+  // Safe Spend Simulator variables
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const currentMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth);
+  
+  const totalMonthCA = currentMonthTx.filter(t => t.type === 'prestation').reduce((acc, t) => acc + Number(t.montant), 0);
+  const totalSalaries = employes.reduce((acc, emp) => acc + (Number(emp.salaireFixe) || 0), 0);
+  const totalChargesFixesVal = chargesFixes.reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
+  const tresorerieNette = totalMonthCA - totalSalaries - totalChargesFixesVal;
+
+  let simStatus = null;
+  if (typeTransaction === 'depense' && montant) {
+    const askAmount = Number(montant) || 0;
+    if (tresorerieNette >= askAmount) {
+      simStatus = {
+        color: 'var(--success)', icon: <CheckCircle size={18} />,
+        text: `VERT : Le fonds de roulement actuel permet ce ravitaillement. Trésorerie nette restante : ${tresorerieNette - askAmount} F.`
+      };
+    } else {
+      simStatus = {
+        color: 'var(--danger)', icon: <ShieldAlert size={18} />,
+        text: `ROUGE (Alerte Trésorerie) : Dépense risquée. Cette dépense entraînera un découvert sur le budget des charges fixes du mois.`
+      };
+    }
+  }
+
+  // Calculate dynamic price for UI display if discount is active
+  let displayPrice = Number(montant) || 0;
+  if (typeTransaction === 'prestation' && hasDiscount) {
+    if (discountType === 'offert') displayPrice = 0;
+    else if (discountType === 'pourcentage') displayPrice = Math.max(0, displayPrice - (displayPrice * (Number(discountValue) || 0) / 100));
+    else if (discountType === 'fixe') displayPrice = Math.max(0, displayPrice - (Number(discountValue) || 0));
+  }
 
   // Bulk Selection Helpers
   const toggleSelection = (id) => {
@@ -414,8 +491,75 @@ const Caisse = () => {
               </select>
             </div>
           </div>
+
+          {typeTransaction === 'prestation' && (
+            <div style={{ backgroundColor: 'var(--bg-input)', padding: '16px', borderRadius: '12px', marginTop: '10px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                <input 
+                  type="checkbox" 
+                  checked={hasDiscount}
+                  onChange={(e) => setHasDiscount(e.target.checked)}
+                />
+                Appliquer une Réduction / Offre
+              </label>
+              
+              {hasDiscount && (
+                <div style={{ display: 'flex', gap: '15px', marginTop: '12px', flexWrap: 'wrap' }}>
+                  <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                    <label>Type de réduction</label>
+                    <select className="input-control" value={discountType} onChange={(e) => setDiscountType(e.target.value)}>
+                      <option value="pourcentage">Pourcentage (%)</option>
+                      <option value="fixe">Montant Fixe (FCFA)</option>
+                      <option value="offert">Prestation Offerte (0 FCFA)</option>
+                    </select>
+                  </div>
+
+                  {discountType !== 'offert' && (
+                    <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                      <label>Valeur ({discountType === 'pourcentage' ? '%' : 'FCFA'})</label>
+                      <input 
+                        type="number" 
+                        className="input-control" 
+                        value={discountValue}
+                        onChange={(e) => setDiscountValue(e.target.value)}
+                        placeholder="Ex: 10"
+                      />
+                    </div>
+                  )}
+
+                  <div className="form-group" style={{ flex: 2, margin: 0 }}>
+                    <label>Motif / Justificatif <span style={{ color: 'var(--danger)' }}>*</span></label>
+                    <input 
+                      type="text" 
+                      className="input-control" 
+                      value={discountMotif}
+                      onChange={(e) => setDiscountMotif(e.target.value)}
+                      placeholder="Ex: Geste commercial, Promotion Hadia Cup..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {hasDiscount && (
+                <div style={{ marginTop: '12px', fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--success)' }}>
+                  Nouveau Prix : {displayPrice} FCFA <span style={{ textDecoration: 'line-through', fontSize: '0.85rem', color: 'var(--text-muted)' }}>({montant || 0} FCFA)</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {simStatus && (
+            <div style={{
+              padding: '12px', borderRadius: '8px', marginTop: '15px', fontSize: '0.9rem',
+              backgroundColor: 'var(--bg-input)', color: simStatus.color, display: 'flex', alignItems: 'center', gap: '10px',
+              border: `1px solid ${simStatus.color}`
+            }}>
+              <div>{simStatus.icon}</div>
+              <div style={{ fontWeight: '600', lineHeight: '1.4' }}>{simStatus.text}</div>
+            </div>
+          )}
           
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '15px' }}>
             <Save size={18} /> Enregistrer
           </button>
         </form>

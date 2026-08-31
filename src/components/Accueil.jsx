@@ -6,6 +6,7 @@ import {
   CreditCard, CheckCircle, AlertCircle,
   TrendingUp, Wallet, MessageSquare, Filter
 } from 'lucide-react';
+import RechercheExpress from './RechercheExpress';
 
 const Accueil = () => {
   const [reservations,  setReservations]  = useState([]);
@@ -144,6 +145,7 @@ const Accueil = () => {
 
   return (
     <div className="view-container">
+      <RechercheExpress reservations={reservations} />
 
       {/* ── KPI RAPIDES DU JOUR ──────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>

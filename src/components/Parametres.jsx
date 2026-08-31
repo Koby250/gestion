@@ -23,8 +23,12 @@ const Parametres = () => {
   // Admin creation state
   const [adminEmail,    setAdminEmail]    = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [adminRole,     setAdminRole]     = useState('agent');
   const [adminLoading,  setAdminLoading]  = useState(false);
   const [adminMsg,      setAdminMsg]      = useState(null); // { type: 'success'|'error', text }
+
+  // Users state
+  const [usersList, setUsersList] = useState([]);
 
   // Forms States (Add)
   const [newService, setNewService] = useState({ nom: '', prix: '' });
@@ -94,6 +98,10 @@ const Parametres = () => {
       setMonthRevenue(rev);
     });
 
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setUsersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     return () => {
       unsubServices();
       unsubCategories();
@@ -101,6 +109,7 @@ const Parametres = () => {
       unsubSettings();
       unsubTransactions();
       unsubCharges();
+      unsubUsers();
     };
   }, []);
 
@@ -165,13 +174,22 @@ const Parametres = () => {
       // App Firebase temporaire isolée pour ne pas déconnecter l'admin actuel
       const secondaryApp  = initializeApp(auth.app.options, 'SecondaryAdminApp_' + Date.now());
       const secondaryAuth = getAuth(secondaryApp);
-      await createUserWithEmailAndPassword(secondaryAuth, adminEmail, adminPassword);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, adminEmail, adminPassword);
+      
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        email: adminEmail,
+        role: adminRole,
+        actif: true,
+        createdAt: new Date().toISOString()
+      });
+
       await secondaryAuth.signOut();
 
       setAdminMsg({ type: 'success', text: `Compte créé avec succès pour ${adminEmail}. Il peut maintenant se connecter.` });
       setAdminEmail('');
       setAdminPassword('');
-      console.log('[Parametres] Admin secondaire créé:', adminEmail);
+      setAdminRole('agent');
+      console.log('[Parametres] Utilisateur créé:', adminEmail);
     } catch (err) {
       console.error('[Parametres] Erreur création admin:', err.code);
       const messages = {
@@ -621,15 +639,15 @@ const Parametres = () => {
           ))}
         </div>
       </div>
-      {/* ── GESTION DES ADMINISTRATEURS ─────────────────────────────────── */}
+      {/* ── GESTION DES UTILISATEURS ─────────────────────────────────── */}
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)' }}>
           <ShieldCheck size={20} color="var(--accent-color)" />
-          <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Gestion des Administrateurs</h2>
+          <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Gestion des Accès & Utilisateurs</h2>
         </div>
 
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>
-          Créer un nouveau compte administrateur. La session actuelle reste active.
+          Créer un nouveau compte. Attribuez-lui le rôle Administrateur ou Agent (accès restreint). La session actuelle reste active.
         </p>
 
         {adminMsg && (
@@ -665,6 +683,17 @@ const Parametres = () => {
               onChange={e => { setAdminPassword(e.target.value); setAdminMsg(null); }}
             />
           </div>
+          <div className="form-group" style={{ flex: 1, minWidth: '150px', margin: 0 }}>
+            <label>Rôle</label>
+            <select
+              className="input-control"
+              value={adminRole}
+              onChange={e => setAdminRole(e.target.value)}
+            >
+              <option value="admin">Administrateur</option>
+              <option value="agent">Agent (Limité)</option>
+            </select>
+          </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '0' }}>
             <button
               onClick={handleCreateAdmin}
@@ -678,6 +707,40 @@ const Parametres = () => {
               }
             </button>
           </div>
+        </div>
+
+        <div className="list-container" style={{ marginTop: '20px' }}>
+          {usersList.map(u => (
+            <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', backgroundColor: !u.actif ? 'rgba(239, 68, 68, 0.05)' : 'transparent' }}>
+              <div>
+                <div style={{ fontWeight: 'bold', color: u.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>{u.email}</div>
+                <div style={{ fontSize: '0.85rem', color: u.role === 'admin' ? 'var(--danger)' : 'var(--accent-color)', fontWeight: '600' }}>
+                  {u.role === 'admin' ? 'Administrateur' : 'Agent (Limité)'}
+                </div>
+                {!u.actif && <div style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 'bold', marginTop: '4px' }}>Accès révoqué</div>}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <select 
+                  className="input-control" 
+                  style={{ width: 'auto', padding: '4px 8px', fontSize: '0.85rem', height: 'auto', margin: 0 }}
+                  value={u.role || 'agent'} 
+                  onChange={(e) => updateDoc(doc(db, 'users', u.id), { role: e.target.value })}
+                  disabled={!u.actif || u.email === auth.currentUser?.email}
+                >
+                  <option value="admin">Admin</option>
+                  <option value="agent">Agent</option>
+                </select>
+                {u.email !== auth.currentUser?.email && (
+                  <button 
+                    onClick={() => updateDoc(doc(db, 'users', u.id), { actif: u.actif === false ? true : false })} 
+                    className={`btn btn-small ${u.actif !== false ? 'btn-danger' : 'btn-success'}`}
+                  >
+                    {u.actif !== false ? 'Révoquer' : 'Réactiver'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

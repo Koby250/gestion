@@ -4,11 +4,12 @@ import { db } from '../firebase';
 import {
   Calendar, Clock, User, Phone,
   CheckCircle, AlertCircle, PlusCircle,
-  Trash2, CreditCard, X, FileText, MessageSquare
+  Trash2, CreditCard, X, FileText, MessageSquare, Edit2, Send
 } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
 import BulkActionBar from './BulkActionBar';
+import RechercheExpress from './RechercheExpress';
 
 const Reservations = () => {
   // Collections state
@@ -21,8 +22,11 @@ const Reservations = () => {
 
   const [encaissementModal, setEncaissementModal] = useState(null);
   const [factureModal, setFactureModal]           = useState(null);
+  const [notesModal, setNotesModal]               = useState(null);
+  const [editModal, setEditModal]                 = useState(null);
   const [modeEncaissement, setModeEncaissement]   = useState('Cash');
   const [encaissementLoading, setEncaissementLoading] = useState(false);
+  const [newNote, setNewNote] = useState('');
 
   // Form state
   const [clientNom,      setClientNom]      = useState('');
@@ -117,7 +121,7 @@ const Reservations = () => {
         datePrevue, heurePrevue,
         employeId, employeNom: employe.nom,
         statut, acomptePaye,
-        notes: notes.trim(),
+        historiqueNotes: notes.trim() ? [{ texte: notes.trim(), date: nowISO }] : [],
         createdAt: nowISO
       });
       console.log('[Reservations] Réservation créée avec statut:', statut);
@@ -186,6 +190,38 @@ const Reservations = () => {
     }
   };
 
+  // ── Notes & Modifs ────────────────────────────────────────────────────────
+  const handleAddNote = async (e) => {
+    e.preventDefault();
+    if (!newNote.trim()) return;
+    const res = notesModal;
+    const nowISO = new Date().toISOString();
+    const updatedNotes = [...(res.historiqueNotes || []), { texte: newNote.trim(), date: nowISO }];
+    
+    await updateDoc(doc(db, 'reservations', res.id), {
+      historiqueNotes: updatedNotes
+    });
+    setNotesModal({ ...res, historiqueNotes: updatedNotes });
+    setNewNote('');
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    const service = services.find(s => s.id === editModal.serviceId);
+    const employe = employes.find(emp => emp.id === editModal.employeId);
+    
+    await updateDoc(doc(db, 'reservations', editModal.id), {
+      datePrevue: editModal.datePrevue,
+      heurePrevue: editModal.heurePrevue,
+      serviceId: editModal.serviceId,
+      serviceNom: service.nom,
+      employeId: editModal.employeId,
+      employeNom: employe.nom,
+      statut: editModal.statut
+    });
+    setEditModal(null);
+  };
+
   // ── Supprimer une réservation ─────────────────────────────────────────────
   const handleDelete = async (id) => {
     if (window.confirm('Supprimer cette réservation ? Les transactions liées en caisse ne seront pas supprimées.')) {
@@ -246,6 +282,18 @@ const Reservations = () => {
       );
     }
 
+    if (statut === 'en_cours') {
+      return (
+        <span style={{
+          padding: '5px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700',
+          backgroundColor: 'rgba(37, 99, 235, 0.1)', color: 'var(--accent-color)',
+          display: 'inline-flex', alignItems: 'center', gap: '6px'
+        }}>
+          En cours
+        </span>
+      );
+    }
+
     const reste = prixTotal - (acomptePaye || 0);
     const label = statut === 'acompte_verse'
       ? `Reste : ${reste} FCFA`
@@ -273,6 +321,7 @@ const Reservations = () => {
   return (
     <>
       <div className="view-container">
+        <RechercheExpress reservations={reservations} />
 
         {/* ── FORMULAIRE D'AJOUT ────────────────────────────────────────── */}
         <div className="card">
@@ -466,13 +515,15 @@ const Reservations = () => {
                       <td style={{ padding: '10px' }}>
                         <div style={{ fontWeight: 'bold' }}>{res.clientNom}</div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{res.clientTel}</div>
-                        {res.notes && (
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', marginTop: '4px', fontSize: '0.78rem',
-                            color: 'var(--text-muted)', backgroundColor: 'rgba(37,99,235,0.06)',
-                            padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(37,99,235,0.12)', maxWidth: '200px' }}>
-                            <MessageSquare size={10} style={{ marginTop: '2px', flexShrink: 0, color: 'var(--accent-color)' }} />
-                            <span style={{ fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{res.notes}</span>
-                          </div>
+                        {(res.historiqueNotes && res.historiqueNotes.length > 0) && (
+                          <button onClick={() => setNotesModal(res)} style={{
+                            display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.78rem',
+                            color: 'var(--accent-color)', backgroundColor: 'rgba(37,99,235,0.06)',
+                            padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(37,99,235,0.12)', cursor: 'pointer'
+                          }}>
+                            <MessageSquare size={10} style={{ marginTop: '2px', flexShrink: 0 }} />
+                            {res.historiqueNotes.length} note(s)
+                          </button>
                         )}
                       </td>
                       <td style={{ padding: '10px' }}>{res.serviceNom}</td>
@@ -486,7 +537,23 @@ const Reservations = () => {
                             style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
                             title="Générer Facture"
                           >
-                            <FileText size={14} /> Facture
+                            <FileText size={14} />
+                          </button>
+                          <button
+                            onClick={() => setNotesModal(res)}
+                            className="btn btn-small"
+                            style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
+                            title="Notes"
+                          >
+                            <MessageSquare size={14} />
+                          </button>
+                          <button
+                            onClick={() => setEditModal(res)}
+                            className="btn btn-small"
+                            style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
+                            title="Modifier"
+                          >
+                            <Edit2 size={14} />
                           </button>
                           {isNonEncaisse(res.statut) && (
                             <button
@@ -597,6 +664,121 @@ const Reservations = () => {
                 {encaissementLoading ? 'Enregistrement...' : "Confirmer l'encaissement"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL NOTES ───────────────────────────────────────────────────── */}
+      {notesModal && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '20px',
+            width: '100%', maxWidth: '500px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+            maxHeight: '90vh', display: 'flex', flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3 style={{ color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <MessageSquare size={20} color="var(--accent-color)" /> Notes & Historique
+              </h3>
+              <button onClick={() => setNotesModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {(notesModal.historiqueNotes || []).length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>Aucune note pour ce rendez-vous.</p>
+              ) : (
+                notesModal.historiqueNotes.map((n, i) => (
+                  <div key={i} style={{ backgroundColor: 'var(--bg-input)', padding: '10px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      {new Date(n.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(',', ' à')}
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{n.texte}</div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <form onSubmit={handleAddNote} style={{ display: 'flex', gap: '10px' }}>
+              <input
+                type="text"
+                className="input-control"
+                placeholder="Ajouter une note..."
+                value={newNote}
+                onChange={e => setNewNote(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button type="submit" className="btn btn-primary" style={{ padding: '0 15px' }}>
+                <Send size={16} />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL EDIT ────────────────────────────────────────────────────── */}
+      {editModal && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
+            width: '100%', maxWidth: '500px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                <Edit2 size={20} color="var(--accent-color)" /> Modifier le Rendez-vous
+              </h3>
+              <button onClick={() => setEditModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div style={{ display: 'flex', gap: '15px' }}>
+                <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                  <label>Date</label>
+                  <input type="date" className="input-control" value={editModal.datePrevue} onChange={e => setEditModal({...editModal, datePrevue: e.target.value})} required />
+                </div>
+                <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                  <label>Heure</label>
+                  <input type="time" className="input-control" value={editModal.heurePrevue} onChange={e => setEditModal({...editModal, heurePrevue: e.target.value})} required />
+                </div>
+              </div>
+              
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Prestation</label>
+                <select className="input-control" value={editModal.serviceId} onChange={e => setEditModal({...editModal, serviceId: e.target.value})} required>
+                  {services.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                </select>
+              </div>
+              
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Coiffeur</label>
+                <select className="input-control" value={editModal.employeId} onChange={e => setEditModal({...editModal, employeId: e.target.value})} required>
+                  {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Statut</label>
+                <select className="input-control" value={editModal.statut} onChange={e => setEditModal({...editModal, statut: e.target.value})} required>
+                  <option value="non_paye">En attente (Non payé)</option>
+                  <option value="en_cours">En cours</option>
+                  <option value="acompte_verse">Acompte versé</option>
+                  <option value="encaisse">Encaissé</option>
+                </select>
+              </div>
+              
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
+                Enregistrer les modifications
+              </button>
+            </form>
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   TrendingUp, TrendingDown, Scissors, DollarSign,
-  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2
+  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag
 } from 'lucide-react';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -79,6 +79,9 @@ const Bilan = () => {
   const totalDepenses = depenses.reduce((s, t) => s + Number(t.montant), 0);
   const beneficeNet   = totalCA - totalDepenses;
   const nbPrestations = prestations.length;
+
+  const reductions = monthTx.filter(t => t.reductionActive === true);
+  const totalReductions = reductions.reduce((s, t) => s + (Number(t.prixOriginal) - Number(t.montant)), 0);
 
   const totalSalaires     = employes.reduce((acc, emp) => acc + (Number(emp.salaireFixe) || 0), 0);
   const totalChargesFixes = chargesFixes.filter(c => c.actif).reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
@@ -554,6 +557,65 @@ const Bilan = () => {
                     {fmt(totalDepenses)} FCFA
                   </td>
                   <td style={{ padding: '12px', textAlign: 'right', fontWeight: '700', color: 'var(--text-muted)' }}>100%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── ANALYSE DES RÉDUCTIONS & SERVICES OFFERTS ────────────────────── */}
+      <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)' }}>
+          <Tag size={20} color="var(--accent-color)" />
+          <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+            Réductions & Prestations Offertes
+          </h2>
+        </div>
+
+        {reductions.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>
+            Aucune réduction ou prestation offerte ce mois.
+          </p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                  <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem' }}>Service / Date</th>
+                  <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem' }}>Agent</th>
+                  <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem' }}>Justificatif</th>
+                  <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem', textAlign: 'right' }}>Type</th>
+                  <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem', textAlign: 'right' }}>Manque à Gagner</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reductions.map((r, i) => {
+                  const manque = Number(r.prixOriginal) - Number(r.montant);
+                  return (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '12px', color: 'var(--text-main)' }}>
+                        <div style={{ fontWeight: '600' }}>{r.motif}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{new Date(r.date).toLocaleDateString('fr-FR')}</div>
+                      </td>
+                      <td style={{ padding: '12px', color: 'var(--text-muted)' }}>{r.employeNom}</td>
+                      <td style={{ padding: '12px', fontWeight: '500' }}>{r.reductionMotif}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                        {r.reductionType}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: '700', color: 'var(--danger)' }}>
+                        {fmt(manque)} FCFA
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ backgroundColor: 'var(--bg-input)', borderTop: '2px solid var(--border-color)' }}>
+                  <td colSpan="4" style={{ padding: '12px', fontWeight: '800', color: 'var(--text-main)', textAlign: 'right' }}>TOTAL MANQUE À GAGNER</td>
+                  <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--danger)', fontSize: '1.05rem' }}>
+                    {fmt(totalReductions)} FCFA
+                  </td>
                 </tr>
               </tfoot>
             </table>

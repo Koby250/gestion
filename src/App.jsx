@@ -3,7 +3,7 @@ import {
   Calculator, BarChart3, Settings, Scissors, Calendar,
   LogOut, User, Wallet, Users, History, Menu, X, LayoutDashboard
 } from 'lucide-react';
-import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from './firebase';
 import './index.css';
@@ -24,13 +24,36 @@ function App() {
   const [todayRevenue,  setTodayRevenue]  = useState(0);
   const [monthRevenue,  setMonthRevenue]  = useState(0);
   const [user,          setUser]          = useState(null);
+  const [userRole,      setUserRole]      = useState('agent');
   const [authLoading,   setAuthLoading]   = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', u.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            if (data.actif === false) {
+              await signOut(auth);
+              setUser(null);
+              setAuthLoading(false);
+              return;
+            }
+            setUserRole(data.role || 'agent');
+          } else {
+            setUserRole('admin'); // Fallback for the first admin created manually
+          }
+          setUser(u);
+        } catch (error) {
+          console.error("Error fetching user role", error);
+          setUser(u);
+        }
+      } else {
+        setUser(null);
+      }
       setAuthLoading(false);
     });
     return () => unsub();
@@ -108,11 +131,11 @@ function App() {
       case 'accueil':      return <Accueil />;
       case 'caisse':       return <Caisse />;
       case 'reservations': return <Reservations />;
-      case 'bilan':        return <Bilan />;
-      case 'tresorerie':   return <Tresorerie />;
-      case 'rh':           return <RH />;
-      case 'tracabilite':  return <Tracabilite />;
-      case 'parametres':   return <Parametres />;
+      case 'bilan':        return userRole === 'admin' ? <Bilan /> : <Accueil />;
+      case 'tresorerie':   return userRole === 'admin' ? <Tresorerie /> : <Accueil />;
+      case 'rh':           return userRole === 'admin' ? <RH /> : <Accueil />;
+      case 'tracabilite':  return userRole === 'admin' ? <Tracabilite /> : <Accueil />;
+      case 'parametres':   return userRole === 'admin' ? <Parametres /> : <Accueil />;
       default:             return <Accueil />;
     }
   };
@@ -123,11 +146,13 @@ function App() {
     { key: 'accueil',      label: 'Accueil',           icon: <LayoutDashboard size={20} /> },
     { key: 'caisse',       label: 'Caisse & Journal',  icon: <Calculator size={20} /> },
     { key: 'reservations', label: 'Réservations',      icon: <Calendar size={20} /> },
-    { key: 'bilan',        label: 'Bilan Mensuel',     icon: <BarChart3 size={20} /> },
-    { key: 'tresorerie',   label: 'Trésorerie',        icon: <Wallet size={20} /> },
-    { key: 'rh',           label: 'RH & Avances',      icon: <Users size={20} /> },
-    { key: 'tracabilite',  label: 'Traçabilité',       icon: <History size={20} /> },
-    { key: 'parametres',   label: 'Paramètres',        icon: <Settings size={20} /> },
+    ...(userRole === 'admin' ? [
+      { key: 'bilan',        label: 'Bilan Mensuel',     icon: <BarChart3 size={20} /> },
+      { key: 'tresorerie',   label: 'Trésorerie',        icon: <Wallet size={20} /> },
+      { key: 'rh',           label: 'RH & Avances',      icon: <Users size={20} /> },
+      { key: 'tracabilite',  label: 'Traçabilité',       icon: <History size={20} /> },
+      { key: 'parametres',   label: 'Paramètres',        icon: <Settings size={20} /> },
+    ] : [])
   ];
 
   return (
@@ -167,7 +192,7 @@ function App() {
             <div className="sidebar-user-avatar"><User size={16} /></div>
             <div className="sidebar-user-info">
               <span className="sidebar-user-email" title={user.email}>{user.email}</span>
-              <span className="sidebar-user-role">Administrateur</span>
+              <span className="sidebar-user-role">{userRole === 'admin' ? 'Administrateur' : 'Agent'}</span>
             </div>
           </div>
           <button onClick={handleSignOut} className="btn-logout" title="Déconnecter">
