@@ -77,7 +77,11 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
       setServices(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.actif))
     );
     const unsubEmployes = onSnapshot(collection(db, 'employes'), snap =>
-      setEmployes(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.actif))
+      setEmployes(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(e => e.actif && e.categorie !== 'Support / Gestion')
+      )
     );
     const q = query(collection(db, 'reservations'), orderBy('datePrevue', 'asc'));
     const unsubReservations = onSnapshot(q, snap =>

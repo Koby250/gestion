@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Calculator, BarChart3, Settings, Scissors, Calendar,
-  LogOut, User, Wallet, Users, History, Menu, X, LayoutDashboard
+  LogOut, User, Wallet, Users, History, Menu, X, LayoutDashboard, Package
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -16,6 +16,7 @@ import Bilan        from './components/Bilan';
 import Tresorerie   from './components/Tresorerie';
 import RH           from './components/RH';
 import Tracabilite  from './components/Tracabilite';
+import Inventaire   from './components/Inventaire';
 
 function App() {
   const [activeDate,    setActiveDate]    = useState(new Date().toISOString().substring(0, 10));
@@ -25,6 +26,7 @@ function App() {
   const [monthRevenue,  setMonthRevenue]  = useState(0);
   const [user,          setUser]          = useState(null);
   const [userRole,      setUserRole]      = useState('agent');
+  const [userAccesInventaire, setUserAccesInventaire] = useState(false);
   const [authLoading,   setAuthLoading]   = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -43,8 +45,10 @@ function App() {
               return;
             }
             setUserRole(data.role || 'agent');
+            setUserAccesInventaire(!!data.accesInventaire);
           } else {
             setUserRole('admin'); // Fallback for the first admin created manually
+            setUserAccesInventaire(true);
           }
           setUser(u);
         } catch (error) {
@@ -127,6 +131,7 @@ function App() {
       case 'accueil':      return <Accueil activeDate={activeDate} />;
       case 'caisse':       return <Caisse activeDate={activeDate} />;
       case 'reservations': return <Reservations activeDate={activeDate} />;
+      case 'inventaire':   return (userRole === 'admin' || userAccesInventaire) ? <Inventaire activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
       case 'bilan':        return userRole === 'admin' ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
       case 'tresorerie':   return userRole === 'admin' ? <Tresorerie activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
       case 'rh':           return userRole === 'admin' ? <RH activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
@@ -142,6 +147,9 @@ function App() {
     { key: 'accueil',      label: 'Accueil',           icon: <LayoutDashboard size={20} /> },
     { key: 'caisse',       label: 'Caisse & Journal',  icon: <Calculator size={20} /> },
     { key: 'reservations', label: 'Réservations',      icon: <Calendar size={20} /> },
+    ...((userRole === 'admin' || userAccesInventaire) ? [
+      { key: 'inventaire',   label: 'Inventaire',        icon: <Package size={20} /> }
+    ] : []),
     ...(userRole === 'admin' ? [
       { key: 'bilan',        label: 'Bilan Mensuel',     icon: <BarChart3 size={20} /> },
       { key: 'tresorerie',   label: 'Trésorerie',        icon: <Wallet size={20} /> },

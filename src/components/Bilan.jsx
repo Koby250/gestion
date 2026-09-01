@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   TrendingUp, TrendingDown, Scissors, DollarSign,
-  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag
+  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag, Award
 } from 'lucide-react';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -95,6 +95,31 @@ const Bilan = () => {
   const pctDepenses     = totalCA > 0 ? Math.min((totalDepenses     / totalCA) * 100, 100) : 0;
   const margeRestante   = Math.max(0, totalCA - totalSalaires - totalChargesFixes - totalDepenses);
   const pctMarge        = totalCA > 0 ? (margeRestante / totalCA) * 100 : 0;
+
+  // ── Top 3 Agents du Mois ─────────────────────────────────────────────────
+  const agentStats = {};
+  monthTx.forEach(t => {
+    if (t.type === 'prestation') {
+      if (t.lignes && t.lignes.length > 0) {
+        t.lignes.forEach(ligne => {
+          (ligne.agents || []).forEach(agent => {
+            if (!agentStats[agent.id]) agentStats[agent.id] = { nom: agent.nom, count: 0, ca: 0 };
+            agentStats[agent.id].count += 1;
+            // Repartition CA per agent logic: dividing line price by number of agents
+            const caPerAgent = Number(ligne.prix) / (ligne.agents.length || 1);
+            agentStats[agent.id].ca += caPerAgent;
+          });
+        });
+      } else if (t.employeId) {
+        if (!agentStats[t.employeId]) agentStats[t.employeId] = { nom: t.employeNom || 'Inconnu', count: 0, ca: 0 };
+        agentStats[t.employeId].count += 1;
+        agentStats[t.employeId].ca += Number(t.montant);
+      }
+    }
+  });
+  const top3Agents = Object.values(agentStats)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
 
   // ── Analyse par service ──────────────────────────────────────────────────
   const serviceMap = {};
@@ -278,6 +303,48 @@ const Bilan = () => {
           </div>
         ))}
       </div>
+
+      {/* ── TOP 3 AGENTS DU MOIS ────────────────────────────────────────── */}
+      {top3Agents.length > 0 && (
+        <div className="card" style={{ marginBottom: '24px', padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+            <Award size={18} color="var(--accent-color)" />
+            <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)' }}>Performances des Agents (Top 3)</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Classement par nombre de soins</span>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {top3Agents.map((agent, index) => {
+              const medals = ['1er', '2eme', '3eme'];
+              const colors = ['#f59e0b', '#9ca3af', '#cd7c3e'];
+              const bgColors = ['rgba(245,158,11,0.10)', 'rgba(156,163,175,0.10)', 'rgba(205,124,62,0.10)'];
+              return (
+                <div key={agent.nom} style={{
+                  flex: 1, minWidth: '130px',
+                  backgroundColor: bgColors[index],
+                  border: `2px solid ${colors[index]}`,
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '800', color: colors[index], textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+                    {medals[index]}
+                  </div>
+                  <div style={{ fontWeight: '700', color: 'var(--text-main)', fontSize: '1rem', marginBottom: '2px' }}>
+                    {agent.nom}
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '900', color: colors[index] }}>
+                    {agent.count}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>soin(s)</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)', borderTop: `1px solid ${colors[index]}40`, paddingTop: '8px' }}>
+                    CA: {Math.round(agent.ca).toLocaleString('fr-FR')} F
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── VENTILATION & RÉPARTITION ─────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '24px' }}>

@@ -13,6 +13,7 @@ const Parametres = () => {
   const [categories, setCategories] = useState([]);
   const [employes, setEmployes] = useState([]);
   const [chargesFixes, setChargesFixes] = useState([]);
+
   
   // Daily & Monthly Goal State
   const [dailyGoal,    setDailyGoal]    = useState('');
@@ -33,8 +34,9 @@ const Parametres = () => {
   // Forms States (Add)
   const [newService, setNewService] = useState({ nom: '', prix: '' });
   const [newCategory, setNewCategory] = useState({ nom: '' });
-  const [newEmploye, setNewEmploye] = useState({ nom: '', role: '', commission: '', salaire: '' });
+  const [newEmploye, setNewEmploye] = useState({ nom: '', role: '', categorie: 'Prestataire', salaire: '' });
   const [newCharge, setNewCharge] = useState({ nom: '', montant: '' });
+
 
   // Edit States
   const [editingServiceId, setEditingServiceId] = useState(null);
@@ -44,10 +46,12 @@ const Parametres = () => {
   const [editCategoryForm, setEditCategoryForm] = useState({ nom: '' });
 
   const [editingEmployeId, setEditingEmployeId] = useState(null);
-  const [editEmployeForm, setEditEmployeForm] = useState({ nom: '', role: '', commission: '', salaire: '' });
+  const [editEmployeForm, setEditEmployeForm] = useState({ nom: '', role: '', categorie: 'Prestataire', salaire: '' });
 
   const [editingChargeId, setEditingChargeId] = useState(null);
   const [editChargeForm, setEditChargeForm] = useState({ nom: '', montant: '' });
+
+
 
   // Bulk Selection States
   const [selectedServices, setSelectedServices] = useState([]);
@@ -102,6 +106,8 @@ const Parametres = () => {
       setUsersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+
+
     return () => {
       unsubServices();
       unsubCategories();
@@ -110,6 +116,7 @@ const Parametres = () => {
       unsubTransactions();
       unsubCharges();
       unsubUsers();
+
     };
   }, []);
 
@@ -132,11 +139,13 @@ const Parametres = () => {
     e.preventDefault();
     if (!newEmploye.nom || !newEmploye.role) return;
     await addDoc(collection(db, 'employes'), {
-      nom: newEmploye.nom, role: newEmploye.role, 
-      commission: Number(newEmploye.commission) || 0, salaireFixe: Number(newEmploye.salaire) || 0, actif: true
+      nom: newEmploye.nom, role: newEmploye.role, categorie: newEmploye.categorie,
+      salaireFixe: Number(newEmploye.salaire) || 0, actif: true
     });
-    setNewEmploye({ nom: '', role: '', commission: '', salaire: '' });
+    setNewEmploye({ nom: '', role: '', categorie: 'Prestataire', salaire: '' });
   };
+
+
 
   const handleAddCharge = async (e) => {
     e.preventDefault();
@@ -240,7 +249,7 @@ const Parametres = () => {
     setEditEmployeForm({ 
       nom: emp.nom || '', 
       role: emp.role || '', 
-      commission: emp.commission !== undefined ? emp.commission.toString() : '', 
+      categorie: emp.categorie || 'Prestataire', 
       salaire: emp.salaireFixe !== undefined ? emp.salaireFixe.toString() : '' 
     });
   };
@@ -249,7 +258,7 @@ const Parametres = () => {
       await updateDoc(doc(db, 'employes', id), { 
         nom: editEmployeForm.nom, 
         role: editEmployeForm.role, 
-        commission: Number(editEmployeForm.commission) || 0, 
+        categorie: editEmployeForm.categorie, 
         salaireFixe: Number(editEmployeForm.salaire) || 0 
       });
       setEditingEmployeId(null);
@@ -265,12 +274,11 @@ const Parametres = () => {
     setEditChargeForm({ nom: charge.nom, montant: charge.montant.toString() });
   };
   const saveEditCharge = async (id) => {
-    await updateDoc(doc(db, 'charges_fixes', id), { 
-      nom: editChargeForm.nom, 
-      montant: Number(editChargeForm.montant) 
-    });
+    await updateDoc(doc(db, 'charges_fixes', id), { nom: editChargeForm.nom, montant: Number(editChargeForm.montant) || 0 });
     setEditingChargeId(null);
   };
+
+
 
   // Handlers Status / Delete
   const toggleStatus = async (collectionName, id, currentStatus) => {
@@ -508,7 +516,10 @@ const Parametres = () => {
         <form onSubmit={handleAddEmploye} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '20px' }}>
           <input type="text" className="input-control" placeholder="Nom" value={newEmploye.nom} onChange={(e) => setNewEmploye({...newEmploye, nom: e.target.value})} />
           <input type="text" className="input-control" placeholder="Rôle (ex: Coiffeur)" value={newEmploye.role} onChange={(e) => setNewEmploye({...newEmploye, role: e.target.value})} />
-          <input type="number" className="input-control" placeholder="Commission (%)" value={newEmploye.commission} onChange={(e) => setNewEmploye({...newEmploye, commission: e.target.value})} />
+          <select className="input-control" value={newEmploye.categorie} onChange={(e) => setNewEmploye({...newEmploye, categorie: e.target.value})}>
+            <option value="Prestataire">Prestataire</option>
+            <option value="Support / Gestion">Support / Gestion</option>
+          </select>
           <input type="number" className="input-control" placeholder="Salaire (FCFA)" value={newEmploye.salaire} onChange={(e) => setNewEmploye({...newEmploye, salaire: e.target.value})} />
           <button type="submit" className="btn btn-primary" style={{ gridColumn: '1 / -1' }}><Plus size={18} /> Ajouter un membre</button>
         </form>
@@ -542,8 +553,11 @@ const Parametres = () => {
                     <input type="text" className="input-control" style={{ width: '100%' }} value={editEmployeForm.role} onChange={e => setEditEmployeForm({...editEmployeForm, role: e.target.value})} />
                   </div>
                   <div className="form-group" style={{ margin: 0, width: '100%' }}>
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Commission (%)</label>
-                    <input type="number" className="input-control" style={{ width: '100%' }} value={editEmployeForm.commission} onChange={e => setEditEmployeForm({...editEmployeForm, commission: e.target.value})} />
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Catégorie</label>
+                    <select className="input-control" style={{ width: '100%' }} value={editEmployeForm.categorie} onChange={e => setEditEmployeForm({...editEmployeForm, categorie: e.target.value})}>
+                      <option value="Prestataire">Prestataire</option>
+                      <option value="Support / Gestion">Support / Gestion</option>
+                    </select>
                   </div>
                   <div className="form-group" style={{ margin: 0, width: '100%' }}>
                     <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Salaire fixe (FCFA)</label>
@@ -561,7 +575,7 @@ const Parametres = () => {
                     {!emp.actif && <span style={{ marginLeft: '10px', fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--accent-color)', fontWeight: '600' }}>
-                    Comm: {emp.commission}% | Salaire: {emp.salaireFixe} FCFA
+                    Catégorie: {emp.categorie || 'Prestataire'} | Salaire: {emp.salaireFixe} FCFA
                   </div>
                 </div>
               )}
@@ -742,6 +756,22 @@ const Parametres = () => {
                   {u.role === 'admin' ? 'Administrateur' : 'Agent (Limité)'}
                 </div>
                 {!u.actif && <div style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 'bold', marginTop: '4px' }}>Accès révoqué</div>}
+                
+                {u.role === 'agent' && (
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input 
+                      type="checkbox" 
+                      id={`acces-inv-${u.id}`}
+                      checked={u.accesInventaire === true}
+                      onChange={(e) => updateDoc(doc(db, 'users', u.id), { accesInventaire: e.target.checked })}
+                      disabled={!u.actif}
+                      style={{ cursor: u.actif ? 'pointer' : 'not-allowed' }}
+                    />
+                    <label htmlFor={`acces-inv-${u.id}`} style={{ fontSize: '0.8rem', color: 'var(--text-main)', cursor: u.actif ? 'pointer' : 'not-allowed' }}>
+                      Accès à la gestion des stocks
+                    </label>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <select 

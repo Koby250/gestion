@@ -44,7 +44,11 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
     });
 
     const unsubEmployes = onSnapshot(collection(db, 'employes'), (snapshot) => {
-      setEmployes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(e => e.actif));
+      setEmployes(
+        snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(e => e.actif && e.categorie !== 'Support / Gestion')
+      );
     });
 
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
