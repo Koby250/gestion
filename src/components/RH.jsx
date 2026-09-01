@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Users, AlertTriangle, CheckCircle, ShieldAlert, Plus, Trash2, Calendar } from 'lucide-react';
+import { Users, AlertTriangle, CheckCircle, ShieldAlert, Plus, Trash2 } from 'lucide-react';
 import BulkActionBar from './BulkActionBar';
 
-const RH = () => {
+const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
   const [employes, setEmployes] = useState([]);
   const [avances, setAvances] = useState([]);
   const [chargesFixes, setChargesFixes] = useState([]);
@@ -17,7 +17,7 @@ const RH = () => {
   const [formAvance, setFormAvance] = useState({
     employeId: '',
     montant: '',
-    date: new Date().toISOString().substring(0, 10),
+    date: activeDate,
     modePaiement: 'cash',
     motif: 'Avance sur salaire'
   });
@@ -38,8 +38,8 @@ const RH = () => {
     });
 
     // 3. Fetch CA mensuel pour l'indicateur
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const activeDateObj = new Date(activeDate);
+    const startOfMonth = new Date(activeDateObj.getFullYear(), activeDateObj.getMonth(), 1).toISOString();
     const unsubTx = onSnapshot(collection(db, 'transactions'), (snap) => {
       let rev = 0;
       let dep = 0;
@@ -64,7 +64,7 @@ const RH = () => {
       unsubTx();
       unsubCharges();
     };
-  }, []);
+  }, [activeDate]);
 
   const handleAddAvance = async (e) => {
     e.preventDefault();
@@ -90,8 +90,8 @@ const RH = () => {
       setFormAvance({ ...formAvance, montant: '', motif: 'Avance sur salaire' });
       setMsg({ type: 'success', text: 'Avance enregistrée avec succès.' });
       setTimeout(() => setMsg(null), 3000);
-    } catch (err) {
-      setMsg({ type: 'error', text: 'Erreur lors de l\'enregistrement.' });
+    } catch {
+      setMsg({ type: 'error', text: "Erreur lors de l'enregistrement." });
     } finally {
       setIsSubmitting(false);
     }
@@ -128,9 +128,13 @@ const RH = () => {
   };
 
   // Calculs Globaux Trésorerie
+  const activeDateObj = new Date(activeDate);
+  const startOfMonthStr = new Date(activeDateObj.getFullYear(), activeDateObj.getMonth(), 1).toISOString();
+
   const totalSalairesBruts = employes.reduce((acc, emp) => acc + (Number(emp.salaireFixe) || 0), 0);
   const totalChargesFixes = chargesFixes.filter(c => c.actif).reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
-  const totalAvancesMois = avances.filter(a => a.date >= new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()).reduce((acc, a) => acc + Number(a.montant), 0);
+  const totalAvancesMois = avances.filter(a => a.date >= startOfMonthStr).reduce((acc, a) => acc + Number(a.montant), 0);
+  void totalAvancesMois; // used in simulateur below
   
   // Ventilation Globale
   const pctSalaires = monthRevenue > 0 ? Math.min((totalSalairesBruts / monthRevenue) * 100, 100) : 0;
@@ -152,7 +156,7 @@ const RH = () => {
       const plafondPrudent = emp.salaireFixe * proportionCA;
       
       const avancesDejaPrises = avances
-        .filter(a => a.employeId === emp.id && a.date >= new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+        .filter(a => a.employeId === emp.id && a.date >= startOfMonthStr)
         .reduce((acc, a) => acc + Number(a.montant), 0);
         
       const restePlafond = Math.max(0, plafondPrudent - avancesDejaPrises);

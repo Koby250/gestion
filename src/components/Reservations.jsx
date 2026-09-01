@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -12,7 +12,7 @@ import BulkActionBar from './BulkActionBar';
 import RechercheExpress from './RechercheExpress';
 import AgendaVisuel from './AgendaVisuel';
 
-const Reservations = () => {
+const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
   // Collections state
   const [reservations, setReservations] = useState([]);
   const [services, setServices]         = useState([]);
@@ -37,16 +37,39 @@ const Reservations = () => {
   const [clientNom,      setClientNom]      = useState('');
   const [clientTel,      setClientTel]      = useState('');
   const [serviceId,      setServiceId]      = useState('');
-  const [datePrevue,     setDatePrevue]     = useState('');
+  const [datePrevue,     setDatePrevue]     = useState(activeDate);
   const [heurePrevue,    setHeurePrevue]    = useState('');
   const [employeId,      setEmployeId]      = useState('');
   const [optionPaiement, setOptionPaiement] = useState('a_payer');
   const [montantAcompte, setMontantAcompte] = useState('');
   const [modePaiement,   setModePaiement]   = useState('Cash');
   const [notes,          setNotes]          = useState('');
+  
+  // Reduction state
+  const [reductionType,   setReductionType]   = useState('none');
+  const [reductionValeur, setReductionValeur] = useState('');
+  const [reductionMotif,  setReductionMotif]  = useState('');
 
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState([]);
+
+  // Notes editing state
+  const [editingNoteIndex, setEditingNoteIndex] = useState(null);
+  const [editingNoteText, setEditingNoteText]   = useState('');
+
+
+
+  const getTransactionDate = () => {
+    const todayStr = new Date().toISOString().substring(0, 10);
+    if (activeDate === todayStr) {
+      return new Date().toISOString();
+    } else {
+      const now = new Date();
+      const retroDate = new Date(activeDate);
+      retroDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      return retroDate.toISOString();
+    }
+  };
 
   // ── Chargement des données Firestore ──────────────────────────────────────
   useEffect(() => {
@@ -75,10 +98,26 @@ const Reservations = () => {
     const employe = employes.find(emp => emp.id === employeId);
     if (!service || !employe) return;
 
-    const prixTotal = Number(service.prixDefaut);
+    let prixBase = Number(service.prixDefaut);
+    let prixTotal = prixBase;
+
+    if (reductionType === 'percent') {
+      prixTotal = prixBase - (prixBase * (Number(reductionValeur) / 100));
+    } else if (reductionType === 'amount') {
+      prixTotal = prixBase - Number(reductionValeur);
+    } else if (reductionType === 'offert') {
+      prixTotal = 0;
+    }
+    prixTotal = Math.max(0, prixTotal);
+
+    if (reductionType !== 'none' && !reductionMotif.trim()) {
+      alert("Veuillez saisir un motif pour la réduction.");
+      return;
+    }
+
     let statut      = 'non_paye';
     let acomptePaye = 0;
-    const nowISO    = new Date().toISOString();
+    const nowISO    = getTransactionDate();
 
     try {
       if (optionPaiement === 'avance') {
@@ -122,7 +161,12 @@ const Reservations = () => {
 
       await addDoc(collection(db, 'reservations'), {
         clientNom, clientTel, serviceId,
-        serviceNom: service.nom, prixTotal,
+        serviceNom: service.nom, 
+        prixBase,
+        prixTotal,
+        reductionType,
+        reductionValeur: Number(reductionValeur) || 0,
+        reductionMotif: reductionMotif.trim(),
         datePrevue, heurePrevue,
         employeId, employeNom: employe.nom,
         statut, acomptePaye,
@@ -144,6 +188,7 @@ const Reservations = () => {
     setDatePrevue(''); setHeurePrevue(''); setEmployeId('');
     setOptionPaiement('a_payer'); setMontantAcompte(''); setModePaiement('Cash');
     setNotes('');
+    setReductionType('none'); setReductionValeur(''); setReductionMotif('');
     setIsFormModalOpen(false);
   };
 
@@ -182,7 +227,7 @@ const Reservations = () => {
         employeId:  res.employeId,
         employeNom: res.employeNom,
         modePaiement: modeEncaissement,
-        date: new Date().toISOString()
+        date: getTransactionDate()
       });
       console.log('[Reservations] Transaction solde créée:', resteAPayer, 'FCFA via', modeEncaissement);
 
@@ -208,7 +253,7 @@ const Reservations = () => {
     e.preventDefault();
     if (!newNote.trim()) return;
     const res = notesModal;
-    const nowISO = new Date().toISOString();
+    const nowISO = getTransactionDate();
     const updatedNotes = [...(res.historiqueNotes || []), { texte: newNote.trim(), date: nowISO }];
     
     await updateDoc(doc(db, 'reservations', res.id), {
@@ -218,11 +263,42 @@ const Reservations = () => {
     setNewNote('');
   };
 
+  const handleSaveEditedNote = async (index) => {
+    if (!editingNoteText.trim()) return;
+    const res = notesModal;
+    const updatedNotes = [...(res.historiqueNotes || [])];
+    updatedNotes[index] = { ...updatedNotes[index], texte: editingNoteText.trim() };
+    
+    await updateDoc(doc(db, 'reservations', res.id), {
+      historiqueNotes: updatedNotes
+    });
+    setNotesModal({ ...res, historiqueNotes: updatedNotes });
+    setEditingNoteIndex(null);
+    setEditingNoteText('');
+  };
+
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     const service = services.find(s => s.id === editModal.serviceId);
     const employe = employes.find(emp => emp.id === editModal.employeId);
     
+    let prixBase = Number(service.prixDefaut);
+    let prixTotal = prixBase;
+
+    if (editModal.reductionType === 'percent') {
+      prixTotal = prixBase - (prixBase * (Number(editModal.reductionValeur) / 100));
+    } else if (editModal.reductionType === 'amount') {
+      prixTotal = prixBase - Number(editModal.reductionValeur);
+    } else if (editModal.reductionType === 'offert') {
+      prixTotal = 0;
+    }
+    prixTotal = Math.max(0, prixTotal);
+
+    if (editModal.reductionType && editModal.reductionType !== 'none' && !(editModal.reductionMotif || '').trim()) {
+      alert("Veuillez saisir un motif pour la réduction.");
+      return;
+    }
+
     await updateDoc(doc(db, 'reservations', editModal.id), {
       datePrevue: editModal.datePrevue,
       heurePrevue: editModal.heurePrevue,
@@ -230,7 +306,12 @@ const Reservations = () => {
       serviceNom: service.nom,
       employeId: editModal.employeId,
       employeNom: employe.nom,
-      statut: editModal.statut
+      statut: editModal.statut,
+      prixBase,
+      prixTotal,
+      reductionType: editModal.reductionType || 'none',
+      reductionValeur: Number(editModal.reductionValeur) || 0,
+      reductionMotif: (editModal.reductionMotif || '').trim()
     });
     setEditModal(null);
   };
@@ -249,13 +330,7 @@ const Reservations = () => {
   };
 
   // ── Filtrage des réservations selon l'onglet ──────────────────────────────
-  const todayISO = (() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  })();
+  const todayISO = activeDate;
 
   const filteredReservations = reservations.filter(res => {
     if (activeTab === 'aujourd_hui') return res.datePrevue === todayISO;
@@ -355,13 +430,44 @@ const Reservations = () => {
           </select>
         </div>
 
-        <div className="form-group">
-          <label>Coiffeur assigné</label>
-          <select className="input-control" value={employeId} onChange={e => setEmployeId(e.target.value)}>
-            <option value="">Sélectionner un coiffeur</option>
-            {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
-          </select>
+        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label>Coiffeur assigné</label>
+            <select className="input-control" value={employeId} onChange={e => setEmployeId(e.target.value)}>
+              <option value="">Sélectionner un coiffeur</option>
+              {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
+            </select>
+          </div>
+
+          <div className="form-group" style={{ margin: 0 }}>
+            <label>Réduction (Optionnel)</label>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <select className="input-control" value={reductionType} onChange={e => { setReductionType(e.target.value); if (e.target.value === 'offert') setReductionValeur('100'); }} style={{ flex: 1 }}>
+                <option value="none">Aucune</option>
+                <option value="percent">Pourcentage (%)</option>
+                <option value="amount">Montant fixe (FCFA)</option>
+                <option value="offert">Prestation Offerte</option>
+              </select>
+              {(reductionType === 'percent' || reductionType === 'amount') && (
+                <input type="number" className="input-control" style={{ width: '100px' }} placeholder={reductionType === 'percent' ? '%' : 'FCFA'} value={reductionValeur} onChange={e => setReductionValeur(e.target.value)} />
+              )}
+            </div>
+          </div>
+
+          {reductionType !== 'none' && (
+            <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
+              <label>Motif de la réduction *</label>
+              <input type="text" className="input-control" placeholder="Ex: Geste commercial, Client fidèle..." value={reductionMotif} onChange={e => setReductionMotif(e.target.value)} />
+            </div>
+          )}
         </div>
+
+        {/* Affichage du prix calculé si réduction */}
+        {reductionType !== 'none' && serviceId && (
+          <div style={{ gridColumn: '1 / -1', padding: '10px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', borderRadius: '8px', fontWeight: 'bold' }}>
+            Prix après remise : {Math.max(0, reductionType === 'offert' ? 0 : reductionType === 'percent' ? Number(services.find(s=>s.id===serviceId)?.prixDefaut) * (1 - (Number(reductionValeur)/100)) : Number(services.find(s=>s.id===serviceId)?.prixDefaut) - Number(reductionValeur))} FCFA
+          </div>
+        )}
 
         <div className="form-group">
           <label><Calendar size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Date Prévue</label>
@@ -806,10 +912,23 @@ const Reservations = () => {
               ) : (
                 notesModal.historiqueNotes.map((n, i) => (
                   <div key={i} style={{ backgroundColor: 'var(--bg-input)', padding: '10px', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      {new Date(n.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(',', ' à')}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {new Date(n.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(',', ' à')}
+                      </div>
+                      <button onClick={() => { setEditingNoteIndex(i); setEditingNoteText(n.texte); }} style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer' }} title="Modifier">
+                        <Edit2 size={12} />
+                      </button>
                     </div>
-                    <div style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{n.texte}</div>
+                    {editingNoteIndex === i ? (
+                      <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
+                        <input type="text" className="input-control" value={editingNoteText} onChange={e => setEditingNoteText(e.target.value)} style={{ padding: '4px 8px', fontSize: '0.9rem', flex: 1 }} />
+                        <button onClick={() => handleSaveEditedNote(i)} className="btn btn-primary" style={{ padding: '4px 8px' }}>OK</button>
+                        <button onClick={() => setEditingNoteIndex(null)} className="btn" style={{ padding: '4px 8px', background: 'var(--bg-card)', color: 'var(--text-main)' }}><X size={14}/></button>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{n.texte}</div>
+                    )}
                   </div>
                 ))
               )}
@@ -876,6 +995,28 @@ const Reservations = () => {
                   {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
                 </select>
               </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Réduction</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <select className="input-control" value={editModal.reductionType || 'none'} onChange={e => { setEditModal({...editModal, reductionType: e.target.value, reductionValeur: e.target.value === 'offert' ? '100' : editModal.reductionValeur}); }} style={{ flex: 1 }}>
+                    <option value="none">Aucune</option>
+                    <option value="percent">Pourcentage (%)</option>
+                    <option value="amount">Montant fixe (FCFA)</option>
+                    <option value="offert">Prestation Offerte</option>
+                  </select>
+                  {(editModal.reductionType === 'percent' || editModal.reductionType === 'amount') && (
+                    <input type="number" className="input-control" style={{ width: '100px' }} placeholder={editModal.reductionType === 'percent' ? '%' : 'FCFA'} value={editModal.reductionValeur || ''} onChange={e => setEditModal({...editModal, reductionValeur: e.target.value})} />
+                  )}
+                </div>
+              </div>
+              
+              {editModal.reductionType && editModal.reductionType !== 'none' && (
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Motif de la réduction *</label>
+                  <input type="text" className="input-control" placeholder="Geste commercial, Retard..." value={editModal.reductionMotif || ''} onChange={e => setEditModal({...editModal, reductionMotif: e.target.value})} />
+                </div>
+              )}
 
               <div className="form-group" style={{ margin: 0 }}>
                 <label>Statut</label>

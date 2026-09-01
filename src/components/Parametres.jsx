@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { initializeApp } from 'firebase/app';
@@ -237,16 +237,26 @@ const Parametres = () => {
   // Handlers Edit (Employes)
   const startEditEmploye = (emp) => {
     setEditingEmployeId(emp.id);
-    setEditEmployeForm({ nom: emp.nom, role: emp.role, commission: emp.commission.toString(), salaire: emp.salaireFixe.toString() });
+    setEditEmployeForm({ 
+      nom: emp.nom || '', 
+      role: emp.role || '', 
+      commission: emp.commission !== undefined ? emp.commission.toString() : '', 
+      salaire: emp.salaireFixe !== undefined ? emp.salaireFixe.toString() : '' 
+    });
   };
   const saveEditEmploye = async (id) => {
-    await updateDoc(doc(db, 'employes', id), { 
-      nom: editEmployeForm.nom, 
-      role: editEmployeForm.role, 
-      commission: Number(editEmployeForm.commission), 
-      salaireFixe: Number(editEmployeForm.salaire) 
-    });
-    setEditingEmployeId(null);
+    try {
+      await updateDoc(doc(db, 'employes', id), { 
+        nom: editEmployeForm.nom, 
+        role: editEmployeForm.role, 
+        commission: Number(editEmployeForm.commission) || 0, 
+        salaireFixe: Number(editEmployeForm.salaire) || 0 
+      });
+      setEditingEmployeId(null);
+    } catch (error) {
+      console.error("Erreur lors de la modification de l'employé:", error);
+      alert("Une erreur est survenue lors de l'enregistrement.");
+    }
   };
 
   // Handlers Edit (Charges Fixes)
@@ -522,13 +532,27 @@ const Parametres = () => {
               <input type="checkbox" checked={selectedEmployes.includes(emp.id)} onChange={() => toggleSelection(emp.id, selectedEmployes, setSelectedEmployes)} style={{ cursor: 'pointer', marginRight: '5px' }} />
 
               {editingEmployeId === emp.id ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto auto', gap: '10px', flex: 1, alignItems: 'center' }}>
-                  <input type="text" className="input-control" value={editEmployeForm.nom} onChange={e => setEditEmployeForm({...editEmployeForm, nom: e.target.value})} />
-                  <input type="text" className="input-control" value={editEmployeForm.role} onChange={e => setEditEmployeForm({...editEmployeForm, role: e.target.value})} />
-                  <input type="number" className="input-control" value={editEmployeForm.commission} onChange={e => setEditEmployeForm({...editEmployeForm, commission: e.target.value})} />
-                  <input type="number" className="input-control" value={editEmployeForm.salaire} onChange={e => setEditEmployeForm({...editEmployeForm, salaire: e.target.value})} />
-                  <button onClick={() => saveEditEmploye(emp.id)} className="btn btn-success btn-small"><CheckCircle size={14} /></button>
-                  <button onClick={() => setEditingEmployeId(null)} className="btn btn-small" style={{background:'var(--bg-input)'}}><X size={14}/></button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, width: '100%', padding: '10px 0' }}>
+                  <div className="form-group" style={{ margin: 0, width: '100%' }}>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Nom complet</label>
+                    <input type="text" className="input-control" style={{ width: '100%' }} value={editEmployeForm.nom} onChange={e => setEditEmployeForm({...editEmployeForm, nom: e.target.value})} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0, width: '100%' }}>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Rôle (ex: Coiffeur)</label>
+                    <input type="text" className="input-control" style={{ width: '100%' }} value={editEmployeForm.role} onChange={e => setEditEmployeForm({...editEmployeForm, role: e.target.value})} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0, width: '100%' }}>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Commission (%)</label>
+                    <input type="number" className="input-control" style={{ width: '100%' }} value={editEmployeForm.commission} onChange={e => setEditEmployeForm({...editEmployeForm, commission: e.target.value})} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0, width: '100%' }}>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Salaire fixe (FCFA)</label>
+                    <input type="number" className="input-control" style={{ width: '100%' }} value={editEmployeForm.salaire} onChange={e => setEditEmployeForm({...editEmployeForm, salaire: e.target.value})} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button onClick={() => saveEditEmploye(emp.id)} className="btn btn-success" style={{ flex: 1 }}><CheckCircle size={18} /> Enregistrer</button>
+                    <button onClick={() => setEditingEmployeId(null)} className="btn" style={{ background: 'var(--bg-input)', color: 'var(--text-main)', flex: 1 }}><X size={18} /> Annuler</button>
+                  </div>
                 </div>
               ) : (
                 <div style={{ flex: 1 }}>

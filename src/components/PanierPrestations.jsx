@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { PlusCircle, Trash2, Users } from 'lucide-react';
 
 /**

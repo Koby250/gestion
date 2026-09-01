@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Calculator, BarChart3, Settings, Scissors, Calendar,
   LogOut, User, Wallet, Users, History, Menu, X, LayoutDashboard
@@ -18,8 +18,8 @@ import RH           from './components/RH';
 import Tracabilite  from './components/Tracabilite';
 
 function App() {
+  const [activeDate,    setActiveDate]    = useState(new Date().toISOString().substring(0, 10));
   const [activeTab,     setActiveTab]     = useState('accueil');
-  const [dailyGoal,     setDailyGoal]     = useState(0);
   const [monthlyGoal,   setMonthlyGoal]   = useState(0);
   const [todayRevenue,  setTodayRevenue]  = useState(0);
   const [monthRevenue,  setMonthRevenue]  = useState(0);
@@ -59,6 +59,8 @@ function App() {
     return () => unsub();
   }, []);
 
+  const docData = (d) => ({ id: d.id, ...d.data() });
+
   // ── Data (seulement si connecté) ──────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
@@ -66,21 +68,20 @@ function App() {
     const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data.objectifJournalier) setDailyGoal(Number(data.objectifJournalier));
         if (data.objectifMensuel)    setMonthlyGoal(Number(data.objectifMensuel));
       }
     });
 
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     const unsubTx = onSnapshot(q, (snapshot) => {
-      const now = new Date();
+      const activeDateObj = new Date(activeDate);
       let revDay = 0, revMonth = 0;
       snapshot.docs.forEach(d => {
         const t = docData(d);
         if (t.type !== 'prestation') return;
         const dt = new Date(t.date);
-        const sameMonth = dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
-        const sameDay   = sameMonth && dt.getDate() === now.getDate();
+        const sameMonth = dt.getMonth() === activeDateObj.getMonth() && dt.getFullYear() === activeDateObj.getFullYear();
+        const sameDay   = sameMonth && dt.getDate() === activeDateObj.getDate();
         if (sameMonth) revMonth += Number(t.montant);
         if (sameDay)   revDay   += Number(t.montant);
       });
@@ -89,9 +90,8 @@ function App() {
     });
 
     return () => { unsubSettings(); unsubTx(); };
-  }, [user]);
+  }, [user, activeDate]);
 
-  const docData = (d) => ({ id: d.id, ...d.data() });
 
   const handleSignOut = async () => {
     if (window.confirm('Voulez-vous vous déconnecter ?')) await signOut(auth);
@@ -113,30 +113,26 @@ function App() {
   if (!user) return <Login />;
 
   // Cible journalière dynamique
-  const now = new Date();
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const daysLeft = lastDay - now.getDate() + 1;
+  const activeDateObj = new Date(activeDate);
+  const lastDay = new Date(activeDateObj.getFullYear(), activeDateObj.getMonth() + 1, 0).getDate();
+  const daysLeft = lastDay - activeDateObj.getDate() + 1;
   const remainingAmount = Math.max(0, monthlyGoal - monthRevenue);
   const dynamicDailyGoal = daysLeft > 0 ? Math.round(remainingAmount / daysLeft) : 0;
 
   const dailyPct   = dynamicDailyGoal > 0 ? Math.min((todayRevenue  / dynamicDailyGoal)   * 100, 100) : 0;
   const monthlyPct = monthlyGoal > 0 ? Math.min((monthRevenue  / monthlyGoal) * 100, 100) : 0;
 
-  const todayStr = now.toLocaleDateString('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-  });
-
   const renderContent = () => {
     switch (activeTab) {
-      case 'accueil':      return <Accueil />;
-      case 'caisse':       return <Caisse />;
-      case 'reservations': return <Reservations />;
-      case 'bilan':        return userRole === 'admin' ? <Bilan /> : <Accueil />;
-      case 'tresorerie':   return userRole === 'admin' ? <Tresorerie /> : <Accueil />;
-      case 'rh':           return userRole === 'admin' ? <RH /> : <Accueil />;
-      case 'tracabilite':  return userRole === 'admin' ? <Tracabilite /> : <Accueil />;
-      case 'parametres':   return userRole === 'admin' ? <Parametres /> : <Accueil />;
-      default:             return <Accueil />;
+      case 'accueil':      return <Accueil activeDate={activeDate} />;
+      case 'caisse':       return <Caisse activeDate={activeDate} />;
+      case 'reservations': return <Reservations activeDate={activeDate} />;
+      case 'bilan':        return userRole === 'admin' ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
+      case 'tresorerie':   return userRole === 'admin' ? <Tresorerie activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
+      case 'rh':           return userRole === 'admin' ? <RH activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
+      case 'tracabilite':  return userRole === 'admin' ? <Tracabilite activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
+      case 'parametres':   return userRole === 'admin' ? <Parametres activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
+      default:             return <Accueil activeDate={activeDate} />;
     }
   };
 
@@ -169,7 +165,7 @@ function App() {
       {/* ── SIDEBAR ─────────────────────────────────────────────────────── */}
       <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <h1><Scissors color="var(--accent-color)" /> Barber Control</h1>
+          <h1><Scissors color="var(--accent-color)" /> Barber Factory</h1>
           <button className="close-sidebar-btn" onClick={() => setIsSidebarOpen(false)}>
             <X size={24} />
           </button>
@@ -209,8 +205,18 @@ function App() {
             <button className="hamburger-btn" onClick={() => setIsSidebarOpen(true)}>
               <Menu size={24} />
             </button>
-            <div className="topbar-date">
-              {todayStr.charAt(0).toUpperCase() + todayStr.slice(1)}
+            <div className="topbar-date" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input 
+                type="date" 
+                className="input-control" 
+                style={{ padding: '8px 12px', borderRadius: '12px', border: '1px solid var(--border-color)', width: 'auto' }}
+                value={activeDate}
+                max={new Date().toISOString().substring(0, 10)}
+                onChange={e => setActiveDate(e.target.value)}
+              />
+              {activeDate !== new Date().toISOString().substring(0, 10) && (
+                <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 'bold' }}>Mode Rétroactif</span>
+              )}
             </div>
           </div>
 
@@ -233,7 +239,7 @@ function App() {
             {monthlyGoal > 0 && (
               <div className="topbar-goal">
                 <div className="goal-labels">
-                  <span>Obj. {MOIS_FR[now.getMonth()]}</span>
+                  <span>Obj. {MOIS_FR[activeDateObj.getMonth()]}</span>
                   <span style={{ color: monthlyPct >= 100 ? 'var(--success)' : 'inherit', textAlign: 'right' }}>
                     {monthRevenue.toLocaleString('fr-FR')} / {monthlyGoal.toLocaleString('fr-FR')} F ({Math.round(monthlyPct)}%)
                   </span>

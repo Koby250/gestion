@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, ShieldAlert, CheckCircle } from 'lucide-react';
@@ -7,7 +7,7 @@ import FactureModal from './FactureModal';
 import BulkActionBar from './BulkActionBar';
 import PanierPrestations from './PanierPrestations';
 
-const Caisse = () => {
+const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
   // State for reference data
   const [services, setServices] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -23,11 +23,6 @@ const Caisse = () => {
   const [montant, setMontant] = useState('');
   const [motifDepense, setMotifDepense] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
-  // Discount state (for depense simulator only)
-  const [hasDiscount, setHasDiscount] = useState(false);
-  const [discountType, setDiscountType] = useState('pourcentage');
-  const [discountValue, setDiscountValue] = useState('');
-  const [discountMotif, setDiscountMotif] = useState('');
   // Multi-service panier state
   const [lignesPanier, setLignesPanier] = useState([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
   const [clientNomCaisse, setClientNomCaisse] = useState('');
@@ -36,6 +31,7 @@ const Caisse = () => {
   const [expandedDays, setExpandedDays] = useState({});
   const [factureModal, setFactureModal] = useState(null);
   const [selectedTransactions, setSelectedTransactions] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch reference data
   useEffect(() => {
@@ -69,81 +65,101 @@ const Caisse = () => {
     };
   }, []);
 
-  // Reset panier when switching to depense
-  useEffect(() => {
-    if (typeTransaction === 'depense') {
+  // Reset panier when switching to depense (event-driven, not via useEffect)
+  const handleTypeChange = (newType) => {
+    setTypeTransaction(newType);
+    if (newType === 'depense') {
       setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
     }
-  }, [typeTransaction]);
+  };
+
+  const getTransactionDate = () => {
+    const todayStr = new Date().toISOString().substring(0, 10);
+    if (activeDate === todayStr) {
+      return new Date().toISOString();
+    } else {
+      const now = new Date();
+      const retroDate = new Date(activeDate);
+      retroDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      return retroDate.toISOString();
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    if (typeTransaction === 'prestation') {
-      // Validate panier
-      for (const ligne of lignesPanier) {
-        if (!ligne.serviceId) { alert('Veuillez sélectionner un service pour chaque prestation.'); return; }
-        if (!ligne.agents || ligne.agents.length === 0) { alert(`Veuillez assigner au moins un agent à la prestation : ${ligne.serviceNom || 'sans nom'}.`); return; }
-        if (ligne.remiseType !== 'aucune' && !ligne.remiseMotif.trim()) { alert(`Un motif de remise est obligatoire pour : ${ligne.serviceNom}.`); return; }
+    try {
+      if (typeTransaction === 'prestation') {
+        if (lignesPanier.length === 0 || lignesPanier.some(l => !l.serviceId || !l.prixFinal || l.agents.length === 0)) {
+          alert("Veuillez remplir correctement toutes les prestations (service, prix et agent(s)).");
+          return;
+        }
+
+        const totalMontant = lignesPanier.reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
+        const allAgentNoms = [...new Set(lignesPanier.flatMap(l => l.agents.map(a => a.nom)))];
+
+        const newTransaction = {
+          type: 'prestation',
+          montant: totalMontant,
+          motif: lignesPanier.length === 1 ? lignesPanier[0].serviceNom : `Forfait (${lignesPanier.length} prestations)`,
+          clientNom: clientNomCaisse.trim() || 'Client anonyme',
+          employeNom: allAgentNoms.join(', '),
+          employeId: lignesPanier[0].agents[0]?.id || '',
+          modePaiement,
+          date: getTransactionDate(),
+          lignes: lignesPanier.map(l => ({
+            serviceId: l.serviceId,
+            serviceNom: l.serviceNom,
+            prixBase: Number(l.prixBase) || 0,
+            prixFinal: Number(l.prixFinal) || 0,
+            remiseType: l.remiseType,
+            remiseValeur: l.remiseValeur,
+            remiseMotif: l.remiseMotif,
+            agents: l.agents,
+          }))
+        };
+
+        await addDoc(collection(db, 'transactions'), newTransaction);
+        await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA. Agents: ${allAgentNoms.join(', ')}. Mode: ${modePaiement}`);
+
+        // Reset
+        setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
+        setClientNomCaisse('');
+
+      } else {
+        // Dépense
+        if (!montant || isNaN(Number(montant))) { alert('Veuillez saisir un montant valide.'); return; }
+        if (!motifDepense || !selectedCategoryId) { alert('Veuillez remplir le motif et la catégorie de la dépense.'); return; }
+        if (!selectedEmployeId) { alert("Veuillez assigner un membre de l'équipe."); return; }
+
+        const employe = employes.find(e => e.id === selectedEmployeId);
+        const cat = categories.find(c => c.id === selectedCategoryId);
+
+        const newTransaction = {
+          type: 'depense',
+          montant: Number(montant),
+          motif: motifDepense,
+          categorie: cat ? cat.nom : 'Inconnue',
+          employeId: selectedEmployeId,
+          employeNom: employe ? employe.nom : 'Inconnu',
+          modePaiement,
+          date: getTransactionDate()
+        };
+
+        await addDoc(collection(db, 'transactions'), newTransaction);
+        await logEvent('TRANSACTION_CREATE', `Dépense de ${montant} FCFA. Motif: ${motifDepense}. Mode: ${modePaiement}`);
+
+        setMontant('');
+        setMotifDepense('');
+        setSelectedCategoryId('');
       }
-
-      const totalMontant = lignesPanier.reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
-      const allAgentNoms = [...new Set(lignesPanier.flatMap(l => l.agents.map(a => a.nom)))];
-
-      const newTransaction = {
-        type: 'prestation',
-        montant: totalMontant,
-        motif: lignesPanier.length === 1 ? lignesPanier[0].serviceNom : `Forfait (${lignesPanier.length} prestations)`,
-        clientNom: clientNomCaisse.trim() || 'Client anonyme',
-        employeNom: allAgentNoms.join(', '),
-        employeId: lignesPanier[0].agents[0]?.id || '',
-        modePaiement,
-        date: new Date().toISOString(),
-        lignes: lignesPanier.map(l => ({
-          serviceId: l.serviceId,
-          serviceNom: l.serviceNom,
-          prixBase: Number(l.prixBase) || 0,
-          prixFinal: Number(l.prixFinal) || 0,
-          remiseType: l.remiseType,
-          remiseValeur: l.remiseValeur,
-          remiseMotif: l.remiseMotif,
-          agents: l.agents,
-        }))
-      };
-
-      await addDoc(collection(db, 'transactions'), newTransaction);
-      await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA. Agents: ${allAgentNoms.join(', ')}. Mode: ${modePaiement}`);
-
-      // Reset
-      setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
-      setClientNomCaisse('');
-
-    } else {
-      // Dépense
-      if (!montant || isNaN(Number(montant))) { alert('Veuillez saisir un montant valide.'); return; }
-      if (!motifDepense || !selectedCategoryId) { alert('Veuillez remplir le motif et la catégorie de la dépense.'); return; }
-      if (!selectedEmployeId) { alert("Veuillez assigner un membre de l'équipe."); return; }
-
-      const employe = employes.find(e => e.id === selectedEmployeId);
-      const cat = categories.find(c => c.id === selectedCategoryId);
-
-      const newTransaction = {
-        type: 'depense',
-        montant: Number(montant),
-        motif: motifDepense,
-        categorie: cat ? cat.nom : 'Inconnue',
-        employeId: selectedEmployeId,
-        employeNom: employe ? employe.nom : 'Inconnu',
-        modePaiement,
-        date: new Date().toISOString()
-      };
-
-      await addDoc(collection(db, 'transactions'), newTransaction);
-      await logEvent('TRANSACTION_CREATE', `Dépense de ${montant} FCFA. Motif: ${motifDepense}. Mode: ${modePaiement}`);
-
-      setMontant('');
-      setMotifDepense('');
-      setSelectedCategoryId('');
+    } catch (err) {
+      console.error("Erreur lors de la sauvegarde :", err);
+      alert("Une erreur est survenue.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -160,29 +176,31 @@ const Caisse = () => {
 
   // Filter transactions
   const getFilteredTransactions = () => {
-    const now = new Date();
+    const activeDateObj = new Date(activeDate);
     
-    // Start of Today
-    const startOfToday = new Date(now);
+    // Start of Active Day
+    const startOfToday = new Date(activeDateObj);
     startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(activeDateObj);
+    endOfToday.setHours(23, 59, 59, 999);
 
     // Start of Week (Monday)
-    const currentDay = now.getDay() === 0 ? 7 : now.getDay();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - currentDay + 1);
+    const currentDay = activeDateObj.getDay() === 0 ? 7 : activeDateObj.getDay();
+    const startOfWeek = new Date(activeDateObj);
+    startOfWeek.setDate(activeDateObj.getDate() - currentDay + 1);
     startOfWeek.setHours(0, 0, 0, 0);
 
     // Start of Month
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfMonth = new Date(activeDateObj.getFullYear(), activeDateObj.getMonth(), 1);
 
     return transactions.filter(t => {
       const d = new Date(t.date);
       if (activeHistoryTab === 'aujourd_hui') {
-        return d >= startOfToday;
+        return d >= startOfToday && d <= endOfToday;
       } else if (activeHistoryTab === 'cette_semaine') {
-        return d >= startOfWeek;
+        return d >= startOfWeek && d <= endOfToday;
       } else { // 'ce_mois'
-        return d >= startOfMonth;
+        return d >= startOfMonth && d <= endOfToday;
       }
     });
   };
@@ -235,38 +253,32 @@ const Caisse = () => {
   };
 
   // Safe Spend Simulator variables
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const currentMonthTx = transactions.filter(t => new Date(t.date) >= startOfMonth);
+  const simActiveDateObj = new Date(activeDate);
+  const simStartOfMonth = new Date(simActiveDateObj.getFullYear(), simActiveDateObj.getMonth(), 1);
+  const currentMonthTx = transactions.filter(t => new Date(t.date) >= simStartOfMonth && new Date(t.date) <= new Date(simActiveDateObj.getFullYear(), simActiveDateObj.getMonth() + 1, 0, 23, 59, 59, 999));
   
   const totalMonthCA = currentMonthTx.filter(t => t.type === 'prestation').reduce((acc, t) => acc + Number(t.montant), 0);
   const totalSalaries = employes.reduce((acc, emp) => acc + (Number(emp.salaireFixe) || 0), 0);
   const totalChargesFixesVal = chargesFixes.reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
-  const tresorerieNette = totalMonthCA - totalSalaries - totalChargesFixesVal;
+  const tresorerieNetteVal = totalMonthCA - totalSalaries - totalChargesFixesVal;
 
   let simStatus = null;
   if (typeTransaction === 'depense' && montant) {
     const askAmount = Number(montant) || 0;
-    if (tresorerieNette >= askAmount) {
+    if (tresorerieNetteVal >= askAmount) {
       simStatus = {
         color: 'var(--success)', icon: <CheckCircle size={18} />,
-        text: `VERT : Le fonds de roulement actuel permet ce ravitaillement. Trésorerie nette restante : ${tresorerieNette - askAmount} F.`
+        text: `VERT : Le fonds de roulement actuel permet ce ravitaillement. Trésorerie nette restante : ${tresorerieNetteVal - askAmount} F.`
       };
     } else {
       simStatus = {
         color: 'var(--danger)', icon: <ShieldAlert size={18} />,
-        text: `ROUGE (Alerte Trésorerie) : Dépense risquée. Cette dépense entraînera un découvert sur le budget des charges fixes du mois.`
+        text: `ROUGE : Risque de découvert ! Trésorerie nette (${tresorerieNetteVal} F) insuffisante.`
       };
     }
   }
 
-  // Calculate dynamic price for UI display if discount is active
-  let displayPrice = Number(montant) || 0;
-  if (typeTransaction === 'prestation' && hasDiscount) {
-    if (discountType === 'offert') displayPrice = 0;
-    else if (discountType === 'pourcentage') displayPrice = Math.max(0, displayPrice - (displayPrice * (Number(discountValue) || 0) / 100));
-    else if (discountType === 'fixe') displayPrice = Math.max(0, displayPrice - (Number(discountValue) || 0));
-  }
+
 
   // Bulk Selection Helpers
   const toggleSelection = (id) => {
@@ -278,7 +290,7 @@ const Caisse = () => {
   };
 
   // Reusable component for Transaction Table
-  const TransactionTable = ({ txList }) => (
+  const renderTransactionTable = (txList) => (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
         <thead>
@@ -398,7 +410,7 @@ const Caisse = () => {
           <button 
             type="button"
             className={`btn ${typeTransaction === 'prestation' ? 'btn-success' : ''}`}
-            onClick={() => setTypeTransaction('prestation')}
+            onClick={() => handleTypeChange('prestation')}
             style={{ flex: 1, backgroundColor: typeTransaction === 'prestation' ? 'var(--success)' : 'var(--bg-input)', color: typeTransaction === 'prestation' ? '#fff' : 'var(--text-main)' }}
           >
             <PlusCircle size={18} /> Prestation / Vente
@@ -406,7 +418,7 @@ const Caisse = () => {
           <button 
             type="button"
             className={`btn ${typeTransaction === 'depense' ? 'btn-danger' : ''}`}
-            onClick={() => setTypeTransaction('depense')}
+            onClick={() => handleTypeChange('depense')}
             style={{ flex: 1, backgroundColor: typeTransaction === 'depense' ? 'var(--danger)' : 'var(--bg-input)', color: typeTransaction === 'depense' ? '#fff' : 'var(--text-main)' }}
           >
             <MinusCircle size={18} /> Dépense / Charge
@@ -511,7 +523,7 @@ const Caisse = () => {
         />
 
         {activeHistoryTab === 'aujourd_hui' ? (
-          <TransactionTable txList={filteredTransactions} />
+          renderTransactionTable(filteredTransactions)
         ) : (
           <div>
             {sortedDays.length === 0 ? (
@@ -529,14 +541,14 @@ const Caisse = () => {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                         <span style={{ fontWeight: 'bold', color: dayData.total >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                          Bilan : {dayData.total} FCFA
+                          Bilan : {dayData.total >= 0 ? '+' : ''}{dayData.total} FCFA
                         </span>
                         {isExpanded ? <ChevronUp size={20} color="var(--text-muted)" /> : <ChevronDown size={20} color="var(--text-muted)" />}
                       </div>
                     </div>
                     {isExpanded && (
                       <div className="accordion-content">
-                        <TransactionTable txList={dayData.transactions} />
+                        {renderTransactionTable(dayData.transactions)}
                       </div>
                     )}
                   </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
 import { Scissors, Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
@@ -73,7 +73,7 @@ const Login = () => {
             marginBottom: '6px',
             letterSpacing: '-0.02em',
           }}>
-            Barber Control
+            Barber Factory
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
             Connectez-vous à votre espace de gestion
@@ -152,7 +152,7 @@ const Login = () => {
         </div>
 
         <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          Barber Control &mdash; Accès réservé aux administrateurs
+          Barber Factory &mdash; Accès réservé aux administrateurs
         </p>
       </div>
     </div>

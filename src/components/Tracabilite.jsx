@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
-import { History, Shield, Activity, Filter } from 'lucide-react';
+import { Shield, Filter } from 'lucide-react';
 
 const Tracabilite = () => {
   const [logs, setLogs] = useState([]);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import RechercheExpress from './RechercheExpress';
 
-const Accueil = () => {
+const Accueil = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
   const [reservations,  setReservations]  = useState([]);
   const [employes,      setEmployes]      = useState([]);
   const [transactions,  setTransactions]  = useState([]);
@@ -36,14 +36,9 @@ const Accueil = () => {
   }, []);
 
   // ── Dates ──────────────────────────────────────────────────────────────────
-  const now = new Date();
-  const todayISO = (() => {
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  })();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const activeDateObj = new Date(activeDate);
+  const todayISO = activeDate;
+  const startOfMonth = new Date(activeDateObj.getFullYear(), activeDateObj.getMonth(), 1).toISOString();
 
   // ── Calculs KPIs ───────────────────────────────────────────────────────────
   const todayTx     = transactions.filter(t => t.type === 'prestation' && t.date?.startsWith(todayISO));
@@ -109,7 +104,7 @@ const Accueil = () => {
     );
   };
 
-  const todayStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const todayStr = activeDateObj.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   const ReservationCard = ({ res }) => (
     <div style={{
@@ -143,8 +138,23 @@ const Accueil = () => {
           <User size={13} />
           <span>{res.employeNom}</span>
         </div>
-        {/* Notes */}
-        {res.notes && (
+        {/* Notes (Historique complet) */}
+        {(res.historiqueNotes && res.historiqueNotes.length > 0) && (
+          <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {res.historiqueNotes.map((note, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '0.82rem',
+                backgroundColor: 'rgba(37,99,235,0.06)', padding: '6px 10px', borderRadius: '8px',
+                border: '1px solid rgba(37,99,235,0.15)', color: 'var(--text-muted)' }}>
+                <MessageSquare size={12} style={{ marginTop: '2px', flexShrink: 0, color: 'var(--accent-color)' }} />
+                <span style={{ fontStyle: 'italic' }}>
+                  <strong>{new Date(note.date).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong> - {note.texte}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Notes (Ancien format fallback) */}
+        {(!res.historiqueNotes || res.historiqueNotes.length === 0) && res.notes && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', marginTop: '6px', fontSize: '0.82rem',
             backgroundColor: 'rgba(37,99,235,0.06)', padding: '6px 10px', borderRadius: '8px',
             border: '1px solid rgba(37,99,235,0.15)', color: 'var(--text-muted)' }}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Wallet, ArrowRightLeft, Edit2, CheckCircle } from 'lucide-react';
@@ -12,7 +12,7 @@ const accountsList = [
   { id: 'autre', label: 'Autre' }
 ];
 
-const Tresorerie = () => {
+const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
   const [soldes, setSoldes] = useState({ cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 });
   
   // Editing state
@@ -78,6 +78,18 @@ const Tresorerie = () => {
     };
   }, []);
 
+  const getTransactionDate = () => {
+    const todayStr = new Date().toISOString().substring(0, 10);
+    if (activeDate === todayStr) {
+      return new Date().toISOString();
+    } else {
+      const now = new Date();
+      const retroDate = new Date(activeDate);
+      retroDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+      return retroDate.toISOString();
+    }
+  };
+
   const totalReel = Object.values(soldes).reduce((a, b) => a + Number(b), 0);
 
   const handleUpdateSolde = async (accountId) => {
@@ -93,7 +105,7 @@ const Tresorerie = () => {
         montant: diff,
         modePaiement: accountId,
         motif: 'Ajustement de caisse / Erreur',
-        date: new Date().toISOString()
+        date: getTransactionDate()
       });
       
       const accountName = accountsList.find(a => a.id === accountId)?.label || accountId;
@@ -131,7 +143,7 @@ const Tresorerie = () => {
         motif: `Transfert de ${accFrom} vers ${accTo}`,
         fromAccount: transferFrom,
         toAccount: transferTo,
-        date: new Date().toISOString()
+        date: getTransactionDate()
       });
 
       await logEvent('TRESORERIE_TRANSFERT', `Transfert de ${amount} FCFA de [${accFrom}] vers [${accTo}]`);
@@ -141,7 +153,7 @@ const Tresorerie = () => {
       setTransferTo('');
       setTransferMsg({ type: 'success', text: 'Transfert effectué avec succès.' });
       setTimeout(() => setTransferMsg(null), 3000);
-    } catch (err) {
+    } catch {
       setTransferMsg({ type: 'error', text: 'Erreur lors du transfert.' });
     }
   };
