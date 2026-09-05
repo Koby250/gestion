@@ -6,6 +6,7 @@ import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import BulkActionBar from './BulkActionBar';
+import { computeGlobalPoints } from '../utils/points';
 
 const Parametres = () => {
   // Collection States
@@ -19,6 +20,7 @@ const Parametres = () => {
   const [dailyGoal,    setDailyGoal]    = useState('');
   const [monthlyGoal,  setMonthlyGoal]  = useState('');
   const [monthRevenue, setMonthRevenue] = useState(0);
+  const [globalPoints, setGlobalPoints] = useState({});
   const [isGoalSaving, setIsGoalSaving] = useState(false);
 
   // Admin creation state
@@ -34,6 +36,15 @@ const Parametres = () => {
   // Forms States (Add)
   const [newService, setNewService] = useState({ nom: '', prix: '' });
   const [newCategory, setNewCategory] = useState({ nom: '' });
+  const MODULES_AGENTS = [
+    { key: 'accesCaisse',       label: 'Caisse' },
+    { key: 'accesReservations', label: 'Reservations' },
+    { key: 'accesInventaire',   label: 'Inventaire' },
+    { key: 'accesTresorerie',   label: 'Tresorerie' },
+    { key: 'accesBilan',        label: 'Bilan' },
+    { key: 'accesParametres',   label: 'Parametres' },
+  ];
+
   const [newEmploye, setNewEmploye] = useState({ nom: '', role: '', categorie: 'Prestataire', salaire: '' });
   const [newCharge, setNewCharge] = useState({ nom: '', montant: '' });
 
@@ -90,16 +101,19 @@ const Parametres = () => {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
     
-    // We fetch all transactions to filter by month (can be optimized if needed)
+    // We fetch all transactions to filter by month and compute global points
     const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snapshot) => {
       let rev = 0;
+      const allTxs = [];
       snapshot.docs.forEach(d => {
         const t = d.data();
+        allTxs.push(t);
         if (t.type === 'prestation' && t.date >= startOfMonth && t.date <= endOfMonth) {
           rev += Number(t.montant);
         }
       });
       setMonthRevenue(rev);
+      setGlobalPoints(computeGlobalPoints(allTxs));
     });
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -250,7 +264,7 @@ const Parametres = () => {
       nom: emp.nom || '', 
       role: emp.role || '', 
       categorie: emp.categorie || 'Prestataire', 
-      salaire: emp.salaireFixe !== undefined ? emp.salaireFixe.toString() : '' 
+      salaire: emp.salaireFixe !== undefined ? emp.salaireFixe.toString() : ''
     });
   };
   const saveEditEmploye = async (id) => {
@@ -259,7 +273,7 @@ const Parametres = () => {
         nom: editEmployeForm.nom, 
         role: editEmployeForm.role, 
         categorie: editEmployeForm.categorie, 
-        salaireFixe: Number(editEmployeForm.salaire) || 0 
+        salaireFixe: Number(editEmployeForm.salaire) || 0
       });
       setEditingEmployeId(null);
     } catch (error) {
@@ -572,6 +586,7 @@ const Parametres = () => {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 'bold', color: emp.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>
                     {emp.nom} - <span style={{fontSize: '0.9rem', color: 'var(--text-muted)'}}>{emp.role}</span>
+                    <span style={{ marginLeft: '12px', fontSize: '0.85rem', color: 'var(--success)', padding: '2px 8px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.1)' }}>{globalPoints[emp.id] || 0} pts</span>
                     {!emp.actif && <span style={{ marginLeft: '10px', fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--accent-color)', fontWeight: '600' }}>
@@ -758,18 +773,22 @@ const Parametres = () => {
                 {!u.actif && <div style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 'bold', marginTop: '4px' }}>Accès révoqué</div>}
                 
                 {u.role === 'agent' && (
-                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <input 
-                      type="checkbox" 
-                      id={`acces-inv-${u.id}`}
-                      checked={u.accesInventaire === true}
-                      onChange={(e) => updateDoc(doc(db, 'users', u.id), { accesInventaire: e.target.checked })}
-                      disabled={!u.actif}
-                      style={{ cursor: u.actif ? 'pointer' : 'not-allowed' }}
-                    />
-                    <label htmlFor={`acces-inv-${u.id}`} style={{ fontSize: '0.8rem', color: 'var(--text-main)', cursor: u.actif ? 'pointer' : 'not-allowed' }}>
-                      Accès à la gestion des stocks
-                    </label>
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: '600' }}>Permissions :</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {MODULES_AGENTS.map(mod => (
+                        <label key={mod.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: (u.actif ? 'pointer' : 'not-allowed'), fontSize: '0.8rem', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: u[mod.key] ? 'rgba(37,99,235,0.08)' : 'transparent', color: u[mod.key] ? 'var(--accent-color)' : 'var(--text-muted)' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={!!u[mod.key]}
+                            onChange={(e) => updateDoc(doc(db, 'users', u.id), { [mod.key]: e.target.checked })}
+                            disabled={!u.actif}
+                            style={{ cursor: (u.actif ? 'pointer' : 'not-allowed') }}
+                          />
+                          {mod.label}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

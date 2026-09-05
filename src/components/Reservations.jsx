@@ -4,13 +4,14 @@ import { db } from '../firebase';
 import {
   Calendar, Clock, User, Phone,
   CheckCircle, AlertCircle, PlusCircle,
-  Trash2, CreditCard, X, FileText, MessageSquare, Edit2, Send
+  Trash2, CreditCard, X, FileText, MessageSquare, Edit2, Send, Search
 } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
 import BulkActionBar from './BulkActionBar';
 import RechercheExpress from './RechercheExpress';
 import AgendaVisuel from './AgendaVisuel';
+import PanierPrestations from './PanierPrestations';
 
 const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
   // Collections state
@@ -36,19 +37,15 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
   // Form state
   const [clientNom,      setClientNom]      = useState('');
   const [clientTel,      setClientTel]      = useState('');
-  const [serviceId,      setServiceId]      = useState('');
+  const [lignesPanier,   setLignesPanier]   = useState([{ 
+    serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' 
+  }]);
   const [datePrevue,     setDatePrevue]     = useState(activeDate);
   const [heurePrevue,    setHeurePrevue]    = useState('');
-  const [employeId,      setEmployeId]      = useState('');
   const [optionPaiement, setOptionPaiement] = useState('a_payer');
   const [montantAcompte, setMontantAcompte] = useState('');
   const [modePaiement,   setModePaiement]   = useState('Cash');
   const [notes,          setNotes]          = useState('');
-  
-  // Reduction state
-  const [reductionType,   setReductionType]   = useState('none');
-  const [reductionValeur, setReductionValeur] = useState('');
-  const [reductionMotif,  setReductionMotif]  = useState('');
 
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState([]);
@@ -56,6 +53,11 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
   // Notes editing state
   const [editingNoteIndex, setEditingNoteIndex] = useState(null);
   const [editingNoteText, setEditingNoteText]   = useState('');
+
+  // New Filters
+  const [searchResTerm, setSearchResTerm] = useState('');
+  const [dateDebutRes, setDateDebutRes] = useState('');
+  const [dateFinRes, setDateFinRes] = useState('');
 
 
 
@@ -93,35 +95,21 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
   // ── Créer une réservation ─────────────────────────────────────────────────
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!clientNom || !serviceId || !datePrevue || !heurePrevue || !employeId) {
-      alert('Veuillez remplir tous les champs obligatoires.');
+    if (!clientNom || !datePrevue || !heurePrevue || lignesPanier.length === 0 || !lignesPanier[0].serviceId) {
+      alert('Veuillez remplir tous les champs obligatoires et choisir au moins une prestation.');
       return;
     }
 
-    const service = services.find(s => s.id === serviceId);
-    const employe = employes.find(emp => emp.id === employeId);
-    if (!service || !employe) return;
-
-    let prixBase = Number(service.prixDefaut);
-    let prixTotal = prixBase;
-
-    if (reductionType === 'percent') {
-      prixTotal = prixBase - (prixBase * (Number(reductionValeur) / 100));
-    } else if (reductionType === 'amount') {
-      prixTotal = prixBase - Number(reductionValeur);
-    } else if (reductionType === 'offert') {
-      prixTotal = 0;
-    }
-    prixTotal = Math.max(0, prixTotal);
-
-    if (reductionType !== 'none' && !reductionMotif.trim()) {
-      alert("Veuillez saisir un motif pour la réduction.");
-      return;
-    }
+    const prixTotal = lignesPanier.reduce((sum, l) => sum + Number(l.prixFinal || 0), 0);
+    const prixBaseTotal = lignesPanier.reduce((sum, l) => sum + Number(l.prixBase || 0), 0);
 
     let statut      = 'non_paye';
     let acomptePaye = 0;
     const nowISO    = getTransactionDate();
+    const serviceNoms = lignesPanier.map(l => l.serviceNom).join(', ');
+    const motifTx = lignesPanier.length === 1 ? serviceNoms : `Forfait (${lignesPanier.length} prestations)`;
+    // For legacy compat in tx, pick the first agent if any
+    const firstAgent = lignesPanier[0]?.agents?.[0] || null;
 
     try {
       if (optionPaiement === 'avance') {
@@ -130,10 +118,11 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
         await addDoc(collection(db, 'transactions'), {
           type: 'prestation',
           montant: prixTotal,
-          motif: `Réservation d'avance - ${clientNom} (${service.nom})`,
-          employeId: employe.id,
-          employeNom: employe.nom,
+          motif: `Réservation d'avance - ${clientNom} (${motifTx})`,
+          employeId: firstAgent ? firstAgent.id : '',
+          employeNom: firstAgent ? firstAgent.nom : '',
           modePaiement,
+          lignes: lignesPanier,
           date: nowISO
         });
         console.log('[Reservations] Transaction avance créée.');
@@ -154,32 +143,30 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
         await addDoc(collection(db, 'transactions'), {
           type: 'prestation',
           montant: acomptePaye,
-          motif: `Acompte réservation - ${clientNom} (${service.nom})`,
-          employeId: employe.id,
-          employeNom: employe.nom,
+          motif: `Acompte réservation - ${clientNom} (${motifTx})`,
+          employeId: firstAgent ? firstAgent.id : '',
+          employeNom: firstAgent ? firstAgent.nom : '',
           modePaiement,
+          lignes: lignesPanier,
           date: nowISO
         });
         console.log('[Reservations] Transaction acompte créée.');
       }
 
       await addDoc(collection(db, 'reservations'), {
-        clientNom, clientTel, serviceId,
-        serviceNom: service.nom, 
-        prixBase,
+        clientNom, clientTel,
+        serviceNom: serviceNoms, 
+        prixBase: prixBaseTotal,
         prixTotal,
-        reductionType,
-        reductionValeur: Number(reductionValeur) || 0,
-        reductionMotif: reductionMotif.trim(),
+        lignes: lignesPanier,
         datePrevue, heurePrevue,
-        employeId, employeNom: employe.nom,
         statut, acomptePaye,
         historiqueNotes: notes.trim() ? [{ texte: notes.trim(), date: nowISO }] : [],
         createdAt: nowISO
       });
       console.log('[Reservations] Réservation créée avec statut:', statut);
       
-      await logEvent('RESERVATION_CREATE', `Réservation pour ${clientNom} (${service.nom}) par ${employe.nom}. Statut: ${statut}`);
+      await logEvent('RESERVATION_CREATE', `Réservation pour ${clientNom} (${motifTx}). Statut: ${statut}`);
 
     } catch (err) {
       console.error('[Reservations] Erreur lors de la création:', err);
@@ -188,11 +175,11 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
     }
 
     // Reset formulaire
-    setClientNom(''); setClientTel(''); setServiceId('');
-    setDatePrevue(''); setHeurePrevue(''); setEmployeId('');
+    setClientNom(''); setClientTel('');
+    setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
+    setDatePrevue(''); setHeurePrevue(''); 
     setOptionPaiement('a_payer'); setMontantAcompte(''); setModePaiement('Cash');
     setNotes('');
-    setReductionType('none'); setReductionValeur(''); setReductionMotif('');
     setIsFormModalOpen(false);
   };
 
@@ -200,7 +187,19 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
   const handleTimeSlotClick = (dateStr, timeStr) => {
     setDatePrevue(dateStr);
     setHeurePrevue(timeStr);
+    setViewMode('liste');
     setIsFormModalOpen(true);
+  };
+
+  const handleEventDrop = async (resId, newDateStr, newTimeStr) => {
+    try {
+      const docRef = doc(db, 'reservations', resId);
+      await updateDoc(docRef, { datePrevue: newDateStr, heurePrevue: newTimeStr });
+      logEvent('Déplacement Rendez-vous', `Res ID: ${resId} déplacé au ${newDateStr} à ${newTimeStr}`);
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors du déplacement du rendez-vous.');
+    }
   };
 
   // ── Ouvrir le modal d'encaissement ───────────────────────────────────────
@@ -281,41 +280,42 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
     setEditingNoteText('');
   };
 
+  const handleOpenEditModal = (res) => {
+    let lignes = res.lignes;
+    if (!lignes || lignes.length === 0) {
+      lignes = [{
+        serviceId: res.serviceId || '',
+        serviceNom: res.serviceNom || '',
+        prixBase: res.prixBase || 0,
+        prixFinal: res.prixTotal || 0,
+        agents: res.employeId ? [{ id: res.employeId, nom: res.employeNom }] : [],
+        remiseType: res.reductionType || 'aucune',
+        remiseValeur: res.reductionValeur || '',
+        remiseMotif: res.reductionMotif || ''
+      }];
+    }
+    setEditModal({ ...res, lignes });
+  };
+
   const handleEditSubmit = async (e) => {
     e.preventDefault();
-    const service = services.find(s => s.id === editModal.serviceId);
-    const employe = employes.find(emp => emp.id === editModal.employeId);
-    
-    let prixBase = Number(service.prixDefaut);
-    let prixTotal = prixBase;
-
-    if (editModal.reductionType === 'percent') {
-      prixTotal = prixBase - (prixBase * (Number(editModal.reductionValeur) / 100));
-    } else if (editModal.reductionType === 'amount') {
-      prixTotal = prixBase - Number(editModal.reductionValeur);
-    } else if (editModal.reductionType === 'offert') {
-      prixTotal = 0;
-    }
-    prixTotal = Math.max(0, prixTotal);
-
-    if (editModal.reductionType && editModal.reductionType !== 'none' && !(editModal.reductionMotif || '').trim()) {
-      alert("Veuillez saisir un motif pour la réduction.");
+    if (!editModal.lignes || editModal.lignes.length === 0 || !editModal.lignes[0].serviceId) {
+      alert("Veuillez choisir au moins une prestation.");
       return;
     }
+
+    const prixTotal = editModal.lignes.reduce((sum, l) => sum + Number(l.prixFinal || 0), 0);
+    const prixBaseTotal = editModal.lignes.reduce((sum, l) => sum + Number(l.prixBase || 0), 0);
+    const serviceNoms = editModal.lignes.map(l => l.serviceNom).join(', ');
 
     await updateDoc(doc(db, 'reservations', editModal.id), {
       datePrevue: editModal.datePrevue,
       heurePrevue: editModal.heurePrevue,
-      serviceId: editModal.serviceId,
-      serviceNom: service.nom,
-      employeId: editModal.employeId,
-      employeNom: employe.nom,
-      statut: editModal.statut,
-      prixBase,
+      serviceNom: serviceNoms,
+      prixBase: prixBaseTotal,
       prixTotal,
-      reductionType: editModal.reductionType || 'none',
-      reductionValeur: Number(editModal.reductionValeur) || 0,
-      reductionMotif: (editModal.reductionMotif || '').trim()
+      lignes: editModal.lignes,
+      statut: editModal.statut,
     });
     setEditModal(null);
   };
@@ -336,11 +336,32 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
   // ── Filtrage des réservations selon l'onglet ──────────────────────────────
   const todayISO = activeDate;
 
-  const filteredReservations = reservations.filter(res => {
-    if (activeTab === 'aujourd_hui') return res.datePrevue === todayISO;
-    if (activeTab === 'a_venir')    return res.datePrevue > todayISO;
-    return res.datePrevue < todayISO;
-  });
+  let filteredReservations = reservations;
+
+  if (dateDebutRes || dateFinRes) {
+    filteredReservations = filteredReservations.filter(res => {
+      const d = res.datePrevue;
+      const start = dateDebutRes || '0000-00-00';
+      const end = dateFinRes || '9999-99-99';
+      return d >= start && d <= end;
+    });
+  } else {
+    filteredReservations = filteredReservations.filter(res => {
+      if (activeTab === 'aujourd_hui') return res.datePrevue === todayISO;
+      if (activeTab === 'a_venir')    return res.datePrevue > todayISO;
+      return res.datePrevue < todayISO;
+    });
+  }
+
+  if (searchResTerm) {
+    const st = searchResTerm.toLowerCase();
+    filteredReservations = filteredReservations.filter(res => 
+      (res.clientNom || '').toLowerCase().includes(st) ||
+      (res.clientTel || '').toLowerCase().includes(st) ||
+      (res.employeNom || '').toLowerCase().includes(st) ||
+      (res.serviceNom || '').toLowerCase().includes(st)
+    );
+  }
 
   // ── Helpers statut ────────────────────────────────────────────────────────
   const handleToggleSelect = (id) => {
@@ -425,53 +446,16 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
           <input type="text" className="input-control" placeholder="Numéro (Optionnel)"
             value={clientTel} onChange={e => setClientTel(e.target.value)} />
         </div>
-
-        <div className="form-group">
-          <label>Service</label>
-          <select className="input-control" value={serviceId} onChange={e => setServiceId(e.target.value)}>
-            <option value="">Sélectionner un service</option>
-            {services.map(s => <option key={s.id} value={s.id}>{s.nom} — {s.prixDefaut} FCFA</option>)}
-          </select>
+        
+        <div style={{ gridColumn: '1 / -1' }}>
+          <PanierPrestations 
+            lignes={lignesPanier}
+            setLignes={setLignesPanier}
+            services={services}
+            employes={employes}
+            showClientField={false}
+          />
         </div>
-
-        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label>Coiffeur assigné</label>
-            <select className="input-control" value={employeId} onChange={e => setEmployeId(e.target.value)}>
-              <option value="">Sélectionner un coiffeur</option>
-              {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
-            </select>
-          </div>
-
-          <div className="form-group" style={{ margin: 0 }}>
-            <label>Réduction (Optionnel)</label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <select className="input-control" value={reductionType} onChange={e => { setReductionType(e.target.value); if (e.target.value === 'offert') setReductionValeur('100'); }} style={{ flex: 1 }}>
-                <option value="none">Aucune</option>
-                <option value="percent">Pourcentage (%)</option>
-                <option value="amount">Montant fixe (FCFA)</option>
-                <option value="offert">Prestation Offerte</option>
-              </select>
-              {(reductionType === 'percent' || reductionType === 'amount') && (
-                <input type="number" className="input-control" style={{ width: '100px' }} placeholder={reductionType === 'percent' ? '%' : 'FCFA'} value={reductionValeur} onChange={e => setReductionValeur(e.target.value)} />
-              )}
-            </div>
-          </div>
-
-          {reductionType !== 'none' && (
-            <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
-              <label>Motif de la réduction *</label>
-              <input type="text" className="input-control" placeholder="Ex: Geste commercial, Client fidèle..." value={reductionMotif} onChange={e => setReductionMotif(e.target.value)} />
-            </div>
-          )}
-        </div>
-
-        {/* Affichage du prix calculé si réduction */}
-        {reductionType !== 'none' && serviceId && (
-          <div style={{ gridColumn: '1 / -1', padding: '10px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', borderRadius: '8px', fontWeight: 'bold' }}>
-            Prix après remise : {Math.max(0, reductionType === 'offert' ? 0 : reductionType === 'percent' ? Number(services.find(s=>s.id===serviceId)?.prixDefaut) * (1 - (Number(reductionValeur)/100)) : Number(services.find(s=>s.id===serviceId)?.prixDefaut) - Number(reductionValeur))} FCFA
-          </div>
-        )}
 
         <div className="form-group">
           <label><Calendar size={14} style={{ marginRight: 5, verticalAlign: 'middle' }} /> Date Prévue</label>
@@ -594,6 +578,7 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
             reservations={reservations} 
             onTimeSlotClick={handleTimeSlotClick} 
             onEventClick={setEventDetailsModal} 
+            onEventUpdate={handleEventDrop}
           />
         ) : (
           <div className="card">
@@ -605,7 +590,34 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
               <h2 className="card-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>Agenda des Rendez-vous</h2>
-              <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px' }}>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', alignItems: 'flex-end' }}>
+              <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+                <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '15px' }} />
+                <input 
+                  type="text" 
+                  className="input-control" 
+                  style={{ paddingLeft: '40px', width: '100%', minHeight: '48px', margin: 0 }}
+                  placeholder="Rechercher par client, téléphone, coiffeur..." 
+                  value={searchResTerm} 
+                  onChange={e => setSearchResTerm(e.target.value)} 
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Du</label>
+                  <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateDebutRes} onChange={e => setDateDebutRes(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Au</label>
+                  <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateFinRes} onChange={e => setDateFinRes(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            {(!dateDebutRes && !dateFinRes) && (
+              <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px', marginBottom: '15px', width: 'fit-content' }}>
                 {[
                   { key: 'aujourd_hui', label: "Aujourd'hui" },
                   { key: 'a_venir',     label: 'À venir' },
@@ -619,7 +631,7 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
                   </button>
                 ))}
               </div>
-            </div>
+            )}
 
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
@@ -636,7 +648,7 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
                   <th style={{ padding: '10px' }}>Date & Heure</th>
                   <th style={{ padding: '10px' }}>Client</th>
                   <th style={{ padding: '10px' }}>Prestation</th>
-                  <th style={{ padding: '10px' }}>Coiffeur</th>
+                  <th style={{ padding: '10px' }}>Agent(s)</th>
                   <th style={{ padding: '10px' }}>Statut</th>
                   <th style={{ padding: '10px', textAlign: 'center' }}>Actions</th>
                 </tr>
@@ -701,7 +713,7 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
                             <MessageSquare size={14} />
                           </button>
                           <button
-                            onClick={() => setEditModal(res)}
+                            onClick={() => handleOpenEditModal(res)}
                             className="btn btn-small"
                             style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
                             title="Modifier"
@@ -779,8 +791,36 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
 
             <div style={{ marginBottom: '20px' }}>
               <p><strong>Client:</strong> {eventDetailsModal.clientNom} {eventDetailsModal.clientTel ? `(${eventDetailsModal.clientTel})` : ''}</p>
-              <p><strong>Prestation:</strong> {eventDetailsModal.serviceNom}</p>
-              <p><strong>Coiffeur:</strong> {eventDetailsModal.employeNom}</p>
+              
+              {(() => {
+                let agentsStr = eventDetailsModal.employeNom || 'Non assigné';
+                let servicesStr = eventDetailsModal.serviceNom || 'Aucune prestation';
+
+                if (eventDetailsModal._isExpanded) {
+                  agentsStr = eventDetailsModal._agentNom || eventDetailsModal.employeNom;
+                  servicesStr = eventDetailsModal._servicesStr || eventDetailsModal.serviceNom;
+                } else if (eventDetailsModal.lignes && eventDetailsModal.lignes.length > 0) {
+                  const allAgents = new Set();
+                  const allServices = [];
+                  eventDetailsModal.lignes.forEach(l => {
+                    allServices.push(l.serviceNom);
+                    if (l.agents && l.agents.length > 0) {
+                      l.agents.forEach(a => allAgents.add(a.nom));
+                    }
+                  });
+                  if (allAgents.size > 0) agentsStr = Array.from(allAgents).join(', ');
+                  if (allServices.length > 0) servicesStr = allServices.join(', ');
+                }
+                const label = agentsStr.includes(',') ? 'Agents:' : 'Agent:';
+                
+                return (
+                  <>
+                    <p><strong>Prestation(s):</strong> {servicesStr}</p>
+                    <p><strong>{label}</strong> {agentsStr}</p>
+                  </>
+                );
+              })()}
+
               <p><strong>Horaire:</strong> {eventDetailsModal.datePrevue} à {eventDetailsModal.heurePrevue}</p>
               <p><strong>Statut:</strong> {renderBadge(eventDetailsModal)}</p>
             </div>
@@ -792,7 +832,7 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
               <button onClick={() => { setNotesModal(eventDetailsModal); setEventDetailsModal(null); }} className="btn btn-small" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', flex: 1 }}>
                 <MessageSquare size={16} style={{ marginRight: '4px' }} /> Notes
               </button>
-              <button onClick={() => { setEditModal(eventDetailsModal); setEventDetailsModal(null); }} className="btn btn-small" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', flex: 1 }}>
+              <button onClick={() => { handleOpenEditModal(eventDetailsModal); setEventDetailsModal(null); }} className="btn btn-small" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', flex: 1 }}>
                 <Edit2 size={16} style={{ marginRight: '4px' }} /> Modifier
               </button>
               {isNonEncaisse(eventDetailsModal.statut) && (
@@ -986,41 +1026,15 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
                 </div>
               </div>
               
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Prestation</label>
-                <select className="input-control" value={editModal.serviceId} onChange={e => setEditModal({...editModal, serviceId: e.target.value})} required>
-                  {services.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
-                </select>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <PanierPrestations 
+                  lignes={editModal.lignes || []}
+                  setLignes={(newLignes) => setEditModal({ ...editModal, lignes: newLignes })}
+                  services={services}
+                  employes={employes}
+                  showClientField={false}
+                />
               </div>
-              
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Coiffeur</label>
-                <select className="input-control" value={editModal.employeId} onChange={e => setEditModal({...editModal, employeId: e.target.value})} required>
-                  {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
-                </select>
-              </div>
-
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Réduction</label>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <select className="input-control" value={editModal.reductionType || 'none'} onChange={e => { setEditModal({...editModal, reductionType: e.target.value, reductionValeur: e.target.value === 'offert' ? '100' : editModal.reductionValeur}); }} style={{ flex: 1 }}>
-                    <option value="none">Aucune</option>
-                    <option value="percent">Pourcentage (%)</option>
-                    <option value="amount">Montant fixe (FCFA)</option>
-                    <option value="offert">Prestation Offerte</option>
-                  </select>
-                  {(editModal.reductionType === 'percent' || editModal.reductionType === 'amount') && (
-                    <input type="number" className="input-control" style={{ width: '100px' }} placeholder={editModal.reductionType === 'percent' ? '%' : 'FCFA'} value={editModal.reductionValeur || ''} onChange={e => setEditModal({...editModal, reductionValeur: e.target.value})} />
-                  )}
-                </div>
-              </div>
-              
-              {editModal.reductionType && editModal.reductionType !== 'none' && (
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label>Motif de la réduction *</label>
-                  <input type="text" className="input-control" placeholder="Geste commercial, Retard..." value={editModal.reductionMotif || ''} onChange={e => setEditModal({...editModal, reductionMotif: e.target.value})} />
-                </div>
-              )}
 
               <div className="form-group" style={{ margin: 0 }}>
                 <label>Statut</label>

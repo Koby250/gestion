@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Users, AlertTriangle, CheckCircle, ShieldAlert, Plus, Trash2 } from 'lucide-react';
+import { Users, AlertTriangle, CheckCircle, ShieldAlert, Plus, Trash2, Edit2, X, Save, Search } from 'lucide-react';
 import BulkActionBar from './BulkActionBar';
+import SuccessModal from './SuccessModal';
 
-const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
+const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUserNom = '' }) => {
   const [employes, setEmployes] = useState([]);
   const [avances, setAvances] = useState([]);
   const [chargesFixes, setChargesFixes] = useState([]);
@@ -13,6 +14,10 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
 
   // Bulk Selection State
   const [selectedAvances, setSelectedAvances] = useState([]);
+
+  // Edit State
+  const [editingAvanceId, setEditingAvanceId] = useState(null);
+  const [editAvanceForm, setEditAvanceForm] = useState({ montant: '', date: '', motif: '', statut: '' });
 
   const [formAvance, setFormAvance] = useState({
     employeId: '',
@@ -24,6 +29,14 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [selectedEmpHistory, setSelectedEmpHistory] = useState(null);
+
+  // New Filters
+  const [searchAvanceTerm, setSearchAvanceTerm] = useState('');
+  const [dateDebutAvance, setDateDebutAvance] = useState('');
+  const [dateFinAvance, setDateFinAvance] = useState('');
+  const [searchEmpTerm, setSearchEmpTerm] = useState('');
 
   useEffect(() => {
     // 1. Fetch Employés
@@ -84,12 +97,13 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
         date: new Date(formAvance.date).toISOString(),
         modePaiement: formAvance.modePaiement,
         motif: formAvance.motif,
-        createdAt: new Date().toISOString()
+        statut: 'En cours',
+        saisieParNom: currentUserNom
       });
       
       setFormAvance({ ...formAvance, montant: '', motif: 'Avance sur salaire' });
-      setMsg({ type: 'success', text: 'Avance enregistrée avec succès.' });
-      setTimeout(() => setMsg(null), 3000);
+      setShowSuccess(true);
+      setMsg(null);
     } catch {
       setMsg({ type: 'error', text: "Erreur lors de l'enregistrement." });
     } finally {
@@ -101,6 +115,24 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
     if (window.confirm('Voulez-vous supprimer cette avance ?')) {
       await deleteDoc(doc(db, 'avances_salaires', id));
     }
+  };
+
+  const startEditAvance = (av) => {
+    setEditingAvanceId(av.id);
+    const d = new Date(av.date);
+    const dateStr = d.toISOString().substring(0, 10);
+    setEditAvanceForm({ montant: av.montant.toString(), date: dateStr, motif: av.motif || '', statut: av.statut || 'En cours' });
+  };
+
+  const saveEditAvance = async (id) => {
+    await updateDoc(doc(db, 'avances_salaires', id), {
+      montant: Number(editAvanceForm.montant),
+      date: new Date(editAvanceForm.date).toISOString(),
+      motif: editAvanceForm.motif,
+      statut: editAvanceForm.statut
+    });
+    setEditingAvanceId(null);
+    setShowSuccess(true);
   };
 
   const seedEmployes = async () => {
@@ -130,6 +162,16 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
   // Calculs Globaux Trésorerie
   const activeDateObj = new Date(activeDate);
   const startOfMonthStr = new Date(activeDateObj.getFullYear(), activeDateObj.getMonth(), 1).toISOString();
+
+  // Filtrage Employes (pour l'affichage)
+  const displayedEmployes = employes.filter(e => {
+    if (!e.actif) return false;
+    if (searchEmpTerm) {
+      const st = searchEmpTerm.toLowerCase();
+      return (e.nom || '').toLowerCase().includes(st);
+    }
+    return true;
+  });
 
   const totalSalairesBruts = employes.reduce((acc, emp) => acc + (Number(emp.salaireFixe) || 0), 0);
   const totalChargesFixes = chargesFixes.filter(c => c.actif).reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
@@ -190,6 +232,55 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
 
   return (
     <div className="view-container">
+      {showSuccess && <SuccessModal message="Opération validée avec succès !" onClose={() => setShowSuccess(false)} />}
+      
+      {/* MODALE DÉTAIL DES AVANCES */}
+      {selectedEmpHistory && (() => {
+        const empAvances = avances.filter(a => a.employeId === selectedEmpHistory.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+        return (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
+          }}>
+            <div className="card" style={{ width: '100%', maxWidth: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                <h2 style={{ fontSize: '1.2rem', margin: 0 }}>Historique des avances - {selectedEmpHistory.nom}</h2>
+                <button onClick={() => setSelectedEmpHistory(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-main)' }}><X size={24} /></button>
+              </div>
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {empAvances.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>Aucune avance trouvée pour cet employé.</p>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '10px 8px' }}>Date</th>
+                        <th style={{ padding: '10px 8px' }}>Motif</th>
+                        <th style={{ padding: '10px 8px' }}>Statut</th>
+                        <th style={{ padding: '10px 8px', textAlign: 'right' }}>Montant</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {empAvances.map(av => (
+                        <tr key={av.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '10px 8px' }}>{new Date(av.date).toLocaleDateString('fr-FR')}</td>
+                          <td style={{ padding: '10px 8px' }}>{av.motif || '-'}</td>
+                          <td style={{ padding: '10px 8px' }}>
+                            <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem', backgroundColor: av.statut === 'Déduit' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)', color: av.statut === 'Déduit' ? 'var(--success)' : '#F59E0B' }}>
+                              {av.statut || 'En cours'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 'bold' }}>{Number(av.montant).toLocaleString('fr-FR')} F</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       
       {employes.length === 0 && (
         <div style={{ padding: '20px', backgroundColor: 'var(--bg-input)', borderRadius: '12px', marginBottom: '20px', textAlign: 'center' }}>
@@ -226,7 +317,18 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
               <div style={{ height: '100%', width: `${Math.min(pctSalaires, 100)}%`, backgroundColor: 'var(--accent-color)', borderRadius: '4px' }} />
             </div>
             <div style={{ marginTop: '12px', borderTop: '1px solid rgba(37,99,235,0.15)', paddingTop: '10px' }}>
-              {employes.filter(e => e.actif).map(e => (
+              <div style={{ position: 'relative', marginBottom: '10px' }}>
+                <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: '8px', top: '10px' }} />
+                <input 
+                  type="text" 
+                  className="input-control" 
+                  style={{ paddingLeft: '30px', width: '100%', fontSize: '0.8rem', minHeight: '34px', margin: 0 }}
+                  placeholder="Rechercher un employé..." 
+                  value={searchEmpTerm} 
+                  onChange={e => setSearchEmpTerm(e.target.value)} 
+                />
+              </div>
+              {displayedEmployes.map(e => (
                 <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', padding: '2px 0' }}>
                   <span>{e.nom}</span>
                   <span style={{ fontWeight: '600', color: 'var(--text-main)' }}>{Number(e.salaireFixe).toLocaleString('fr-FR')} F</span>
@@ -277,6 +379,50 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
             <div style={{ width: `${pctDepenses}%`, backgroundColor: 'hsl(30, 95%, 55%)', transition: 'width 0.5s ease' }} />
             <div style={{ width: `${pctMarge}%`, backgroundColor: 'var(--success)', transition: 'width 0.5s ease' }} />
           </div>
+        </div>
+      </div>
+
+      {/* ÉTAT DU PERSONNEL & AVANCES (Mois en cours) */}
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <h2 className="card-title" style={{ marginBottom: '15px' }}>Situation Financière du Personnel (Mois en cours)</h2>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                <th style={{ padding: '12px 10px' }}>Employé</th>
+                <th style={{ padding: '12px 10px', textAlign: 'right' }}>Salaire de Base</th>
+                <th style={{ padding: '12px 10px', textAlign: 'right' }}>Avances (Ce mois)</th>
+                <th style={{ padding: '12px 10px', textAlign: 'right' }}>Reste à Percevoir</th>
+                <th style={{ padding: '12px 10px', textAlign: 'center' }}>Détails</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedEmployes.map(emp => {
+                const avancesMois = avances
+                  .filter(a => a.employeId === emp.id && a.date >= startOfMonthStr)
+                  .reduce((acc, a) => acc + Number(a.montant), 0);
+                const reste = (Number(emp.salaireFixe) || 0) - avancesMois;
+                return (
+                  <tr key={emp.id} style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }} onClick={() => setSelectedEmpHistory(emp)}>
+                    <td style={{ padding: '12px 10px', fontWeight: 'bold', color: 'var(--text-main)' }}>{emp.nom} <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>({emp.categorie || 'Staff'})</span></td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right' }}>{(Number(emp.salaireFixe) || 0).toLocaleString('fr-FR')} F</td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', color: 'var(--danger)', fontWeight: 'bold' }}>{avancesMois > 0 ? `-${avancesMois.toLocaleString('fr-FR')} F` : '0 F'}</td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', color: reste >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 'bold' }}>{reste.toLocaleString('fr-FR')} F</td>
+                    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                      <button className="btn btn-small" onClick={(e) => { e.stopPropagation(); setSelectedEmpHistory(emp); }} style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}>
+                        Voir historique
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {displayedEmployes.length === 0 && (
+                <tr>
+                  <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Aucun employé trouvé.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -371,8 +517,34 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
 
         {/* HISTORIQUE DES AVANCES */}
         <div className="card" style={{ flex: 2, minWidth: '350px' }}>
-          <h2 className="card-title">Historique des Avances</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+            <h2 className="card-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>Historique des Avances</h2>
+          </div>
           
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+              <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '15px' }} />
+              <input 
+                type="text" 
+                className="input-control" 
+                style={{ paddingLeft: '40px', width: '100%', minHeight: '48px', margin: 0 }}
+                placeholder="Rechercher par employé, motif..." 
+                value={searchAvanceTerm} 
+                onChange={e => setSearchAvanceTerm(e.target.value)} 
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Du</label>
+                <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateDebutAvance} onChange={e => setDateDebutAvance(e.target.value)} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Au</label>
+                <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateFinAvance} onChange={e => setDateFinAvance(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
           <BulkActionBar 
             selectedIds={selectedAvances} 
             collectionName="avances_salaires" 
@@ -395,41 +567,98 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
                   <th style={{ padding: '12px 10px' }}>Employé</th>
                   <th style={{ padding: '12px 10px' }}>Montant</th>
                   <th style={{ padding: '12px 10px' }}>Mode</th>
+                  <th style={{ padding: '12px 10px' }}>Motif / Note</th>
+                  <th style={{ padding: '12px 10px' }}>Statut</th>
+                  <th style={{ padding: '12px 10px' }}>Saisi par</th>
                   <th style={{ padding: '12px 10px', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {avances.length === 0 ? (
-                  <tr><td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Aucune avance enregistrée.</td></tr>
-                ) : (
-                  avances.map(av => {
+                {(() => {
+                  const filteredAvances = avances.filter(a => {
+                    if (dateDebutAvance && a.date < dateDebutAvance) return false;
+                    if (dateFinAvance && a.date > dateFinAvance) return false;
+                    if (searchAvanceTerm) {
+                      const st = searchAvanceTerm.toLowerCase();
+                      return (a.employeNom || '').toLowerCase().includes(st) || 
+                             (a.motif || '').toLowerCase().includes(st);
+                    }
+                    return true;
+                  });
+
+                  if (filteredAvances.length === 0) {
+                    return <tr><td colSpan="9" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Aucune avance trouvée.</td></tr>;
+                  }
+                  return filteredAvances.map(av => {
                     const d = new Date(av.date);
                     return (
-                      <tr key={av.id} style={{ 
-                        borderBottom: '1px solid var(--border-color)',
-                        backgroundColor: selectedAvances.includes(av.id) ? 'rgba(37,99,235,0.05)' : 'transparent'
-                      }}>
-                        <td style={{ padding: '12px 10px' }}>
-                          <input 
-                            type="checkbox"
-                            checked={selectedAvances.includes(av.id)}
-                            onChange={() => toggleSelection(av.id)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px 10px' }}>{d.toLocaleDateString('fr-FR')}</td>
-                        <td style={{ padding: '12px 10px', fontWeight: '600' }}>{av.employeNom}</td>
-                        <td style={{ padding: '12px 10px', color: 'var(--accent-color)', fontWeight: 'bold' }}>{Number(av.montant).toLocaleString('fr-FR')} FCFA</td>
-                        <td style={{ padding: '12px 10px', textTransform: 'capitalize' }}>{av.modePaiement}</td>
-                        <td style={{ padding: '12px 10px', textAlign: 'right' }}>
-                          <button onClick={() => handleDelete(av.id)} className="btn btn-small btn-danger" title="Supprimer">
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    )
+                      editingAvanceId === av.id ? (
+                        <tr key={av.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-input)' }}>
+                          <td style={{ padding: '12px 10px' }}></td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <input type="date" className="input-control" style={{ width: '130px', margin: 0, padding: '4px' }} value={editAvanceForm.date} onChange={e => setEditAvanceForm({...editAvanceForm, date: e.target.value})} />
+                          </td>
+                          <td style={{ padding: '12px 10px', fontWeight: '600' }}>{av.employeNom}</td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <input type="number" className="input-control" style={{ width: '100px', margin: 0, padding: '4px' }} value={editAvanceForm.montant} onChange={e => setEditAvanceForm({...editAvanceForm, montant: e.target.value})} />
+                          </td>
+                          <td style={{ padding: '12px 10px', textTransform: 'capitalize' }}>{av.modePaiement}</td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <input type="text" className="input-control" style={{ width: '100%', minWidth: '120px', margin: 0, padding: '4px' }} value={editAvanceForm.motif} onChange={e => setEditAvanceForm({...editAvanceForm, motif: e.target.value})} placeholder="Motif" />
+                          </td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <select className="input-control" style={{ width: '110px', margin: 0, padding: '4px' }} value={editAvanceForm.statut} onChange={e => setEditAvanceForm({...editAvanceForm, statut: e.target.value})}>
+                              <option value="En cours">En cours</option>
+                              <option value="Déduit">Déduit</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: '12px 10px' }}></td>
+                          <td style={{ padding: '12px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <button onClick={() => saveEditAvance(av.id)} className="btn btn-small btn-success" title="Enregistrer"><Save size={14} /></button>
+                            <button onClick={() => setEditingAvanceId(null)} className="btn btn-small" style={{ marginLeft: '4px' }} title="Annuler"><X size={14} /></button>
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={av.id} style={{ 
+                          borderBottom: '1px solid var(--border-color)',
+                          backgroundColor: selectedAvances.includes(av.id) ? 'rgba(37,99,235,0.05)' : 'transparent'
+                        }}>
+                          <td style={{ padding: '12px 10px' }}>
+                            <input 
+                              type="checkbox"
+                              checked={selectedAvances.includes(av.id)}
+                              onChange={() => toggleSelection(av.id)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
+                          <td style={{ padding: '12px 10px' }}>{d.toLocaleDateString('fr-FR')}</td>
+                          <td style={{ padding: '12px 10px', fontWeight: '600' }}>{av.employeNom}</td>
+                          <td style={{ padding: '12px 10px', color: 'var(--accent-color)', fontWeight: 'bold' }}>{Number(av.montant).toLocaleString('fr-FR')} F</td>
+                          <td style={{ padding: '12px 10px', textTransform: 'capitalize' }}>{av.modePaiement}</td>
+                          <td style={{ padding: '12px 10px', color: 'var(--text-muted)' }}>{av.motif || '-'}</td>
+                          <td style={{ padding: '12px 10px' }}>
+                            <span style={{ 
+                              padding: '4px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold',
+                              backgroundColor: (av.statut || 'En cours') === 'Déduit' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                              color: (av.statut || 'En cours') === 'Déduit' ? 'var(--success)' : '#F59E0B'
+                            }}>
+                              {av.statut || 'En cours'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 10px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{av.saisieParNom || '-'}</td>
+                          <td style={{ padding: '12px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <button onClick={() => startEditAvance(av)} className="btn btn-small" style={{ backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)', marginRight: '6px' }} title="Modifier">
+                              <Edit2 size={14} />
+                            </button>
+                            <button onClick={() => handleDelete(av.id)} className="btn btn-small btn-danger" title="Supprimer">
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    );
                   })
-                )}
+                  })()}
               </tbody>
             </table>
           </div>

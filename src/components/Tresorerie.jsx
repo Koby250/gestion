@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Wallet, ArrowRightLeft, Edit2, CheckCircle } from 'lucide-react';
+import { Wallet, ArrowRightLeft, Edit2, CheckCircle, Search } from 'lucide-react';
 import { logEvent } from '../utils/audit';
+import SuccessModal from './SuccessModal';
 
 const accountsList = [
   { id: 'cash', label: 'Cash (Espèces)' },
@@ -12,7 +13,7 @@ const accountsList = [
   { id: 'autre', label: 'Autre' }
 ];
 
-const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
+const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), currentUserNom = '' }) => {
   const [soldes, setSoldes] = useState({ cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 });
   
   // Editing state
@@ -24,6 +25,16 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10) }) 
   const [transferTo, setTransferTo] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
   const [transferMsg, setTransferMsg] = useState(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // View state for mobile tabs
+  const [activeTab, setActiveTab] = useState('balances'); // 'balances', 'transfer', 'history'
+  const [transferHistory, setTransferHistory] = useState([]);
+
+  // Filters for history
+  const [searchTresTerm, setSearchTresTerm] = useState('');
+  const [dateDebutTres, setDateDebutTres] = useState('');
+  const [dateFinTres, setDateFinTres] = useState('');
 
   useEffect(() => {
 
@@ -63,8 +74,10 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10) }) 
     };
 
     const unsubTx = onSnapshot(collection(db, 'transactions'), (snapshot) => {
-      txData = snapshot.docs.map(d => d.data());
+      txData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       calcTheo();
+      // Extract transfers
+      setTransferHistory(txData.filter(t => t.type === 'transfert').sort((a, b) => new Date(b.date) - new Date(a.date)));
     });
 
     const unsubAv = onSnapshot(collection(db, 'avances_salaires'), (snapshot) => {
@@ -143,16 +156,16 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10) }) 
         motif: `Transfert de ${accFrom} vers ${accTo}`,
         fromAccount: transferFrom,
         toAccount: transferTo,
-        date: getTransactionDate()
+        date: getTransactionDate(),
+        saisieParNom: currentUserNom
       });
 
       await logEvent('TRESORERIE_TRANSFERT', `Transfert de ${amount} FCFA de [${accFrom}] vers [${accTo}]`);
-      
       setTransferAmount('');
       setTransferFrom('');
       setTransferTo('');
-      setTransferMsg({ type: 'success', text: 'Transfert effectué avec succès.' });
-      setTimeout(() => setTransferMsg(null), 3000);
+      setShowSuccess(true);
+      setTransferMsg(null);
     } catch {
       setTransferMsg({ type: 'error', text: 'Erreur lors du transfert.' });
     }
@@ -160,141 +173,265 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10) }) 
 
   return (
     <div className="view-container">
-      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+      {showSuccess && <SuccessModal message="Transfert effectué avec succès !" onClose={() => setShowSuccess(false)} />}
+      
+      {/* Mobile-friendly Tabs / Buttons */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <button 
+          onClick={() => setActiveTab('balances')}
+          className={`btn ${activeTab === 'balances' ? 'btn-primary' : ''}`}
+          style={{ 
+            flex: 1, minWidth: '120px', minHeight: '48px', borderRadius: '12px',
+            backgroundColor: activeTab === 'balances' ? 'var(--accent-color)' : 'var(--bg-input)',
+            color: activeTab === 'balances' ? '#fff' : 'var(--text-main)',
+            border: 'none', fontWeight: 'bold'
+          }}
+        >
+          <Wallet size={18} style={{ marginRight: '8px' }} /> Soldes
+        </button>
+        <button 
+          onClick={() => setActiveTab('transfer')}
+          className={`btn ${activeTab === 'transfer' ? 'btn-primary' : ''}`}
+          style={{ 
+            flex: 1, minWidth: '150px', minHeight: '48px', borderRadius: '12px',
+            backgroundColor: activeTab === 'transfer' ? 'var(--accent-color)' : 'var(--bg-input)',
+            color: activeTab === 'transfer' ? '#fff' : 'var(--text-main)',
+            border: 'none', fontWeight: 'bold'
+          }}
+        >
+          <ArrowRightLeft size={18} style={{ marginRight: '8px' }} /> Effectuer transfert
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')}
+          className={`btn ${activeTab === 'history' ? 'btn-primary' : ''}`}
+          style={{ 
+            flex: 1, minWidth: '150px', minHeight: '48px', borderRadius: '12px',
+            backgroundColor: activeTab === 'history' ? 'var(--accent-color)' : 'var(--bg-input)',
+            color: activeTab === 'history' ? '#fff' : 'var(--text-main)',
+            border: 'none', fontWeight: 'bold'
+          }}
+        >
+          <CheckCircle size={18} style={{ marginRight: '8px' }} /> Historique
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
         {/* VUE D'ENSEMBLE */}
-        <div className="card" style={{ flex: 2, minWidth: '300px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-            <Wallet size={24} color="var(--accent-color)" />
-            <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Soldes des Comptes</h2>
-          </div>
-
-          <div style={{ backgroundColor: 'var(--bg-input)', padding: '20px', borderRadius: '12px', marginBottom: '25px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Solde Total Actuel</div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>{totalReel.toLocaleString('fr-FR')} FCFA</div>
-            </div>
-          </div>
-
-          <div className="desktop-table" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  <th style={{ padding: '12px 10px' }}>Compte</th>
-                  <th style={{ padding: '12px 10px' }}>Solde Actuel</th>
-                  <th style={{ padding: '12px 10px', textAlign: 'right' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {accountsList.map(acc => {
-                  const sReal = Number(soldes[acc.id]) || 0;
-                  return (
-                    <tr key={acc.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '15px 10px', fontWeight: '600', color: 'var(--text-main)' }}>{acc.label}</td>
-                      <td style={{ padding: '15px 10px' }}>
-                        {editingAccount === acc.id ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <input 
-                              type="number" 
-                              className="input-control" 
-                              style={{ width: '120px', padding: '6px' }}
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              autoFocus
-                            />
-                            <button onClick={() => handleUpdateSolde(acc.id)} className="btn btn-success btn-small" title="Valider">
-                              <CheckCircle size={14} />
-                            </button>
-                            <button onClick={() => setEditingAccount(null)} className="btn btn-small" style={{ background: 'var(--bg-input)' }}>
-                              Annuler
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                              {sReal.toLocaleString('fr-FR')} FCFA
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '15px 10px', textAlign: 'right' }}>
-                        {editingAccount !== acc.id && (
-                          <button 
-                            onClick={() => { setEditingAccount(acc.id); setEditValue(sReal); }}
-                            className="btn btn-small"
-                            style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
-                          >
-                            <Edit2 size={14} /> Ajuster
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* TRANSFERT */}
-        <div className="card" style={{ flex: 1, minWidth: '280px', alignSelf: 'flex-start' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-            <ArrowRightLeft size={20} color="var(--accent-color)" />
-            <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Transfert interne</h2>
-          </div>
-          
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-            Déplacer des fonds d'un compte à un autre (ex: dépôt Cash vers Nita).
-          </p>
-
-          {transferMsg && (
-            <div style={{
-              padding: '10px', borderRadius: '8px', marginBottom: '15px', fontSize: '0.85rem',
-              backgroundColor: transferMsg.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-              color: transferMsg.type === 'success' ? 'var(--success)' : 'var(--danger)'
-            }}>
-              {transferMsg.text}
-            </div>
-          )}
-
-          <form onSubmit={handleTransfer}>
-            <div className="form-group">
-              <label>Compte Source (Débiter)</label>
-              <select className="input-control" value={transferFrom} onChange={e => setTransferFrom(e.target.value)} required>
-                <option value="">-- Sélectionner --</option>
-                {accountsList.map(a => (
-                  <option key={a.id} value={a.id}>{a.label} ({Number(soldes[a.id]||0).toLocaleString('fr-FR')} F)</option>
-                ))}
-              </select>
+        {activeTab === 'balances' && (
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <Wallet size={24} color="var(--accent-color)" />
+              <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Soldes des Comptes</h2>
             </div>
             
-            <div className="form-group">
-              <label>Compte Destination (Créditer)</label>
-              <select className="input-control" value={transferTo} onChange={e => setTransferTo(e.target.value)} required>
-                <option value="">-- Sélectionner --</option>
-                {accountsList.map(a => (
-                  <option key={a.id} value={a.id}>{a.label}</option>
-                ))}
-              </select>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+              La trésorerie ci-dessous est calculée automatiquement à partir de toutes les transactions enregistrées.
+            </p>
+
+            <div style={{ backgroundColor: 'var(--bg-input)', padding: '20px', borderRadius: '12px', marginBottom: '25px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Solde Total Actuel</div>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>{totalReel.toLocaleString('fr-FR')} FCFA</div>
+              </div>
             </div>
 
-            <div className="form-group">
-              <label>Montant (FCFA)</label>
-              <input 
-                type="number" 
-                className="input-control" 
-                value={transferAmount} 
-                onChange={e => setTransferAmount(e.target.value)} 
-                required 
-                placeholder="ex: 20000"
-              />
+            <div className="list-container">
+              {accountsList.map(acc => {
+                const sReal = Number(soldes[acc.id]) || 0;
+                return (
+                  <div key={acc.id} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px',
+                    padding: '15px', borderBottom: '1px solid var(--border-color)'
+                  }}>
+                    <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>{acc.label}</div>
+                    
+                    {editingAccount === acc.id ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <input 
+                          type="number" 
+                          className="input-control" 
+                          style={{ width: '120px', padding: '10px', minHeight: '44px' }}
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          autoFocus
+                        />
+                        <button onClick={() => handleUpdateSolde(acc.id)} className="btn btn-success" style={{ minHeight: '44px' }} title="Valider">
+                          <CheckCircle size={18} />
+                        </button>
+                        <button onClick={() => setEditingAccount(null)} className="btn" style={{ minHeight: '44px', background: 'var(--bg-input)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}>
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
+                          {sReal.toLocaleString('fr-FR')} FCFA
+                        </span>
+                        <button 
+                          onClick={() => { setEditingAccount(acc.id); setEditValue(sReal); }}
+                          className="btn"
+                          style={{ backgroundColor: 'transparent', color: 'var(--text-main)', border: '1px solid var(--border-color)', minHeight: '40px', padding: '0 12px' }}
+                        >
+                          <Edit2 size={16} /> Ajuster
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* TRANSFERT */}
+        {activeTab === 'transfer' && (
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <ArrowRightLeft size={20} color="var(--accent-color)" />
+              <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Transfert interne</h2>
+            </div>
+            
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+              Déplacer des fonds d'un compte à un autre (ex: dépôt Cash vers Nita).
+            </p>
+
+            {transferMsg && (
+              <div style={{
+                padding: '15px', borderRadius: '8px', marginBottom: '15px', fontSize: '0.9rem',
+                backgroundColor: transferMsg.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                color: transferMsg.type === 'success' ? 'var(--success)' : 'var(--danger)'
+              }}>
+                {transferMsg.text}
+              </div>
+            )}
+
+            <form onSubmit={handleTransfer} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Compte Source (Débiter)</label>
+                <select className="input-control" style={{ minHeight: '48px', fontSize: '1rem' }} value={transferFrom} onChange={e => setTransferFrom(e.target.value)} required>
+                  <option value="">-- Sélectionner --</option>
+                  {accountsList.map(a => (
+                    <option key={a.id} value={a.id}>{a.label} ({Number(soldes[a.id]||0).toLocaleString('fr-FR')} F)</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Compte Destination (Créditer)</label>
+                <select className="input-control" style={{ minHeight: '48px', fontSize: '1rem' }} value={transferTo} onChange={e => setTransferTo(e.target.value)} required>
+                  <option value="">-- Sélectionner --</option>
+                  {accountsList.map(a => (
+                    <option key={a.id} value={a.id}>{a.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Montant (FCFA)</label>
+                <input 
+                  type="number" 
+                  className="input-control" 
+                  style={{ minHeight: '48px', fontSize: '1.1rem', fontWeight: 'bold' }}
+                  value={transferAmount} 
+                  onChange={e => setTransferAmount(e.target.value)} 
+                  required 
+                  placeholder="ex: 20000"
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ minHeight: '54px', fontSize: '1.1rem', borderRadius: '12px', marginTop: '10px' }}>
+                <ArrowRightLeft size={20} style={{ marginRight: '8px' }} /> Transférer les fonds
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* HISTORIQUE DES TRANSFERTS */}
+        {activeTab === 'history' && (
+          <div className="card">
+            <h2 className="card-title">Historique des Transferts</h2>
+            
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', alignItems: 'flex-end' }}>
+              <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+                <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '15px' }} />
+                <input 
+                  type="text" 
+                  className="input-control" 
+                  style={{ paddingLeft: '40px', width: '100%', minHeight: '48px', margin: 0 }}
+                  placeholder="Rechercher par compte, motif..." 
+                  value={searchTresTerm} 
+                  onChange={e => setSearchTresTerm(e.target.value)} 
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Du</label>
+                  <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateDebutTres} onChange={e => setDateDebutTres(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Au</label>
+                  <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateFinTres} onChange={e => setDateFinTres(e.target.value)} />
+                </div>
+              </div>
             </div>
 
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
-              <ArrowRightLeft size={18} /> Transférer
-            </button>
-          </form>
-        </div>
+            <div className="list-container" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {(() => {
+                const filteredTransferHistory = transferHistory.filter(tx => {
+                  const dStr = tx.date.substring(0, 10);
+                  if (dateDebutTres && dStr < dateDebutTres) return false;
+                  if (dateFinTres && dStr > dateFinTres) return false;
+                  if (searchTresTerm) {
+                    const st = searchTresTerm.toLowerCase();
+                    const accFrom = accountsList.find(a => a.id === tx.fromAccount)?.label || tx.fromAccount || '';
+                    const accTo = accountsList.find(a => a.id === tx.toAccount)?.label || tx.toAccount || '';
+                    return accFrom.toLowerCase().includes(st) || 
+                           accTo.toLowerCase().includes(st) || 
+                           (tx.motif || '').toLowerCase().includes(st);
+                  }
+                  return true;
+                });
+
+                if (filteredTransferHistory.length === 0) {
+                  return <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>Aucun transfert trouvé.</p>;
+                }
+                return filteredTransferHistory.map(tx => {
+                  const d = new Date(tx.date);
+                  const accFromLabel = accountsList.find(a => a.id === tx.fromAccount)?.label || tx.fromAccount;
+                  const accToLabel = accountsList.find(a => a.id === tx.toAccount)?.label || tx.toAccount;
+                  
+                  return (
+                    <div key={tx.id} style={{
+                      backgroundColor: 'var(--bg-input)', padding: '16px', borderRadius: '12px',
+                      display: 'flex', flexDirection: 'column', gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          {d.toLocaleDateString('fr-FR')} {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute:'2-digit' })}
+                        </span>
+                        <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>
+                          {Number(tx.montant).toLocaleString('fr-FR')} FCFA
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.95rem' }}>
+                        <span style={{ fontWeight: '600' }}>{accFromLabel}</span>
+                        <ArrowRightLeft size={14} color="var(--text-muted)" />
+                        <span style={{ fontWeight: '600' }}>{accToLabel}</span>
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        {tx.motif}
+                        {tx.saisieParNom && (
+                          <span style={{ marginLeft: '8px', fontStyle: 'italic' }}>— Par : {tx.saisieParNom}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

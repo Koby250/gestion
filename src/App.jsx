@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Calculator, BarChart3, Settings, Scissors, Calendar,
-  LogOut, User, Wallet, Users, History, Menu, X, LayoutDashboard, Package
+  LogOut, User, Wallet, Users, History, Menu, X, Sun, Moon, LayoutDashboard, Package
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -26,9 +26,19 @@ function App() {
   const [monthRevenue,  setMonthRevenue]  = useState(0);
   const [user,          setUser]          = useState(null);
   const [userRole,      setUserRole]      = useState('agent');
-  const [userAccesInventaire, setUserAccesInventaire] = useState(false);
+  const [userPerms,     setUserPerms]     = useState({ accesCaisse: false, accesReservations: false, accesInventaire: false, accesBilan: false, accesTresorerie: false, accesParametres: false });
+  const [userAccesInventaire, setUserAccesInventaire] = useState(false); // legacy compat
+  const [currentUserNom, setCurrentUserNom] = useState('');
   const [authLoading,   setAuthLoading]   = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Dark Mode
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -45,10 +55,21 @@ function App() {
               return;
             }
             setUserRole(data.role || 'agent');
-            setUserAccesInventaire(!!data.accesInventaire);
+            const perms = {
+              accesCaisse:       !!data.accesCaisse,
+              accesReservations: !!data.accesReservations,
+              accesInventaire:   !!(data.accesInventaire),
+              accesBilan:        !!data.accesBilan,
+              accesTresorerie:   !!data.accesTresorerie,
+              accesParametres:   !!data.accesParametres,
+            };
+            setUserPerms(perms);
+            setUserAccesInventaire(perms.accesInventaire); // legacy compat
+            setCurrentUserNom(data.nom || u.email || 'Inconnu');
           } else {
-            setUserRole('admin'); // Fallback for the first admin created manually
+            setUserRole('admin');
             setUserAccesInventaire(true);
+            setCurrentUserNom(u.email || 'Admin');
           }
           setUser(u);
         } catch (error) {
@@ -128,16 +149,16 @@ function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'accueil':      return <Accueil activeDate={activeDate} />;
-      case 'caisse':       return <Caisse activeDate={activeDate} />;
-      case 'reservations': return <Reservations activeDate={activeDate} />;
-      case 'inventaire':   return (userRole === 'admin' || userAccesInventaire) ? <Inventaire activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
-      case 'bilan':        return userRole === 'admin' ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
-      case 'tresorerie':   return userRole === 'admin' ? <Tresorerie activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
-      case 'rh':           return userRole === 'admin' ? <RH activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
-      case 'tracabilite':  return userRole === 'admin' ? <Tracabilite activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
-      case 'parametres':   return userRole === 'admin' ? <Parametres activeDate={activeDate} /> : <Accueil activeDate={activeDate} />;
-      default:             return <Accueil activeDate={activeDate} />;
+      case 'accueil':      return <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'caisse':       return (userRole === 'admin' || userPerms.accesCaisse) ? <Caisse activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'reservations': return (userRole === 'admin' || userPerms.accesReservations) ? <Reservations activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'inventaire':   return (userRole === 'admin' || userPerms.accesInventaire) ? <Inventaire activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'bilan':        return (userRole === 'admin' || userPerms.accesBilan) ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'tresorerie':   return (userRole === 'admin' || userPerms.accesTresorerie) ? <Tresorerie activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'rh':           return userRole === 'admin' ? <RH activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'tracabilite':  return userRole === 'admin' ? <Tracabilite activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'parametres':   return (userRole === 'admin' || userPerms.accesParametres) ? <Parametres activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      default:             return <Accueil activeDate={activeDate} userRole={userRole} />;
     }
   };
 
@@ -145,17 +166,27 @@ function App() {
 
   const navItems = [
     { key: 'accueil',      label: 'Accueil',           icon: <LayoutDashboard size={20} /> },
-    { key: 'caisse',       label: 'Caisse & Journal',  icon: <Calculator size={20} /> },
-    { key: 'reservations', label: 'Réservations',      icon: <Calendar size={20} /> },
-    ...((userRole === 'admin' || userAccesInventaire) ? [
-      { key: 'inventaire',   label: 'Inventaire',        icon: <Package size={20} /> }
+    ...(userRole === 'admin' || userPerms.accesCaisse ? [
+      { key: 'caisse',     label: 'Caisse & Journal',  icon: <Calculator size={20} /> }
+    ] : []),
+    ...(userRole === 'admin' || userPerms.accesReservations ? [
+      { key: 'reservations', label: 'Reservations',    icon: <Calendar size={20} /> }
+    ] : []),
+    ...((userRole === 'admin' || userPerms.accesInventaire) ? [
+      { key: 'inventaire',   label: 'Inventaire',      icon: <Package size={20} /> }
+    ] : []),
+    ...((userRole === 'admin' || userPerms.accesBilan) ? [
+      { key: 'bilan',        label: 'Bilan Mensuel',   icon: <BarChart3 size={20} /> }
+    ] : []),
+    ...((userRole === 'admin' || userPerms.accesTresorerie) ? [
+      { key: 'tresorerie',   label: 'Tresorerie',      icon: <Wallet size={20} /> }
     ] : []),
     ...(userRole === 'admin' ? [
-      { key: 'bilan',        label: 'Bilan Mensuel',     icon: <BarChart3 size={20} /> },
-      { key: 'tresorerie',   label: 'Trésorerie',        icon: <Wallet size={20} /> },
-      { key: 'rh',           label: 'RH & Avances',      icon: <Users size={20} /> },
-      { key: 'tracabilite',  label: 'Traçabilité',       icon: <History size={20} /> },
-      { key: 'parametres',   label: 'Paramètres',        icon: <Settings size={20} /> },
+      { key: 'rh',           label: 'RH & Avances',    icon: <Users size={20} /> },
+      { key: 'tracabilite',  label: 'Tracabilite',     icon: <History size={20} /> }
+    ] : []),
+    ...((userRole === 'admin' || userPerms.accesParametres) ? [
+      { key: 'parametres',   label: 'Parametres',      icon: <Settings size={20} /> }
     ] : [])
   ];
 
@@ -258,6 +289,25 @@ function App() {
                 </div>
               </div>
             )}
+
+            {/* Dark Mode Toggle - Now more prominent */}
+            <button 
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} 
+              style={{ 
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '10px', borderRadius: '12px', 
+                backgroundColor: 'var(--bg-card)', 
+                color: 'var(--text-main)',
+                border: '1px solid var(--border-color)',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                marginLeft: '10px'
+              }} 
+              title="Basculer le thème"
+            >
+              {theme === 'light' ? <Moon size={22} color="#64748B" /> : <Sun size={22} color="#F59E0B" />}
+            </button>
           </div>
         </header>
 

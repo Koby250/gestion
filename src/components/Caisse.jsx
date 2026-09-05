@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase';
-import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, ShieldAlert, CheckCircle } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, ShieldAlert, CheckCircle, Search, Edit2 } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
+import SuccessModal from './SuccessModal';
 import BulkActionBar from './BulkActionBar';
 import PanierPrestations from './PanierPrestations';
 
-const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
+const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), currentUserNom = '' }) => {
   // State for reference data
   const [services, setServices] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -30,8 +31,20 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
   const [activeHistoryTab, setActiveHistoryTab] = useState('aujourd_hui'); // 'aujourd_hui', 'cette_semaine', 'ce_mois'
   const [expandedDays, setExpandedDays] = useState({});
   const [factureModal, setFactureModal] = useState(null);
+  const [editTxModal, setEditTxModal] = useState(null);
+  const [editTxLignes, setEditTxLignes] = useState([]);
+  const [editTxClientNom, setEditTxClientNom] = useState('');
+  const [editTxModePaiement, setEditTxModePaiement] = useState('Cash');
+
   const [selectedTransactions, setSelectedTransactions] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // New Filters
+  const [searchTxTerm, setSearchTxTerm] = useState('');
+  const [dateDebutTx, setDateDebutTx] = useState('');
+  const [dateFinTx, setDateFinTx] = useState('');
 
   // Fetch reference data
   useEffect(() => {
@@ -113,6 +126,7 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
           employeId: lignesPanier[0].agents[0]?.id || '',
           modePaiement,
           date: getTransactionDate(),
+          saisieParNom: currentUserNom,
           lignes: lignesPanier.map(l => ({
             serviceId: l.serviceId,
             serviceNom: l.serviceNom,
@@ -128,9 +142,12 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
         await addDoc(collection(db, 'transactions'), newTransaction);
         await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA. Agents: ${allAgentNoms.join(', ')}. Mode: ${modePaiement}`);
 
+        // Note: L'attribution des points est désormais calculée dynamiquement dans Bilan/Parametres
+
         // Reset
         setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
         setClientNomCaisse('');
+        setShowSuccess(true);
 
       } else {
         // Dépense
@@ -149,7 +166,8 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
           employeId: selectedEmployeId,
           employeNom: employe ? employe.nom : 'Inconnu',
           modePaiement,
-          date: getTransactionDate()
+          date: getTransactionDate(),
+          saisieParNom: currentUserNom
         };
 
         await addDoc(collection(db, 'transactions'), newTransaction);
@@ -167,6 +185,59 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
     }
   };
 
+  const handleOpenEditModal = (t) => {
+    setEditTxModal(t);
+    if (t.type === 'prestation') {
+      setEditTxLignes(t.lignes || []);
+      setEditTxClientNom(t.clientNom || '');
+      setEditTxModePaiement(t.modePaiement || 'Cash');
+    } else {
+      setEditTxClientNom('');
+      setEditTxLignes([]);
+      setEditTxModePaiement(t.modePaiement || 'Cash');
+    }
+  };
+
+  const handleSaveEditTransaction = async () => {
+    if (!editTxModal) return;
+    setIsEditing(true);
+    try {
+      if (editTxModal.type === 'prestation') {
+        const total = editTxLignes.reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
+        
+        let employeId = editTxModal.employeId || null;
+        let employeNom = editTxModal.employeNom || 'Inconnu';
+        
+        if (editTxLignes.length === 1 && editTxLignes[0].agents && editTxLignes[0].agents.length === 1) {
+          employeId = editTxLignes[0].agents[0].id;
+          employeNom = editTxLignes[0].agents[0].nom;
+        } else if (editTxLignes.length > 1) {
+          employeNom = 'Divers';
+          employeId = 'divers';
+        }
+
+        await updateDoc(doc(db, 'transactions', editTxModal.id), {
+          montant: total,
+          motif: editTxLignes.length === 1 ? editTxLignes[0].serviceNom : `Forfait (${editTxLignes.length} prestations)`,
+          clientNom: editTxClientNom,
+          modePaiement: editTxModePaiement,
+          lignes: editTxLignes,
+          employeId: employeId,
+          employeNom: employeNom,
+          modifieParNom: currentUserNom,
+          dateModification: new Date().toISOString()
+        });
+        await logEvent('TRANSACTION_UPDATE', `Modification de la prestation (${total} FCFA) par ${currentUserNom}`);
+      }
+      setEditTxModal(null);
+    } catch (err) {
+      console.error(err);
+      alert('Erreur lors de la modification.');
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
   const handleDelete = async (id, typeTransaction, montant, motif) => {
     if (window.confirm("Voulez-vous vraiment supprimer cette opération ?")) {
       await deleteDoc(doc(db, 'transactions', id));
@@ -180,33 +251,58 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
 
   // Filter transactions
   const getFilteredTransactions = () => {
-    const activeDateObj = new Date(activeDate);
-    
-    // Start of Active Day
-    const startOfToday = new Date(activeDateObj);
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(activeDateObj);
-    endOfToday.setHours(23, 59, 59, 999);
+    let filtered = transactions;
 
-    // Start of Week (Monday)
-    const currentDay = activeDateObj.getDay() === 0 ? 7 : activeDateObj.getDay();
-    const startOfWeek = new Date(activeDateObj);
-    startOfWeek.setDate(activeDateObj.getDate() - currentDay + 1);
-    startOfWeek.setHours(0, 0, 0, 0);
+    if (dateDebutTx || dateFinTx) {
+      filtered = filtered.filter(t => {
+        const d = new Date(t.date);
+        const dStart = dateDebutTx ? new Date(dateDebutTx) : new Date(0);
+        dStart.setHours(0,0,0,0);
+        const dEnd = dateFinTx ? new Date(dateFinTx) : new Date(8640000000000000);
+        dEnd.setHours(23,59,59,999);
+        return d >= dStart && d <= dEnd;
+      });
+    } else {
+      const activeDateObj = new Date(activeDate);
+      
+      // Start of Active Day
+      const startOfToday = new Date(activeDateObj);
+      startOfToday.setHours(0, 0, 0, 0);
+      const endOfToday = new Date(activeDateObj);
+      endOfToday.setHours(23, 59, 59, 999);
 
-    // Start of Month
-    const startOfMonth = new Date(activeDateObj.getFullYear(), activeDateObj.getMonth(), 1);
+      // Start of Week (Monday)
+      const currentDay = activeDateObj.getDay() === 0 ? 7 : activeDateObj.getDay();
+      const startOfWeek = new Date(activeDateObj);
+      startOfWeek.setDate(activeDateObj.getDate() - currentDay + 1);
+      startOfWeek.setHours(0, 0, 0, 0);
 
-    return transactions.filter(t => {
-      const d = new Date(t.date);
-      if (activeHistoryTab === 'aujourd_hui') {
-        return d >= startOfToday && d <= endOfToday;
-      } else if (activeHistoryTab === 'cette_semaine') {
-        return d >= startOfWeek && d <= endOfToday;
-      } else { // 'ce_mois'
-        return d >= startOfMonth && d <= endOfToday;
-      }
-    });
+      // Start of Month
+      const startOfMonth = new Date(activeDateObj.getFullYear(), activeDateObj.getMonth(), 1);
+
+      filtered = filtered.filter(t => {
+        const d = new Date(t.date);
+        if (activeHistoryTab === 'aujourd_hui') {
+          return d >= startOfToday && d <= endOfToday;
+        } else if (activeHistoryTab === 'cette_semaine') {
+          return d >= startOfWeek && d <= endOfToday;
+        } else { // 'ce_mois'
+          return d >= startOfMonth && d <= endOfToday;
+        }
+      });
+    }
+
+    if (searchTxTerm) {
+      const st = searchTxTerm.toLowerCase();
+      filtered = filtered.filter(t => 
+        (t.motif || '').toLowerCase().includes(st) ||
+        (t.clientNom || '').toLowerCase().includes(st) ||
+        (t.employeNom || '').toLowerCase().includes(st) ||
+        (t.modePaiement || '').toLowerCase().includes(st)
+      );
+    }
+
+    return filtered;
   };
 
   const filteredTransactions = getFilteredTransactions();
@@ -364,7 +460,19 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
                     </div>
                   )}
                 </td>
-                <td style={{ padding: '10px' }}>{t.employeNom}</td>
+                <td style={{ padding: '10px' }}>
+                  <div>{t.employeNom}</div>
+                  {t.saisieParNom && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Saisi par : {t.saisieParNom}
+                    </div>
+                  )}
+                  {t.modifieParNom && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', fontStyle: 'italic' }}>
+                      Modifié par : {t.modifieParNom}
+                    </div>
+                  )}
+                </td>
                 <td style={{ padding: '10px' }}>
                   <span style={{ 
                     padding: '4px 8px', borderRadius: '8px', fontSize: '0.8rem',
@@ -379,13 +487,22 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
                 <td style={{ padding: '10px', textAlign: 'center' }}>
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                     {t.type === 'prestation' && (
-                      <button 
-                        onClick={() => setFactureModal(t)}
-                        style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer' }}
-                        title="Reçu"
-                      >
-                        <FileText size={18} />
-                      </button>
+                      <>
+                        <button 
+                          onClick={() => handleOpenEditModal(t)}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer' }}
+                          title="Modifier"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button 
+                          onClick={() => setFactureModal(t)}
+                          style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer' }}
+                          title="Reçu"
+                        >
+                          <FileText size={18} />
+                        </button>
+                      </>
                     )}
                     <button 
                       onClick={() => handleDelete(t.id, t.type, t.montant, t.motif)}
@@ -406,6 +523,8 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
 
   return (
     <div className="view-container">
+      {showSuccess && <SuccessModal message="Opération validée avec succès !" onClose={() => setShowSuccess(false)} />}
+      
       {/* FORMULAIRE DE SAISIE */}
       <div className="card">
         <h2 className="card-title">Nouvelle Opération</h2>
@@ -497,11 +616,38 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
         </form>
       </div>
 
-      {/* JOURNAL D'HISTORIQUE AVEC ONGLETS */}
+      {/* JOURNAL D'HISTORIQUE AVEC ONGLETS ET FILTRES */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
           <h2 className="card-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>Journal des opérations</h2>
-          <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px' }}>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
+            <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '15px' }} />
+            <input 
+              type="text" 
+              className="input-control" 
+              style={{ paddingLeft: '40px', width: '100%', minHeight: '48px', margin: 0 }}
+              placeholder="Rechercher par motif, client..." 
+              value={searchTxTerm} 
+              onChange={e => setSearchTxTerm(e.target.value)} 
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Du</label>
+              <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateDebutTx} onChange={e => setDateDebutTx(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Au</label>
+              <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateFinTx} onChange={e => setDateFinTx(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {(!dateDebutTx && !dateFinTx) && (
+          <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px', marginBottom: '15px', width: 'fit-content' }}>
             <button 
               className={`nav-btn ${activeHistoryTab === 'aujourd_hui' ? 'active' : ''}`}
               onClick={() => { setActiveHistoryTab('aujourd_hui'); setSelectedTransactions([]); }}
@@ -518,10 +664,10 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
               style={{ fontSize: '0.85rem', padding: '6px 12px' }}
             >Ce Mois</button>
           </div>
-        </div>
+        )}
 
         <BulkActionBar 
-          selectedIds={selectedTransactions} 
+          selectedIds={selectedTransactions}  
           collectionName="transactions" 
           onClearSelection={() => setSelectedTransactions([])} 
         />
@@ -587,6 +733,38 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
           type="transaction" 
           onClose={() => setFactureModal(null)} 
         />
+      )}
+
+      {editTxModal && editTxModal.type === 'prestation' && (
+        <div className="modal-overlay" onClick={() => setEditTxModal(null)}>
+          <div className="modal-content" style={{ maxWidth: '800px', width: '95%' }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: '20px' }}>Modifier la transaction</h2>
+            <PanierPrestations 
+              lignes={editTxLignes}
+              setLignes={setEditTxLignes}
+              services={services}
+              employes={employes}
+              clientNom={editTxClientNom}
+              setClientNom={setEditTxClientNom}
+              modePaiement={editTxModePaiement}
+              setModePaiement={setEditTxModePaiement}
+              showClientField={true}
+            />
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button 
+                onClick={handleSaveEditTransaction} 
+                className="btn btn-primary" 
+                style={{ flex: 1 }}
+                disabled={isEditing}
+              >
+                {isEditing ? 'Enregistrement...' : 'Enregistrer les modifications'}
+              </button>
+              <button onClick={() => setEditTxModal(null)} className="btn" style={{ flex: 1, backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,0 +1,41 @@
+
+/* Podium Responsive */
+.podium-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.podium-item {
+  position: relative;
+  border-radius: 16px;
+  padding: 16px 12px;
+  text-align: center;
+  transition: transform 0.2s ease;
+  cursor: default;
+}
+
+.podium-item:hover {
+  transform: translateY(-4px);
+}
+
+.podium-item.rank-1 { flex: 0 0 38%; }
+.podium-item.rank-2 { flex: 0 0 28%; }
+.podium-item.rank-3 { flex: 0 0 28%; }
+
+@media (max-width: 768px) {
+  .podium-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .podium-item {
+    flex: 1 1 auto !important;
+  }
+  /* Réorganiser 1, 2, 3 sur mobile */
+  .podium-item.rank-1 { order: 1; }
+  .podium-item.rank-2 { order: 2; }
+  .podium-item.rank-3 { order: 3; }
+}
