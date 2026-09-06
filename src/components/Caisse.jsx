@@ -23,6 +23,10 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
   // Depense fields
   const [montant, setMontant] = useState('');
   const [motifDepense, setMotifDepense] = useState('');
+
+  // Role detection
+  const currentUserObj = employes.find(e => e.nom === currentUserNom);
+  const isPrestataire = currentUserObj ? currentUserObj.categorie !== 'Support / Gestion' : false;
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   // Multi-service panier state
   const [lignesPanier, setLignesPanier] = useState([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
@@ -40,6 +44,10 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  // Edit depense modal state
+  const [editDepenseModal, setEditDepenseModal] = useState(null);
+  const [editDepenseForm, setEditDepenseForm] = useState({ montant: '', motif: '', categorie: '', modePaiement: 'Cash', employeId: '' });
 
   // New Filters
   const [searchTxTerm, setSearchTxTerm] = useState('');
@@ -162,7 +170,8 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
           type: 'depense',
           montant: Number(montant),
           motif: motifDepense,
-          categorie: cat ? cat.nom : 'Inconnue',
+          categorie: selectedCategoryId,
+          categorieNom: selectedCategoryId,
           employeId: selectedEmployeId,
           employeNom: employe ? employe.nom : 'Inconnu',
           modePaiement,
@@ -230,6 +239,45 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
         await logEvent('TRANSACTION_UPDATE', `Modification de la prestation (${total} FCFA) par ${currentUserNom}`);
       }
       setEditTxModal(null);
+    } catch (err) {
+      console.error(err);
+      alert('Erreur lors de la modification.');
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
+  const handleOpenEditDepense = (t) => {
+    setEditDepenseModal(t);
+    setEditDepenseForm({
+      montant: t.montant || '',
+      motif: t.motif || '',
+      categorie: t.categorie || '',
+      modePaiement: t.modePaiement || 'Cash',
+      employeId: t.employeId || ''
+    });
+  };
+
+  const handleSaveEditDepense = async () => {
+    if (!editDepenseModal) return;
+    const { montant, motif, categorie, modePaiement, employeId } = editDepenseForm;
+    if (!montant || isNaN(Number(montant))) { alert('Montant invalide.'); return; }
+    if (!categorie) { alert('Veuillez s\u00e9lectionner une cat\u00e9gorie.'); return; }
+    setIsEditing(true);
+    try {
+      const employe = employes.find(e => e.id === employeId);
+      await updateDoc(doc(db, 'transactions', editDepenseModal.id), {
+        montant: Number(montant),
+        motif,
+        categorie,
+        modePaiement,
+        employeId: employeId || null,
+        employeNom: employe ? employe.nom : (editDepenseModal.employeNom || 'Inconnu'),
+        modifieParNom: currentUserNom,
+        dateModification: new Date().toISOString()
+      });
+      await logEvent('TRANSACTION_UPDATE', `Modification d\u00e9pense (${montant} FCFA, cat\u00e9gorie: ${categorie}) par ${currentUserNom}`);
+      setEditDepenseModal(null);
     } catch (err) {
       console.error(err);
       alert('Erreur lors de la modification.');
@@ -391,7 +439,7 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
 
   // Reusable component for Transaction Table
   const renderTransactionTable = (txList) => (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="table-responsive">
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
@@ -486,7 +534,7 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
                 </td>
                 <td style={{ padding: '10px', textAlign: 'center' }}>
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                    {t.type === 'prestation' && (
+                    {t.type === 'prestation' ? (
                       <>
                         <button 
                           onClick={() => handleOpenEditModal(t)}
@@ -503,6 +551,14 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
                           <FileText size={18} />
                         </button>
                       </>
+                    ) : (
+                      <button 
+                        onClick={() => handleOpenEditDepense(t)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer' }}
+                        title="Modifier cette dépense"
+                      >
+                        <Edit2 size={18} />
+                      </button>
                     )}
                     <button 
                       onClick={() => handleDelete(t.id, t.type, t.montant, t.motif)}
@@ -538,14 +594,16 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
           >
             <PlusCircle size={18} /> Prestation / Vente
           </button>
-          <button 
-            type="button"
-            className={`btn ${typeTransaction === 'depense' ? 'btn-danger' : ''}`}
-            onClick={() => handleTypeChange('depense')}
-            style={{ flex: 1, backgroundColor: typeTransaction === 'depense' ? 'var(--danger)' : 'var(--bg-input)', color: typeTransaction === 'depense' ? '#fff' : 'var(--text-main)' }}
-          >
-            <MinusCircle size={18} /> Dépense / Charge
-          </button>
+          {!isPrestataire && (
+            <button 
+              type="button"
+              className={`btn ${typeTransaction === 'depense' ? 'btn-danger' : ''}`}
+              onClick={() => handleTypeChange('depense')}
+              style={{ flex: 1, backgroundColor: typeTransaction === 'depense' ? 'var(--danger)' : 'var(--bg-input)', color: typeTransaction === 'depense' ? '#fff' : 'var(--text-main)' }}
+            >
+              <MinusCircle size={18} /> Dépense / Charge
+            </button>
+          )}
         </div>
 
         <form onSubmit={handleSave}>
@@ -554,7 +612,7 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
               lignes={lignesPanier}
               setLignes={setLignesPanier}
               services={services}
-              employes={employes}
+              employes={employes.filter(e => e.categorie !== 'Support / Gestion')}
               clientNom={clientNomCaisse}
               setClientNom={setClientNomCaisse}
               modePaiement={modePaiement}
@@ -571,8 +629,13 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
               <div className="form-group">
                 <label>Catégorie</label>
                 <select className="input-control" value={selectedCategoryId} onChange={(e) => setSelectedCategoryId(e.target.value)}>
-                  <option value="">Sélectionner une catégorie</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                  <option value="">Sélectionner une charge...</option>
+                  {chargesFixes.map(c => <option key={c.id} value={c.nom}>{c.nom}</option>)}
+                  {categories.length > 0 && (
+                    <optgroup label="Autres catégories">
+                      {categories.filter(cat => !chargesFixes.some(cf => cf.nom === cat.nom)).map(c => <option key={c.id} value={c.nom}>{c.nom}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               </div>
               <div className="form-group">
@@ -760,6 +823,97 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
                 {isEditing ? 'Enregistrement...' : 'Enregistrer les modifications'}
               </button>
               <button onClick={() => setEditTxModal(null)} className="btn" style={{ flex: 1, backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editDepenseModal && (
+        <div className="modal-overlay" onClick={() => setEditDepenseModal(null)}>
+          <div className="modal-content" style={{ maxWidth: '520px', width: '95%' }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: '20px', fontSize: '1.1rem' }}>Modifier la dépense</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Motif</label>
+                <input
+                  type="text"
+                  className="input-control"
+                  value={editDepenseForm.motif}
+                  onChange={e => setEditDepenseForm(f => ({ ...f, motif: e.target.value }))}
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Catégorie (Charge fixe)</label>
+                <select
+                  className="input-control"
+                  value={editDepenseForm.categorie}
+                  onChange={e => setEditDepenseForm(f => ({ ...f, categorie: e.target.value }))}
+                >
+                  <option value="">Sélectionner une charge...</option>
+                  {chargesFixes.map(c => (
+                    <option key={c.id} value={c.nom}>{c.nom}</option>
+                  ))}
+                  {categories.filter(cat => !chargesFixes.some(cf => cf.nom === cat.nom)).length > 0 && (
+                    <optgroup label="Autres catégories">
+                      {categories.filter(cat => !chargesFixes.some(cf => cf.nom === cat.nom)).map(c => (
+                        <option key={c.id} value={c.nom}>{c.nom}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Montant (FCFA)</label>
+                <input
+                  type="number"
+                  className="input-control"
+                  value={editDepenseForm.montant}
+                  onChange={e => setEditDepenseForm(f => ({ ...f, montant: e.target.value }))}
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Mode de paiement</label>
+                <select
+                  className="input-control"
+                  value={editDepenseForm.modePaiement}
+                  onChange={e => setEditDepenseForm(f => ({ ...f, modePaiement: e.target.value }))}
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="NITA">NITA</option>
+                  <option value="AMANA">AMANA</option>
+                  <option value="Carte VISA">Carte VISA</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Assigné à</label>
+                <select
+                  className="input-control"
+                  value={editDepenseForm.employeId}
+                  onChange={e => setEditDepenseForm(f => ({ ...f, employeId: e.target.value }))}
+                >
+                  <option value="">-- Choisir un membre --</option>
+                  {employes.map(e => (
+                    <option key={e.id} value={e.id}>{e.nom}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button
+                onClick={handleSaveEditDepense}
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                disabled={isEditing}
+              >
+                {isEditing ? 'Enregistrement...' : 'Enregistrer'}
+              </button>
+              <button
+                onClick={() => setEditDepenseModal(null)}
+                className="btn"
+                style={{ flex: 1, backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
+              >
                 Annuler
               </button>
             </div>

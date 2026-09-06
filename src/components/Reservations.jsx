@@ -633,7 +633,7 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
               </div>
             )}
 
-            <div style={{ overflowX: 'auto' }}>
+            <div className="table-responsive">
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
                 <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
@@ -1029,7 +1029,10 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
               <div style={{ gridColumn: '1 / -1' }}>
                 <PanierPrestations 
                   lignes={editModal.lignes || []}
-                  setLignes={(newLignes) => setEditModal({ ...editModal, lignes: newLignes })}
+                  setLignes={(newLignes) => setEditModal(prev => ({ 
+                    ...prev, 
+                    lignes: typeof newLignes === 'function' ? newLignes(prev.lignes || []) : newLignes 
+                  }))}
                   services={services}
                   employes={employes}
                   showClientField={false}
@@ -1046,9 +1049,14 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
                 </select>
               </div>
               
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '10px' }}>
-                Enregistrer les modifications
-              </button>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={() => setEditModal(null)} className="btn" style={{ flex: 1, backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                  Enregistrer les modifications
+                </button>
+              </div>
             </form>
           </div>
         </div>

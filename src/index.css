@@ -426,6 +426,32 @@ body {
   border-color: #2563eb;
 }
 
+/* Responsive Utilities */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 15px;
+}
+
+.table-responsive table {
+  width: 100%;
+  min-width: 600px; /* Force minimum width to trigger scrolling */
+  border-collapse: collapse;
+}
+
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.flex-stack {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
 /* Responsive Mobile */
 @media (max-width: 768px) {
   .app-container {
@@ -517,6 +543,33 @@ body {
   }
   .mobile-cards {
     display: block !important;
+  }
+
+  /* Modals on mobile */
+  .card[style*="maxWidth: 600px"],
+  .card[style*="maxWidth: 700px"],
+  .card[style*="maxWidth: 800px"],
+  .card[style*="maxWidth: 900px"],
+  div[style*="maxWidth: 500px"] {
+    max-width: 95vw !important;
+    padding: 20px !important;
+    margin: 10px !important;
+  }
+  
+  /* Flex Stack on Mobile */
+  .flex-stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  /* Adjust Grid Cards Gap on Mobile */
+  .grid-cards {
+    gap: 15px;
+  }
+  
+  /* Make all inputs full width on mobile if they were flex-row */
+  .form-group {
+    width: 100%;
   }
 }
 

@@ -73,6 +73,7 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
           </div>
 
           <div style={{ marginBottom: '30px' }}>
+          <div className="table-responsive">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid #000' }}>
@@ -131,6 +132,7 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
                 )}
               </tbody>
             </table>
+          </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

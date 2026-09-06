@@ -285,6 +285,7 @@ const Accueil = ({ activeDate = new Date().toISOString().substring(0, 10), userR
             </div>
             
             <div style={{ flex: 1, overflowY: 'auto' }}>
+            <div className="table-responsive">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
@@ -310,6 +311,7 @@ const Accueil = ({ activeDate = new Date().toISOString().substring(0, 10), userR
                   ))}
                 </tbody>
               </table>
+            </div>
             </div>
           </div>
         </div>

@@ -17,7 +17,7 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
 
   // Edit State
   const [editingAvanceId, setEditingAvanceId] = useState(null);
-  const [editAvanceForm, setEditAvanceForm] = useState({ montant: '', date: '', motif: '', statut: '' });
+  const [editAvanceForm, setEditAvanceForm] = useState({ montant: '', date: '', motif: '', statut: '', modePaiement: 'cash' });
 
   const [formAvance, setFormAvance] = useState({
     employeId: '',
@@ -33,9 +33,6 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
   const [selectedEmpHistory, setSelectedEmpHistory] = useState(null);
 
   // New Filters
-  const [searchAvanceTerm, setSearchAvanceTerm] = useState('');
-  const [dateDebutAvance, setDateDebutAvance] = useState('');
-  const [dateFinAvance, setDateFinAvance] = useState('');
   const [searchEmpTerm, setSearchEmpTerm] = useState('');
 
   useEffect(() => {
@@ -90,6 +87,18 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
     setIsSubmitting(true);
     try {
       const emp = employes.find(emp => emp.id === formAvance.employeId);
+      
+      const txRef = await addDoc(collection(db, 'transactions'), {
+        type: 'depense',
+        montant: Number(formAvance.montant),
+        motif: `Avance sur salaire - ${emp ? emp.nom : 'Inconnu'} (${formAvance.motif})`,
+        categoryId: 'avance_salaire',
+        categoryNom: 'Avance sur Salaire',
+        modePaiement: formAvance.modePaiement,
+        date: new Date(formAvance.date).toISOString(),
+        modifieParNom: currentUserNom
+      });
+
       await addDoc(collection(db, 'avances_salaires'), {
         employeId: formAvance.employeId,
         employeNom: emp ? emp.nom : 'Inconnu',
@@ -98,7 +107,8 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
         modePaiement: formAvance.modePaiement,
         motif: formAvance.motif,
         statut: 'En cours',
-        saisieParNom: currentUserNom
+        saisieParNom: currentUserNom,
+        transactionId: txRef.id
       });
       
       setFormAvance({ ...formAvance, montant: '', motif: 'Avance sur salaire' });
@@ -113,6 +123,12 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
 
   const handleDelete = async (id) => {
     if (window.confirm('Voulez-vous supprimer cette avance ?')) {
+      const av = avances.find(a => a.id === id);
+      if (av && av.transactionId) {
+        try {
+          await deleteDoc(doc(db, 'transactions', av.transactionId));
+        } catch(e) { console.warn('Transaction not found', e); }
+      }
       await deleteDoc(doc(db, 'avances_salaires', id));
     }
   };
@@ -121,14 +137,35 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
     setEditingAvanceId(av.id);
     const d = new Date(av.date);
     const dateStr = d.toISOString().substring(0, 10);
-    setEditAvanceForm({ montant: av.montant.toString(), date: dateStr, motif: av.motif || '', statut: av.statut || 'En cours' });
+    setEditAvanceForm({ 
+      montant: av.montant.toString(), 
+      date: dateStr, 
+      motif: av.motif || '', 
+      statut: av.statut || 'En cours',
+      modePaiement: av.modePaiement || 'cash'
+    });
   };
 
   const saveEditAvance = async (id) => {
+    const av = avances.find(a => a.id === id);
+    if (!av) return;
+    const emp = employes.find(e => e.id === av.employeId);
+    
+    if (av.transactionId) {
+      await updateDoc(doc(db, 'transactions', av.transactionId), {
+        montant: Number(editAvanceForm.montant),
+        date: new Date(editAvanceForm.date).toISOString(),
+        motif: `Avance sur salaire - ${emp ? emp.nom : av.employeNom} (${editAvanceForm.motif})`,
+        modePaiement: editAvanceForm.modePaiement,
+        modifieParNom: currentUserNom
+      });
+    }
+
     await updateDoc(doc(db, 'avances_salaires', id), {
       montant: Number(editAvanceForm.montant),
       date: new Date(editAvanceForm.date).toISOString(),
       motif: editAvanceForm.motif,
+      modePaiement: editAvanceForm.modePaiement,
       statut: editAvanceForm.statut
     });
     setEditingAvanceId(null);
@@ -251,6 +288,7 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
                 {empAvances.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>Aucune avance trouvée pour cet employé.</p>
                 ) : (
+                <div className="table-responsive">
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
@@ -262,19 +300,50 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
                     </thead>
                     <tbody>
                       {empAvances.map(av => (
-                        <tr key={av.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                          <td style={{ padding: '10px 8px' }}>{new Date(av.date).toLocaleDateString('fr-FR')}</td>
-                          <td style={{ padding: '10px 8px' }}>{av.motif || '-'}</td>
-                          <td style={{ padding: '10px 8px' }}>
-                            <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem', backgroundColor: av.statut === 'Déduit' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)', color: av.statut === 'Déduit' ? 'var(--success)' : '#F59E0B' }}>
-                              {av.statut || 'En cours'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 'bold' }}>{Number(av.montant).toLocaleString('fr-FR')} F</td>
-                        </tr>
+                        editingAvanceId === av.id ? (
+                          <tr key={av.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(37,99,235,0.05)' }}>
+                            <td colSpan="4" style={{ padding: '10px 8px' }}>
+                               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                 <input type="date" className="input-control" style={{ width: '130px', margin: 0, padding: '4px' }} value={editAvanceForm.date} onChange={e => setEditAvanceForm({...editAvanceForm, date: e.target.value})} />
+                                 <input type="number" className="input-control" style={{ width: '100px', margin: 0, padding: '4px' }} value={editAvanceForm.montant} onChange={e => setEditAvanceForm({...editAvanceForm, montant: e.target.value})} />
+                                 <select className="input-control" style={{ width: '120px', margin: 0, padding: '4px' }} value={editAvanceForm.modePaiement} onChange={e => setEditAvanceForm({...editAvanceForm, modePaiement: e.target.value})}>
+                                    <option value="cash">Espèces</option>
+                                    <option value="orange_money">Orange Money</option>
+                                    <option value="wave">Wave</option>
+                                    <option value="carte">Carte</option>
+                                 </select>
+                                 <input type="text" className="input-control" style={{ flex: 1, minWidth: '120px', margin: 0, padding: '4px' }} value={editAvanceForm.motif} onChange={e => setEditAvanceForm({...editAvanceForm, motif: e.target.value})} placeholder="Motif" />
+                                 <button onClick={() => saveEditAvance(av.id)} className="btn btn-small btn-success" title="Enregistrer"><Save size={14} /></button>
+                                 <button onClick={() => setEditingAvanceId(null)} className="btn btn-small" title="Annuler"><X size={14} /></button>
+                               </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={av.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <td style={{ padding: '10px 8px' }}>{new Date(av.date).toLocaleDateString('fr-FR')}</td>
+                            <td style={{ padding: '10px 8px' }}>{av.motif || '-'}</td>
+                            <td style={{ padding: '10px 8px' }}>
+                              <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem', backgroundColor: av.statut === 'Déduit' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)', color: av.statut === 'Déduit' ? 'var(--success)' : '#F59E0B' }}>
+                                {av.statut || 'En cours'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 'bold' }}>
+                              {Number(av.montant).toLocaleString('fr-FR')} F
+                            </td>
+                            <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                              <button onClick={() => startEditAvance(av)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-main)', marginRight: '8px' }} title="Modifier">
+                                <Edit2 size={14} />
+                              </button>
+                              <button onClick={() => handleDelete(av.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)' }} title="Supprimer">
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        )
                       ))}
                     </tbody>
                   </table>
+                </div>
                 )}
               </div>
             </div>
@@ -386,6 +455,7 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
       <div className="card" style={{ marginBottom: '20px' }}>
         <h2 className="card-title" style={{ marginBottom: '15px' }}>Situation Financière du Personnel (Mois en cours)</h2>
         <div style={{ overflowX: 'auto' }}>
+        <div className="table-responsive">
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
@@ -423,6 +493,7 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
               )}
             </tbody>
           </table>
+        </div>
         </div>
       </div>
 
@@ -515,154 +586,7 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
           </form>
         </div>
 
-        {/* HISTORIQUE DES AVANCES */}
-        <div className="card" style={{ flex: 2, minWidth: '350px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-            <h2 className="card-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>Historique des Avances</h2>
-          </div>
-          
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', alignItems: 'flex-end' }}>
-            <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
-              <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '15px' }} />
-              <input 
-                type="text" 
-                className="input-control" 
-                style={{ paddingLeft: '40px', width: '100%', minHeight: '48px', margin: 0 }}
-                placeholder="Rechercher par employé, motif..." 
-                value={searchAvanceTerm} 
-                onChange={e => setSearchAvanceTerm(e.target.value)} 
-              />
-            </div>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Du</label>
-                <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateDebutAvance} onChange={e => setDateDebutAvance(e.target.value)} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Au</label>
-                <input type="date" className="input-control" style={{ margin: 0, minHeight: '48px' }} value={dateFinAvance} onChange={e => setDateFinAvance(e.target.value)} />
-              </div>
-            </div>
-          </div>
 
-          <BulkActionBar 
-            selectedIds={selectedAvances} 
-            collectionName="avances_salaires" 
-            onClearSelection={() => setSelectedAvances([])} 
-          />
-
-          <div className="desktop-table" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  <th style={{ padding: '12px 10px', width: '40px' }}>
-                    <input 
-                      type="checkbox" 
-                      onChange={toggleAll}
-                      checked={avances.length > 0 && selectedAvances.length === avances.length}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  </th>
-                  <th style={{ padding: '12px 10px' }}>Date</th>
-                  <th style={{ padding: '12px 10px' }}>Employé</th>
-                  <th style={{ padding: '12px 10px' }}>Montant</th>
-                  <th style={{ padding: '12px 10px' }}>Mode</th>
-                  <th style={{ padding: '12px 10px' }}>Motif / Note</th>
-                  <th style={{ padding: '12px 10px' }}>Statut</th>
-                  <th style={{ padding: '12px 10px' }}>Saisi par</th>
-                  <th style={{ padding: '12px 10px', textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const filteredAvances = avances.filter(a => {
-                    if (dateDebutAvance && a.date < dateDebutAvance) return false;
-                    if (dateFinAvance && a.date > dateFinAvance) return false;
-                    if (searchAvanceTerm) {
-                      const st = searchAvanceTerm.toLowerCase();
-                      return (a.employeNom || '').toLowerCase().includes(st) || 
-                             (a.motif || '').toLowerCase().includes(st);
-                    }
-                    return true;
-                  });
-
-                  if (filteredAvances.length === 0) {
-                    return <tr><td colSpan="9" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Aucune avance trouvée.</td></tr>;
-                  }
-                  return filteredAvances.map(av => {
-                    const d = new Date(av.date);
-                    return (
-                      editingAvanceId === av.id ? (
-                        <tr key={av.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-input)' }}>
-                          <td style={{ padding: '12px 10px' }}></td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <input type="date" className="input-control" style={{ width: '130px', margin: 0, padding: '4px' }} value={editAvanceForm.date} onChange={e => setEditAvanceForm({...editAvanceForm, date: e.target.value})} />
-                          </td>
-                          <td style={{ padding: '12px 10px', fontWeight: '600' }}>{av.employeNom}</td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <input type="number" className="input-control" style={{ width: '100px', margin: 0, padding: '4px' }} value={editAvanceForm.montant} onChange={e => setEditAvanceForm({...editAvanceForm, montant: e.target.value})} />
-                          </td>
-                          <td style={{ padding: '12px 10px', textTransform: 'capitalize' }}>{av.modePaiement}</td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <input type="text" className="input-control" style={{ width: '100%', minWidth: '120px', margin: 0, padding: '4px' }} value={editAvanceForm.motif} onChange={e => setEditAvanceForm({...editAvanceForm, motif: e.target.value})} placeholder="Motif" />
-                          </td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <select className="input-control" style={{ width: '110px', margin: 0, padding: '4px' }} value={editAvanceForm.statut} onChange={e => setEditAvanceForm({...editAvanceForm, statut: e.target.value})}>
-                              <option value="En cours">En cours</option>
-                              <option value="Déduit">Déduit</option>
-                            </select>
-                          </td>
-                          <td style={{ padding: '12px 10px' }}></td>
-                          <td style={{ padding: '12px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <button onClick={() => saveEditAvance(av.id)} className="btn btn-small btn-success" title="Enregistrer"><Save size={14} /></button>
-                            <button onClick={() => setEditingAvanceId(null)} className="btn btn-small" style={{ marginLeft: '4px' }} title="Annuler"><X size={14} /></button>
-                          </td>
-                        </tr>
-                      ) : (
-                        <tr key={av.id} style={{ 
-                          borderBottom: '1px solid var(--border-color)',
-                          backgroundColor: selectedAvances.includes(av.id) ? 'rgba(37,99,235,0.05)' : 'transparent'
-                        }}>
-                          <td style={{ padding: '12px 10px' }}>
-                            <input 
-                              type="checkbox"
-                              checked={selectedAvances.includes(av.id)}
-                              onChange={() => toggleSelection(av.id)}
-                              style={{ cursor: 'pointer' }}
-                            />
-                          </td>
-                          <td style={{ padding: '12px 10px' }}>{d.toLocaleDateString('fr-FR')}</td>
-                          <td style={{ padding: '12px 10px', fontWeight: '600' }}>{av.employeNom}</td>
-                          <td style={{ padding: '12px 10px', color: 'var(--accent-color)', fontWeight: 'bold' }}>{Number(av.montant).toLocaleString('fr-FR')} F</td>
-                          <td style={{ padding: '12px 10px', textTransform: 'capitalize' }}>{av.modePaiement}</td>
-                          <td style={{ padding: '12px 10px', color: 'var(--text-muted)' }}>{av.motif || '-'}</td>
-                          <td style={{ padding: '12px 10px' }}>
-                            <span style={{ 
-                              padding: '4px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold',
-                              backgroundColor: (av.statut || 'En cours') === 'Déduit' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                              color: (av.statut || 'En cours') === 'Déduit' ? 'var(--success)' : '#F59E0B'
-                            }}>
-                              {av.statut || 'En cours'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 10px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{av.saisieParNom || '-'}</td>
-                          <td style={{ padding: '12px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <button onClick={() => startEditAvance(av)} className="btn btn-small" style={{ backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)', marginRight: '6px' }} title="Modifier">
-                              <Edit2 size={14} />
-                            </button>
-                            <button onClick={() => handleDelete(av.id)} className="btn btn-small btn-danger" title="Supprimer">
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    );
-                  })
-                  })()}
-              </tbody>
-            </table>
-          </div>
-        </div>
 
       </div>
     </div>
