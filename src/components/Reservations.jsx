@@ -255,29 +255,39 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
   const handleAddNote = async (e) => {
     e.preventDefault();
     if (!newNote.trim()) return;
-    const res = notesModal;
-    const nowISO = getTransactionDate();
-    const updatedNotes = [...(res.historiqueNotes || []), { texte: newNote.trim(), date: nowISO }];
-    
-    await updateDoc(doc(db, 'reservations', res.id), {
-      historiqueNotes: updatedNotes
-    });
-    setNotesModal({ ...res, historiqueNotes: updatedNotes });
-    setNewNote('');
+    try {
+      const res = notesModal;
+      const nowISO = getTransactionDate();
+      const updatedNotes = [...(res.historiqueNotes || []), { texte: newNote.trim(), date: nowISO }];
+      
+      await updateDoc(doc(db, 'reservations', res.id), {
+        historiqueNotes: updatedNotes
+      });
+      setNotesModal({ ...res, historiqueNotes: updatedNotes });
+      setNewNote('');
+    } catch (err) {
+      console.error('[Reservations] Erreur lors de l\'ajout de la note:', err);
+      alert("Erreur lors de l'ajout de la note. Veuillez réessayer.");
+    }
   };
 
   const handleSaveEditedNote = async (index) => {
     if (!editingNoteText.trim()) return;
-    const res = notesModal;
-    const updatedNotes = [...(res.historiqueNotes || [])];
-    updatedNotes[index] = { ...updatedNotes[index], texte: editingNoteText.trim() };
-    
-    await updateDoc(doc(db, 'reservations', res.id), {
-      historiqueNotes: updatedNotes
-    });
-    setNotesModal({ ...res, historiqueNotes: updatedNotes });
-    setEditingNoteIndex(null);
-    setEditingNoteText('');
+    try {
+      const res = notesModal;
+      const updatedNotes = [...(res.historiqueNotes || [])];
+      updatedNotes[index] = { ...updatedNotes[index], texte: editingNoteText.trim() };
+      
+      await updateDoc(doc(db, 'reservations', res.id), {
+        historiqueNotes: updatedNotes
+      });
+      setNotesModal({ ...res, historiqueNotes: updatedNotes });
+      setEditingNoteIndex(null);
+      setEditingNoteText('');
+    } catch (err) {
+      console.error('[Reservations] Erreur lors de la modification de la note:', err);
+      alert("Erreur lors de la modification de la note. Veuillez réessayer.");
+    }
   };
 
   const handleOpenEditModal = (res) => {
@@ -304,20 +314,34 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
       return;
     }
 
-    const prixTotal = editModal.lignes.reduce((sum, l) => sum + Number(l.prixFinal || 0), 0);
-    const prixBaseTotal = editModal.lignes.reduce((sum, l) => sum + Number(l.prixBase || 0), 0);
-    const serviceNoms = editModal.lignes.map(l => l.serviceNom).join(', ');
+    try {
+      const prixTotal = editModal.lignes.reduce((sum, l) => sum + Number(l.prixFinal || 0), 0);
+      const prixBaseTotal = editModal.lignes.reduce((sum, l) => sum + Number(l.prixBase || 0), 0);
+      const serviceNoms = editModal.lignes.map(l => l.serviceNom).join(', ');
 
-    await updateDoc(doc(db, 'reservations', editModal.id), {
-      datePrevue: editModal.datePrevue,
-      heurePrevue: editModal.heurePrevue,
-      serviceNom: serviceNoms,
-      prixBase: prixBaseTotal,
-      prixTotal,
-      lignes: editModal.lignes,
-      statut: editModal.statut,
-    });
-    setEditModal(null);
+      const updateData = {
+        datePrevue: editModal.datePrevue,
+        heurePrevue: editModal.heurePrevue,
+        serviceNom: serviceNoms,
+        prixBase: prixBaseTotal,
+        prixTotal,
+        lignes: editModal.lignes,
+        statut: editModal.statut || 'non_paye',
+      };
+
+      // Supprimer les champs undefined pour éviter un crash Firebase
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined) {
+          delete updateData[key];
+        }
+      });
+
+      await updateDoc(doc(db, 'reservations', editModal.id), updateData);
+      setEditModal(null);
+    } catch (err) {
+      console.error('[Reservations] Erreur lors de la modification:', err);
+      alert("Une erreur est survenue lors de la modification de la réservation. Veuillez réessayer.");
+    }
   };
 
   // ── Supprimer une réservation ─────────────────────────────────────────────
@@ -997,14 +1021,21 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
 
       {/* ── MODAL EDIT ────────────────────────────────────────────────────── */}
       {editModal && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
-            width: '100%', maxWidth: '500px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)'
-          }}>
+        <div 
+          onClick={() => setEditModal(null)}
+          style={{
+            position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
+          }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
+              width: '100%', maxWidth: '500px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+              maxHeight: '90vh', overflowY: 'auto'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h3 style={{ color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                 <Edit2 size={20} color="var(--accent-color)" /> Modifier le Rendez-vous
@@ -1036,6 +1067,7 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
                   services={services}
                   employes={employes}
                   showClientField={false}
+                  hidePayment={true}
                 />
               </div>
 

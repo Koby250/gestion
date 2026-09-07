@@ -76,13 +76,30 @@ const Accueil = ({ activeDate = new Date().toISOString().substring(0, 10), userR
   const rdvJourFiltered   = applyFilters(rdvJour);
   const rdvAVenirFiltered = applyFilters(rdvAVenir);
 
-  // ── Ranking KPI ────────────────────────────────────────────────────────────
-  const detailedStats = computeDetailedGlobalStats(transactions);
+  // ── Ranking KPI (Strictement Hebdomadaire) ─────────────────────────────────
+  const getStartAndEndOfWeek = () => {
+    const now = new Date(activeDate);
+    const dayOfWeek = now.getDay() || 7; // 1 (Mon) - 7 (Sun)
+    const start = new Date(now);
+    start.setDate(now.getDate() - dayOfWeek + 1);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  };
+  const { start: weekStart, end: weekEnd } = getStartAndEndOfWeek();
+  const weeklyTx = transactions.filter(t => {
+    const d = new Date(t.date);
+    return d >= weekStart && d <= weekEnd;
+  });
+
+  const detailedStats = computeDetailedGlobalStats(weeklyTx);
   let agentsToRank = employes.filter(e => e.actif !== false && e.categorie === 'Prestataire');
 
   if (agentsToRank.length === 0) {
     const uniqueMap = {};
-    transactions.forEach(t => {
+    weeklyTx.forEach(t => {
       if (t.type === 'prestation' && t.lignes) {
         t.lignes.forEach(l => {
           if (l.agents) {

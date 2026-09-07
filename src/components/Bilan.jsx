@@ -35,7 +35,7 @@ const Bilan = () => {
   const [expandedService, setExpandedService] = useState(null);
   const [trendGranularity, setTrendGranularity] = useState('mensuel');
   const [rankServiceFilter, setRankServiceFilter] = useState('Tous');
-  const [rankPeriodFilter, setRankPeriodFilter] = useState('global');
+  const [rankPeriodFilter, setRankPeriodFilter] = useState('mensuel');
   const [expandedAgents, setExpandedAgents] = useState({});
 
   const [avances, setAvances] = useState([]);
@@ -311,29 +311,38 @@ const Bilan = () => {
     })
     .sort((a, b) => b.points - a.points);
 
-  // ── Calcul hebdomadaire pour le classement ────────────────────────────────
-  const getWeekBounds = (weekIndex) => {
-    const s = new Date(viewYear, viewMonth, 1 + weekIndex * 7);
-    const e = new Date(viewYear, viewMonth, Math.min(7 + weekIndex * 7, new Date(viewYear, viewMonth + 1, 0).getDate()));
+  // ── Périodes pour le classement (Journalier, Hebdomadaire, Mensuel) ────────
+  const getDailyBounds = () => {
+    const s = new Date();
+    s.setHours(0, 0, 0, 0);
+    const e = new Date();
     e.setHours(23, 59, 59, 999);
     return { s, e };
   };
-  const weeksInMonth = Math.ceil(new Date(viewYear, viewMonth + 1, 0).getDate() / 7);
-  const weekOptions = Array.from({ length: weeksInMonth }, (_, i) => {
-    const { s, e } = getWeekBounds(i);
-    return { value: `week-${i}`, label: `Semaine ${i + 1} (${s.getDate()}–${e.getDate()} ${MOIS_FR[viewMonth].substring(0, 3)}.}`, start: s, end: e };
-  });
+  const getWeeklyBounds = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay() || 7;
+    const s = new Date(now);
+    s.setDate(now.getDate() - dayOfWeek + 1);
+    s.setHours(0, 0, 0, 0);
+    const e = new Date(s);
+    e.setDate(s.getDate() + 6);
+    e.setHours(23, 59, 59, 999);
+    return { s, e };
+  };
 
   // Transactions filtrées par période pour le classement
   const rankTxSource = (() => {
-    if (rankPeriodFilter === 'global') return transactions;
-    if (rankPeriodFilter === 'mois') return monthTx;
-    const weekIdx = parseInt(rankPeriodFilter.replace('week-', ''), 10);
-    if (!isNaN(weekIdx)) {
-      const { s, e } = getWeekBounds(weekIdx);
+    if (rankPeriodFilter === 'mensuel') return monthTx;
+    if (rankPeriodFilter === 'hebdomadaire') {
+      const { s, e } = getWeeklyBounds();
       return transactions.filter(t => { const d = new Date(t.date); return d >= s && d <= e; });
     }
-    return transactions;
+    if (rankPeriodFilter === 'journalier') {
+      const { s, e } = getDailyBounds();
+      return transactions.filter(t => { const d = new Date(t.date); return d >= s && d <= e; });
+    }
+    return monthTx;
   })();
 
   const rankDetailedStats = computeDetailedGlobalStats(rankTxSource);
@@ -416,15 +425,17 @@ const Bilan = () => {
           const prixBase = Number(ligne.prixBase) || 0;
           const prixFinal = Number(ligne.prixFinal) || 0;
           const montantRemise = prixBase - prixFinal;
-          if (montantRemise > 0) {
-            totalReductions += montantRemise;
+          if (montantRemise > 0 || ligne.remiseType === 'offert') {
+            if (montantRemise > 0) {
+              totalReductions += montantRemise;
+            }
             reductionsList.push({
               date: t.date,
               client: t.clientNom || 'Client anonyme',
               service: ligne.serviceNom,
               agents: (ligne.agents || []).map(a => a.nom).join(', ') || t.employeNom || '-',
               montant: montantRemise,
-              motif: ligne.remiseMotif || 'Aucun motif',
+              motif: ligne.remiseMotif || (ligne.remiseType === 'offert' ? 'Soin Offert' : 'Aucun motif'),
               type: ligne.remiseType
             });
           }
@@ -721,9 +732,9 @@ const Bilan = () => {
               value={rankPeriodFilter}
               onChange={e => setRankPeriodFilter(e.target.value)}
             >
-              <option value="global">Total global</option>
-              <option value="mois">{MOIS_FR[viewMonth]} {viewYear}</option>
-              {weekOptions.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
+              <option value="journalier">Journalier (Aujourd'hui)</option>
+              <option value="hebdomadaire">Hebdomadaire (Cette semaine)</option>
+              <option value="mensuel">Mensuel ({MOIS_FR[viewMonth]} {viewYear})</option>
             </select>
           </div>
         </div>
@@ -1192,12 +1203,12 @@ const Bilan = () => {
         </div>
       </div>
 
-      {/* ── HISTORIQUE DES RÉDUCTIONS ────────────────────────────────────────── */}
+      {/* ── HISTORIQUE DES RÉDUCTIONS ET SOINS OFFERTS ─────────────────────── */}
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)' }}>
           <Percent size={20} color="var(--warning)" />
           <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
-            Historique des Réductions
+            Historique des Réductions et Soins Offerts
           </h2>
         </div>
         

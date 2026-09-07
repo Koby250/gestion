@@ -25,78 +25,106 @@ const PanierPrestations = ({
   modePaiement,
   setModePaiement,
   showClientField = true,
+  hidePayment = false,
 }) => {
 
   const totalGeneral = lignes.reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
 
   const addLigne = () => {
-    setLignes(prev => [...prev, {
-      serviceId: '',
-      serviceNom: '',
-      prixBase: '',
-      prixFinal: '',
-      agents: [],
-      remiseType: 'aucune',  // 'aucune' | 'pourcentage' | 'fixe' | 'offert'
-      remiseValeur: '',
-      remiseMotif: '',
-    }]);
+    try {
+      setLignes(prev => [...prev, {
+        serviceId: '',
+        serviceNom: '',
+        prixBase: '',
+        prixFinal: '',
+        agents: [],
+        remiseType: 'aucune',
+        remiseValeur: '',
+        remiseMotif: '',
+      }]);
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de l\'ajout de la prestation.');
+    }
   };
 
   const removeLigne = (index) => {
-    setLignes(prev => prev.filter((_, i) => i !== index));
+    try {
+      setLignes(prev => prev.filter((_, i) => i !== index));
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de la suppression de la prestation.');
+    }
   };
 
   const updateLigne = (index, field, value) => {
-    setLignes(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
+    try {
+      setLignes(prev => {
+        const updated = [...prev];
+        updated[index] = { ...updated[index], [field]: value };
 
-      // Auto-fill price when service changes
-      if (field === 'serviceId') {
-        const service = services.find(s => s.id === value);
-        if (service) {
-          updated[index].serviceNom = service.nom;
-          updated[index].prixBase = service.prixDefaut;
-          updated[index].prixFinal = service.prixDefaut;
-          updated[index].remiseType = 'aucune';
-          updated[index].remiseValeur = '';
+        // Auto-fill price when service changes
+        if (field === 'serviceId') {
+          const service = services.find(s => s.id === value);
+          if (service) {
+            updated[index].serviceNom = service.nom;
+            updated[index].prixBase = service.prixDefaut;
+            updated[index].prixFinal = service.prixDefaut;
+            updated[index].remiseType = 'aucune';
+            updated[index].remiseValeur = '';
+          }
         }
-      }
 
-      // Recalculate prixFinal when remise changes
-      if (['remiseType', 'remiseValeur'].includes(field)) {
-        const ligne = updated[index];
-        const base = Number(ligne.prixBase) || 0;
-        if (ligne.remiseType === 'offert') {
-          updated[index].prixFinal = 0;
-        } else if (ligne.remiseType === 'pourcentage') {
-          const pct = Number(updated[index].remiseValeur) || 0;
-          updated[index].prixFinal = Math.max(0, base - (base * pct / 100));
-        } else if (ligne.remiseType === 'fixe') {
-          const montantRemise = Number(updated[index].remiseValeur) || 0;
-          updated[index].prixFinal = Math.max(0, base - montantRemise);
-        } else {
-          updated[index].prixFinal = base;
+        // Recalculate prixFinal when remise changes
+        if (['remiseType', 'remiseValeur', 'prixBase'].includes(field)) {
+          const ligne = updated[index];
+          const base = Number(ligne.prixBase) || 0;
+
+          if (field === 'remiseType' && value === 'offert') {
+            updated[index].remiseValeur = '0';
+            updated[index].remiseMotif = 'Soin Offert';
+          }
+
+          if (ligne.remiseType === 'offert') {
+            updated[index].prixFinal = 0;
+          } else if (ligne.remiseType === 'pourcentage') {
+            const pct = Number(updated[index].remiseValeur) || 0;
+            updated[index].prixFinal = Math.max(0, base - (base * pct / 100));
+          } else if (ligne.remiseType === 'fixe') {
+            const montantRemise = Number(updated[index].remiseValeur) || 0;
+            updated[index].prixFinal = Math.max(0, base - montantRemise);
+          } else {
+            updated[index].prixFinal = base;
+          }
         }
-      }
 
-      return updated;
-    });
+        return updated;
+      });
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de la mise à jour de la prestation.');
+    }
   };
 
   const toggleAgent = (index, employe) => {
-    setLignes(prev => {
-      const updated = [...prev];
-      const ligne = { ...updated[index] };
-      const exists = ligne.agents.some(a => a.id === employe.id);
-      if (exists) {
-        ligne.agents = ligne.agents.filter(a => a.id !== employe.id);
-      } else {
-        ligne.agents = [...ligne.agents, { id: employe.id, nom: employe.nom }];
-      }
-      updated[index] = ligne;
-      return updated;
-    });
+    try {
+      setLignes(prev => {
+        const updated = [...prev];
+        const ligne = { ...updated[index] };
+        const safeAgents = ligne.agents || [];
+        const exists = safeAgents.some(a => a.id === employe.id);
+        if (exists) {
+          ligne.agents = safeAgents.filter(a => a.id !== employe.id);
+        } else {
+          ligne.agents = [...safeAgents, { id: employe.id, nom: employe.nom }];
+        }
+        updated[index] = ligne;
+        return updated;
+      });
+    } catch (e) {
+      console.error(e);
+      alert('Erreur lors de la modification de l\'agent.');
+    }
   };
 
   return (
@@ -191,7 +219,7 @@ const PanierPrestations = ({
               </div>
 
               {/* Valeur remise */}
-              {(ligne.remiseType === 'pourcentage' || ligne.remiseType === 'fixe') && (
+              {ligne.remiseType !== 'aucune' && (
                 <div className="form-group" style={{ margin: 0 }}>
                   <label>Valeur remise</label>
                   <input
@@ -200,6 +228,7 @@ const PanierPrestations = ({
                     value={ligne.remiseValeur}
                     onChange={e => updateLigne(index, 'remiseValeur', e.target.value)}
                     placeholder={ligne.remiseType === 'pourcentage' ? 'Ex: 20' : 'Ex: 1000'}
+                    disabled={ligne.remiseType === 'offert'}
                   />
                 </div>
               )}
@@ -227,7 +256,8 @@ const PanierPrestations = ({
               </label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                 {employes.map(emp => {
-                  const isSelected = ligne.agents.some(a => a.id === emp.id);
+                  const safeAgents = ligne.agents || [];
+                  const isSelected = safeAgents.some(a => a.id === emp.id);
                   return (
                     <button
                       key={emp.id}
@@ -240,7 +270,7 @@ const PanierPrestations = ({
                   );
                 })}
               </div>
-              {ligne.agents.length === 0 && (
+              {(!ligne.agents || ligne.agents.length === 0) && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--danger)', margin: '4px 0 0 0' }}>
                   Veuillez assigner au moins un agent.
                 </p>
@@ -270,15 +300,17 @@ const PanierPrestations = ({
 
       {/* Mode de paiement + Total */}
       <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div className="form-group" style={{ flex: 1, minWidth: '160px', margin: 0 }}>
-          <label>Mode de paiement</label>
-          <select className="input-control" value={modePaiement} onChange={e => setModePaiement(e.target.value)}>
-            <option value="Cash">Cash</option>
-            <option value="NITA">NITA</option>
-            <option value="AMANA">AMANA</option>
-            <option value="Carte VISA">Carte VISA</option>
-          </select>
-        </div>
+        {!hidePayment && (
+          <div className="form-group" style={{ flex: 1, minWidth: '160px', margin: 0 }}>
+            <label>Mode de paiement</label>
+            <select className="input-control" value={modePaiement || 'Cash'} onChange={e => setModePaiement && setModePaiement(e.target.value)}>
+              <option value="Cash">Cash</option>
+              <option value="NITA">NITA</option>
+              <option value="AMANA">AMANA</option>
+              <option value="Carte VISA">Carte VISA</option>
+            </select>
+          </div>
+        )}
 
         <div style={{
           flex: 2,
