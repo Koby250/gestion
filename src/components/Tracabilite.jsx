@@ -4,17 +4,43 @@ import { db } from '../firebase';
 import { Shield, Filter } from 'lucide-react';
 
 const Tracabilite = () => {
-  const [logs, setLogs] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [retroAvances, setRetroAvances] = useState([]);
   const [filterAction, setFilterAction] = useState('ALL');
 
   useEffect(() => {
-    // On récupère les 100 derniers logs pour éviter de surcharger
-    const q = query(collection(db, 'logs_audit'), orderBy('date', 'desc'), limit(150));
-    const unsub = onSnapshot(q, (snap) => {
-      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    // 1. Récupération des logs standards
+    const qLogs = query(collection(db, 'logs_audit'), orderBy('date', 'desc'), limit(150));
+    const unsubLogs = onSnapshot(qLogs, (snap) => {
+      setAuditLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    return () => unsub();
+
+    // 2. Récupération rétroactive des avances
+    const qAvances = query(collection(db, 'avances_salaires'), orderBy('date', 'desc'), limit(150));
+    const unsubAvances = onSnapshot(qAvances, (snap) => {
+      const retro = [];
+      // Date de déploiement de la traçabilité des avances pour éviter les doublons
+      const FEATURE_DATE = '2026-09-08T10:00:00.000Z'; 
+      
+      snap.docs.forEach(d => {
+        const av = d.data();
+        if (av.date < FEATURE_DATE) {
+          retro.push({
+            id: `retro_av_${d.id}`,
+            admin: av.saisieParNom || 'Système',
+            action: 'AVANCE_CREATE (Rétroactif)',
+            description: `Attribution d'une avance de ${Number(av.montant).toLocaleString('fr-FR')} FCFA à ${av.employeNom} (Rétroactif)`,
+            date: av.date
+          });
+        }
+      });
+      setRetroAvances(retro);
+    });
+
+    return () => { unsubLogs(); unsubAvances(); };
   }, []);
+
+  const logs = [...auditLogs, ...retroAvances].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const getActionColor = (action) => {
     if (action.includes('DELETE') || action.includes('CANCEL')) return 'var(--danger)';
