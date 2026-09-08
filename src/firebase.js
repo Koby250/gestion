@@ -1,21 +1,17 @@
+// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBQtvqfda36OlmkbOjq6JOJ0a-s6LP4Euc",
-  authDomain: "le-cercle-ef77b.firebaseapp.com",
-  projectId: "le-cercle-ef77b",
-  storageBucket: "le-cercle-ef77b.firebasestorage.app",
-  messagingSenderId: "381028183619",
-  appId: "1:381028183619:web:53030a4351a44ff6bb6ef6"
+  apiKey: "AIzaSyCNG4DVxjzNXLhFSuvA0rwHuWkHTM757LY",
+  authDomain: "barber-control-fac68.firebaseapp.com",
+  projectId: "barber-control-fac68",
+  storageBucket: "barber-control-fac68.firebasestorage.app",
+  messagingSenderId: "927192202405",
+  appId: "1:927192202405:web:507bd13fb904a3e1f7614c"
 };
 
-// Initialisation de Firebase
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Export de la base de données Firestore
-export const db = getFirestore(app);
-
-// Export de l'instance d'authentification
-export const auth = getAuth(app);
