@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Wallet, ArrowRightLeft, Edit2, CheckCircle, Search } from 'lucide-react';
+import { Wallet, ArrowRightLeft, Edit2, CheckCircle, Search, Calendar } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import SuccessModal from './SuccessModal';
 
@@ -28,8 +28,12 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), cu
   const [showSuccess, setShowSuccess] = useState(false);
 
   // View state for mobile tabs
-  const [activeTab, setActiveTab] = useState('balances'); // 'balances', 'transfer', 'history'
+  const [activeTab, setActiveTab] = useState('balances'); // 'balances', 'transfer', 'history', 'journalier'
   const [transferHistory, setTransferHistory] = useState([]);
+  
+  // Data for journalier
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [allAvances, setAllAvances] = useState([]);
 
   // Filters for history
   const [searchTresTerm, setSearchTresTerm] = useState('');
@@ -78,11 +82,13 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), cu
       calcTheo();
       // Extract transfers
       setTransferHistory(txData.filter(t => t.type === 'transfert').sort((a, b) => new Date(b.date) - new Date(a.date)));
+      setAllTransactions(txData);
     });
 
     const unsubAv = onSnapshot(collection(db, 'avances_salaires'), (snapshot) => {
       avancesData = snapshot.docs.map(d => d.data());
       calcTheo();
+      setAllAvances(avancesData);
     });
 
     return () => {
@@ -212,6 +218,18 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), cu
           }}
         >
           <CheckCircle size={18} style={{ marginRight: '8px' }} /> Historique
+        </button>
+        <button 
+          onClick={() => setActiveTab('journalier')}
+          className={`btn ${activeTab === 'journalier' ? 'btn-primary' : ''}`}
+          style={{ 
+            flex: 1, minWidth: '150px', minHeight: '48px', borderRadius: '12px',
+            backgroundColor: activeTab === 'journalier' ? 'var(--accent-color)' : 'var(--bg-input)',
+            color: activeTab === 'journalier' ? '#fff' : 'var(--text-main)',
+            border: 'none', fontWeight: 'bold'
+          }}
+        >
+          <Calendar size={18} style={{ marginRight: '8px' }} /> Journalier
         </button>
       </div>
 
@@ -424,6 +442,123 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), cu
                         {tx.saisieParNom && (
                           <span style={{ marginLeft: '8px', fontStyle: 'italic' }}>— Par : {tx.saisieParNom}</span>
                         )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* HISTORIQUE JOURNALIER DE LA TRESORERIE */}
+        {activeTab === 'journalier' && (
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <Calendar size={24} color="var(--accent-color)" />
+              <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Journal de Trésorerie</h2>
+            </div>
+            
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+              Suivi chronologique des soldes depuis le 1er septembre 2026.
+            </p>
+
+            <div className="list-container" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {(() => {
+                const startDate = '2026-09-01';
+                
+                // Rassembler tous les items pertinents
+                const items = [];
+                
+                allTransactions.forEach(t => {
+                  if (t.type === 'transfert') return; // ignore transferts pour le net global
+                  const dStr = (t.date || '').substring(0, 10);
+                  if (dStr >= startDate) {
+                    items.push({ date: dStr, type: t.type, montant: Number(t.montant) || 0 });
+                  }
+                });
+                
+                allAvances.forEach(a => {
+                  const dStr = (a.date || '').substring(0, 10);
+                  if (dStr >= startDate) {
+                    items.push({ date: dStr, type: 'avance', montant: Number(a.montant) || 0 });
+                  }
+                });
+                
+                // Grouper par date
+                const grouped = {};
+                items.forEach(item => {
+                  if (!grouped[item.date]) {
+                    grouped[item.date] = { entrees: 0, sorties: 0 };
+                  }
+                  if (item.type === 'prestation') {
+                    grouped[item.date].entrees += item.montant;
+                  } else if (item.type === 'depense' || item.type === 'avance') {
+                    grouped[item.date].sorties += item.montant;
+                  } else if (item.type === 'ajustement') {
+                    if (item.montant > 0) grouped[item.date].entrees += item.montant;
+                    else grouped[item.date].sorties += Math.abs(item.montant);
+                  }
+                });
+                
+                // Trier les dates de la plus ancienne à la plus récente pour le calcul
+                const sortedDates = Object.keys(grouped).sort();
+                
+                let runningBalance = 0;
+                const historyList = [];
+                
+                sortedDates.forEach(dStr => {
+                  const dayData = grouped[dStr];
+                  const ouverture = runningBalance;
+                  runningBalance = ouverture + dayData.entrees - dayData.sorties;
+                  historyList.push({
+                    date: dStr,
+                    ouverture,
+                    entrees: dayData.entrees,
+                    sorties: dayData.sorties,
+                    cloture: runningBalance
+                  });
+                });
+                
+                // Inverser pour l'affichage (plus récent en premier)
+                historyList.reverse();
+                
+                if (historyList.length === 0) {
+                  return <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>Aucune donnée journalière trouvée depuis le {startDate}.</p>;
+                }
+                
+                return historyList.map((day, idx) => {
+                  const d = new Date(day.date);
+                  return (
+                    <div key={day.date} style={{
+                      backgroundColor: 'var(--bg-input)', padding: '16px', borderRadius: '12px',
+                      display: 'flex', flexDirection: 'column', gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                        <span style={{ fontWeight: 'bold', color: 'var(--text-main)', fontSize: '1rem', textTransform: 'capitalize' }}>
+                          {d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                        </span>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', fontSize: '0.85rem' }}>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Ouverture</div>
+                          <div style={{ fontWeight: '600' }}>{day.ouverture.toLocaleString('fr-FR')} F</div>
+                        </div>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Entrées</div>
+                          <div style={{ fontWeight: '600', color: 'var(--success)' }}>+{day.entrees.toLocaleString('fr-FR')} F</div>
+                        </div>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Sorties</div>
+                          <div style={{ fontWeight: '600', color: 'var(--danger)' }}>-{day.sorties.toLocaleString('fr-FR')} F</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Clôture (Net)</div>
+                          <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: day.cloture >= 0 ? 'var(--accent-color)' : 'var(--danger)' }}>
+                            {day.cloture.toLocaleString('fr-FR')} F
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
