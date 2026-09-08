@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { Users, AlertTriangle, CheckCircle, ShieldAlert, Plus, Trash2, Edit2, X, Save, Search } from 'lucide-react';
 import BulkActionBar from './BulkActionBar';
 import SuccessModal from './SuccessModal';
+import { logEvent } from '../utils/audit';
 
 const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUserNom = '' }) => {
   const [employes, setEmployes] = useState([]);
@@ -111,6 +112,8 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
         transactionId: txRef.id
       });
       
+      await logEvent('AVANCE_CREATE', `Attribution d'une avance de ${formAvance.montant} FCFA à ${emp ? emp.nom : 'Inconnu'} par ${currentUserNom}`);
+
       setFormAvance({ ...formAvance, montant: '', motif: 'Avance sur salaire' });
       setShowSuccess(true);
       setMsg(null);
@@ -130,6 +133,9 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
         } catch(e) { console.warn('Transaction not found', e); }
       }
       await deleteDoc(doc(db, 'avances_salaires', id));
+      if (av) {
+        await logEvent('AVANCE_DELETE', `Suppression de l'avance de ${av.montant} FCFA pour ${av.employeNom}`);
+      }
     }
   };
 
@@ -168,6 +174,9 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
       modePaiement: editAvanceForm.modePaiement,
       statut: editAvanceForm.statut
     });
+    
+    await logEvent('AVANCE_UPDATE', `Modification de l'avance pour ${emp ? emp.nom : av.employeNom} (Nouveau montant: ${editAvanceForm.montant} FCFA) par ${currentUserNom}`);
+    
     setEditingAvanceId(null);
     setShowSuccess(true);
   };
