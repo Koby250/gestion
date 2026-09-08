@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, setDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { db, auth, app } from '../firebase';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck } from 'lucide-react';
@@ -195,7 +195,8 @@ const Parametres = () => {
     setAdminMsg(null);
     try {
       // App Firebase temporaire isolée pour ne pas déconnecter l'admin actuel
-      const secondaryApp  = initializeApp(auth.app.options, 'SecondaryAdminApp_' + Date.now());
+      // On utilise les options de l'app principale exportée depuis firebase.js
+      const secondaryApp  = initializeApp(app.options, 'SecondaryAdminApp_' + Date.now());
       const secondaryAuth = getAuth(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, adminEmail, adminPassword);
       
