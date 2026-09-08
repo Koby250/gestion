@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Wallet, ArrowRightLeft, Edit2, CheckCircle, Search, Calendar } from 'lucide-react';
+import { Wallet, ArrowRightLeft, Edit2, CheckCircle, Search, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import SuccessModal from './SuccessModal';
 
 const accountsList = [
   { id: 'cash', label: 'Cash (Espèces)' },
-  { id: 'nita', label: 'Nita Cash' },
+  { id: 'nita', label: 'Nita' },
   { id: 'amana', label: 'Amana' },
   { id: 'visa', label: 'Carte VISA / Banque' },
   { id: 'autre', label: 'Autre' }
@@ -34,6 +34,7 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), cu
   // Data for journalier
   const [allTransactions, setAllTransactions] = useState([]);
   const [allAvances, setAllAvances] = useState([]);
+  const [expandedDay, setExpandedDay] = useState(null);
 
   // Filters for history
   const [searchTresTerm, setSearchTresTerm] = useState('');
@@ -467,102 +468,288 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), cu
               {(() => {
                 const startDate = '2026-09-01';
                 
-                // Rassembler tous les items pertinents
+                const getModeKey = (m) => {
+                  if (!m) return 'cash';
+                  const lower = m.toLowerCase();
+                  if (lower.includes('visa')) return 'visa';
+                  if (lower.includes('nita')) return 'nita';
+                  if (lower.includes('amana')) return 'amana';
+                  if (lower.includes('cash')) return 'cash';
+                  return 'autre';
+                };
+                
                 const items = [];
+                const globalTotals = { 
+                  cash: { in: 0, out: 0 }, nita: { in: 0, out: 0 }, 
+                  amana: { in: 0, out: 0 }, visa: { in: 0, out: 0 }, autre: { in: 0, out: 0 }
+                };
                 
                 allTransactions.forEach(t => {
-                  if (t.type === 'transfert') return; // ignore transferts pour le net global
                   const dStr = (t.date || '').substring(0, 10);
                   if (dStr >= startDate) {
-                    items.push({ date: dStr, type: t.type, montant: Number(t.montant) || 0 });
+                    if (t.type === 'transfert') {
+                      items.push({ date: dStr, type: 'transfert', montant: Number(t.montant) || 0, from: getModeKey(t.fromAccount), to: getModeKey(t.toAccount) });
+                    } else {
+                      items.push({ date: dStr, type: t.type, categorie: t.categorie || 'Autre', montant: Number(t.montant) || 0, motif: t.motif, mode: getModeKey(t.modePaiement) });
+                    }
                   }
                 });
                 
                 allAvances.forEach(a => {
                   const dStr = (a.date || '').substring(0, 10);
                   if (dStr >= startDate) {
-                    items.push({ date: dStr, type: 'avance', montant: Number(a.montant) || 0 });
+                    items.push({ date: dStr, type: 'avance', categorie: 'Avances sur salaires', montant: Number(a.montant) || 0, motif: a.motif, mode: getModeKey(a.modePaiement) });
                   }
                 });
                 
-                // Grouper par date
                 const grouped = {};
                 items.forEach(item => {
                   if (!grouped[item.date]) {
-                    grouped[item.date] = { entrees: 0, sorties: 0 };
+                    grouped[item.date] = { 
+                      entrees: 0, sorties: 0, 
+                      details: { entrees: {}, sorties: {} },
+                      modes: { 
+                        cash: { entrees: 0, sorties: 0 }, nita: { entrees: 0, sorties: 0 }, 
+                        amana: { entrees: 0, sorties: 0 }, visa: { entrees: 0, sorties: 0 }, autre: { entrees: 0, sorties: 0 } 
+                      }
+                    };
                   }
-                  if (item.type === 'prestation') {
-                    grouped[item.date].entrees += item.montant;
-                  } else if (item.type === 'depense' || item.type === 'avance') {
-                    grouped[item.date].sorties += item.montant;
-                  } else if (item.type === 'ajustement') {
-                    if (item.montant > 0) grouped[item.date].entrees += item.montant;
-                    else grouped[item.date].sorties += Math.abs(item.montant);
+                  
+                  const g = grouped[item.date];
+                  
+                  if (item.type === 'transfert') {
+                     if (g.modes[item.from]) g.modes[item.from].sorties += item.montant;
+                     if (g.modes[item.to]) g.modes[item.to].entrees += item.montant;
+                  } else {
+                    const mKey = item.mode || 'cash';
+                    if (!g.modes[mKey]) g.modes[mKey] = { entrees: 0, sorties: 0 };
+                    
+                    if (item.type === 'prestation') {
+                      g.entrees += item.montant;
+                      g.modes[mKey].entrees += item.montant;
+                      globalTotals[mKey].in += item.montant;
+                      g.details.entrees['Prestations'] = (g.details.entrees['Prestations'] || 0) + item.montant;
+                    } else if (item.type === 'depense') {
+                      g.sorties += item.montant;
+                      g.modes[mKey].sorties += item.montant;
+                      globalTotals[mKey].out += item.montant;
+                      const cat = item.categorie || 'Dépenses diverses';
+                      g.details.sorties[cat] = (g.details.sorties[cat] || 0) + item.montant;
+                    } else if (item.type === 'avance') {
+                      g.sorties += item.montant;
+                      g.modes[mKey].sorties += item.montant;
+                      globalTotals[mKey].out += item.montant;
+                      g.details.sorties['Avances sur salaires'] = (g.details.sorties['Avances sur salaires'] || 0) + item.montant;
+                    } else if (item.type === 'ajustement') {
+                      if (item.montant > 0) {
+                        g.entrees += item.montant;
+                        g.modes[mKey].entrees += item.montant;
+                        globalTotals[mKey].in += item.montant;
+                        g.details.entrees['Ajustements (Erreur/Ajout)'] = (g.details.entrees['Ajustements (Erreur/Ajout)'] || 0) + item.montant;
+                      } else {
+                        g.sorties += Math.abs(item.montant);
+                        g.modes[mKey].sorties += Math.abs(item.montant);
+                        globalTotals[mKey].out += Math.abs(item.montant);
+                        g.details.sorties['Ajustements (Erreur/Retrait)'] = (g.details.sorties['Ajustements (Erreur/Retrait)'] || 0) + Math.abs(item.montant);
+                      }
+                    }
                   }
                 });
                 
-                // Trier les dates de la plus ancienne à la plus récente pour le calcul
                 const sortedDates = Object.keys(grouped).sort();
                 
-                let runningBalance = 0;
+                let runningBalanceTotal = 0;
+                let runningBalancesModes = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
                 const historyList = [];
                 
                 sortedDates.forEach(dStr => {
                   const dayData = grouped[dStr];
-                  const ouverture = runningBalance;
-                  runningBalance = ouverture + dayData.entrees - dayData.sorties;
+                  const ouverture = runningBalanceTotal;
+                  runningBalanceTotal = ouverture + dayData.entrees - dayData.sorties;
+                  
+                  const endBalances = {};
+                  accountsList.forEach(acc => {
+                    const id = acc.id;
+                    runningBalancesModes[id] = runningBalancesModes[id] + dayData.modes[id].entrees - dayData.modes[id].sorties;
+                    endBalances[id] = runningBalancesModes[id];
+                  });
+
                   historyList.push({
                     date: dStr,
                     ouverture,
                     entrees: dayData.entrees,
                     sorties: dayData.sorties,
-                    cloture: runningBalance
+                    cloture: runningBalanceTotal,
+                    details: dayData.details,
+                    modes: dayData.modes,
+                    endBalances: endBalances
                   });
                 });
                 
-                // Inverser pour l'affichage (plus récent en premier)
                 historyList.reverse();
                 
-                if (historyList.length === 0) {
-                  return <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>Aucune donnée journalière trouvée depuis le {startDate}.</p>;
-                }
-                
-                return historyList.map((day, idx) => {
-                  const d = new Date(day.date);
-                  return (
-                    <div key={day.date} style={{
-                      backgroundColor: 'var(--bg-input)', padding: '16px', borderRadius: '12px',
-                      display: 'flex', flexDirection: 'column', gap: '10px'
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                        <span style={{ fontWeight: 'bold', color: 'var(--text-main)', fontSize: '1rem', textTransform: 'capitalize' }}>
-                          {d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                        </span>
+                return (
+                  <>
+                    <div style={{ backgroundColor: 'var(--bg-input)', padding: '15px', borderRadius: '12px', marginBottom: '15px' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '10px' }}>
+                        Sous-totaux Globaux par Canal (depuis {startDate})
                       </div>
-                      
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', fontSize: '0.85rem' }}>
-                        <div>
-                          <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Ouverture</div>
-                          <div style={{ fontWeight: '600' }}>{day.ouverture.toLocaleString('fr-FR')} F</div>
-                        </div>
-                        <div>
-                          <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Entrées</div>
-                          <div style={{ fontWeight: '600', color: 'var(--success)' }}>+{day.entrees.toLocaleString('fr-FR')} F</div>
-                        </div>
-                        <div>
-                          <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Sorties</div>
-                          <div style={{ fontWeight: '600', color: 'var(--danger)' }}>-{day.sorties.toLocaleString('fr-FR')} F</div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Clôture (Net)</div>
-                          <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: day.cloture >= 0 ? 'var(--accent-color)' : 'var(--danger)' }}>
-                            {day.cloture.toLocaleString('fr-FR')} F
-                          </div>
-                        </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
+                        {accountsList.map(acc => {
+                          const id = acc.id;
+                          const tIn = globalTotals[id].in;
+                          const tOut = globalTotals[id].out;
+                          const net = tIn - tOut;
+                          if (tIn === 0 && tOut === 0) return null;
+                          return (
+                            <div key={id} style={{ backgroundColor: 'var(--bg-main)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '0.9rem' }}>{acc.label}</div>
+                              <div style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Encaissé</span>
+                                <span style={{ color: 'var(--success)' }}>{tIn.toLocaleString('fr-FR')}</span>
+                              </div>
+                              <div style={{ fontSize: '0.75rem', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Décaissé</span>
+                                <span style={{ color: 'var(--danger)' }}>{tOut.toLocaleString('fr-FR')}</span>
+                              </div>
+                              <div style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '4px', fontWeight: 'bold' }}>
+                                <span>Net</span>
+                                <span>{net.toLocaleString('fr-FR')} F</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                });
+
+                    {historyList.length === 0 ? (
+                      <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>Aucune donnée journalière trouvée depuis le {startDate}.</p>
+                    ) : (
+                      historyList.map((day, idx) => {
+                        const d = new Date(day.date);
+                        const isExpanded = expandedDay === day.date;
+                        
+                        return (
+                          <div key={day.date} style={{
+                            backgroundColor: 'var(--bg-input)', borderRadius: '12px', marginBottom: '12px',
+                            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                            border: isExpanded ? '1px solid var(--accent-color)' : '1px solid transparent',
+                            transition: 'border 0.3s ease'
+                          }}>
+                            <div 
+                              onClick={() => setExpandedDay(isExpanded ? null : day.date)}
+                              style={{ padding: '16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '10px' }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                                <span style={{ fontWeight: 'bold', color: 'var(--text-main)', fontSize: '1rem', textTransform: 'capitalize' }}>
+                                  {d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                </span>
+                                <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
+                                  {isExpanded ? 'Fermer' : 'Détails'}
+                                  {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </span>
+                              </div>
+                              
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', fontSize: '0.85rem' }}>
+                                <div>
+                                  <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Ouverture</div>
+                                  <div style={{ fontWeight: '600' }}>{day.ouverture.toLocaleString('fr-FR')} F</div>
+                                </div>
+                                <div>
+                                  <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Entrées</div>
+                                  <div style={{ fontWeight: '600', color: 'var(--success)' }}>+{day.entrees.toLocaleString('fr-FR')} F</div>
+                                </div>
+                                <div>
+                                  <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Sorties</div>
+                                  <div style={{ fontWeight: '600', color: 'var(--danger)' }}>-{day.sorties.toLocaleString('fr-FR')} F</div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Clôture (Net)</div>
+                                  <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: day.cloture >= 0 ? 'var(--accent-color)' : 'var(--danger)' }}>
+                                    {day.cloture.toLocaleString('fr-FR')} F
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {isExpanded && (
+                              <div style={{ padding: '16px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-main)' }}>
+                                
+                                <div style={{ marginBottom: '20px' }}>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '10px' }}>
+                                    Soldes de fin de journée par caisse
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                    {accountsList.map(acc => {
+                                      const bal = day.endBalances[acc.id];
+                                      if (!bal && day.modes[acc.id].entrees === 0 && day.modes[acc.id].sorties === 0) return null;
+                                      return (
+                                        <div key={acc.id} style={{ padding: '6px 10px', backgroundColor: 'var(--bg-input)', borderRadius: '6px', fontSize: '0.8rem', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                          <span style={{ color: 'var(--text-muted)' }}>{acc.label}:</span>
+                                          <span style={{ fontWeight: 'bold', color: 'var(--text-main)' }}>{bal.toLocaleString('fr-FR')} F</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '12px' }}>Répartition du jour</div>
+                                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                                  
+                                  <div style={{ flex: 1, minWidth: '200px' }}>
+                                    <div style={{ color: 'var(--success)', fontWeight: '600', marginBottom: '8px', borderBottom: '1px solid rgba(16,185,129,0.2)', paddingBottom: '4px' }}>Flux Entrants (Par Rubrique)</div>
+                                    {Object.keys(day.details.entrees).length > 0 ? (
+                                      Object.entries(day.details.entrees).map(([cat, montant]) => (
+                                        <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                                          <span style={{ color: 'var(--text-muted)' }}>{cat}</span>
+                                          <span style={{ fontWeight: '500' }}>{montant.toLocaleString('fr-FR')} F</span>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Aucune entrée</div>
+                                    )}
+                                  </div>
+
+                                  <div style={{ flex: 1, minWidth: '200px' }}>
+                                    <div style={{ color: 'var(--danger)', fontWeight: '600', marginBottom: '8px', borderBottom: '1px solid rgba(239,68,68,0.2)', paddingBottom: '4px' }}>Flux Sortants (Par Rubrique)</div>
+                                    {Object.keys(day.details.sorties).length > 0 ? (
+                                      Object.entries(day.details.sorties).map(([cat, montant]) => (
+                                        <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                                          <span style={{ color: 'var(--text-muted)' }}>{cat}</span>
+                                          <span style={{ fontWeight: '500' }}>{montant.toLocaleString('fr-FR')} F</span>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Aucune sortie</div>
+                                    )}
+                                  </div>
+
+                                  <div style={{ flex: 1, minWidth: '200px' }}>
+                                    <div style={{ color: 'var(--accent-color)', fontWeight: '600', marginBottom: '8px', borderBottom: '1px solid rgba(59,130,246,0.2)', paddingBottom: '4px' }}>Mouvements par Canal (Incl. transferts)</div>
+                                    {accountsList.map(acc => {
+                                      const m = day.modes[acc.id];
+                                      if (m.entrees === 0 && m.sorties === 0) return null;
+                                      return (
+                                        <div key={acc.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                                          <span style={{ color: 'var(--text-muted)', fontWeight: '600' }}>{acc.label}</span>
+                                          <span style={{ display: 'flex', gap: '8px' }}>
+                                            {m.entrees > 0 && <span style={{ color: 'var(--success)' }}>+{m.entrees.toLocaleString('fr-FR')}</span>}
+                                            {m.sorties > 0 && <span style={{ color: 'var(--danger)' }}>-{m.sorties.toLocaleString('fr-FR')}</span>}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </>
+                );
               })()}
             </div>
           </div>
