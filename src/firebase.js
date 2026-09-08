@@ -1,17 +1,21 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyCNG4DVxjzNXLhFSuvA0rwHuWkHTM757LY",
+  apiKey: "AIzaSyCNG4DVXjzNXLhFSuva0rwHuWkHM757LY",
   authDomain: "barber-control-fac68.firebaseapp.com",
   projectId: "barber-control-fac68",
-  storageBucket: "barber-control-fac68.firebasestorage.app",
+  storageBucket: "barber-control-fac68.appspot.com",
   messagingSenderId: "927192202405",
   appId: "1:927192202405:web:507bd13fb904a3e1f7614c"
 };
 
-// Initialize Firebase
+// Initialisation de Firebase
 const app = initializeApp(firebaseConfig);
+
+// Export de la base de données Firestore (Indispensable !)
+export const db = getFirestore(app);
+
+// Export de l'instance d'authentification (Indispensable !)
+export const auth = getAuth(app);
