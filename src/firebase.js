@@ -3,12 +3,12 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCNG4DVxjzNXLhFSuvA0rwHuWkHTM757LY",
-  authDomain: "barber-control-fac68.firebaseapp.com",
-  projectId: "barber-control-fac68",
-  storageBucket: "barber-control-fac68.firebasestorage.app",
-  messagingSenderId: "927192202405",
-  appId: "1:927192202405:web:507bd13fb904a3e1f7614c"
+  apiKey: "AIzaSyBQtvqfda36OlmkbOjq6JOJ0a-s6LP4Euc",
+  authDomain: "le-cercle-ef77b.firebaseapp.com",
+  projectId: "le-cercle-ef77b",
+  storageBucket: "le-cercle-ef77b.firebasestorage.app",
+  messagingSenderId: "381028183619",
+  appId: "1:381028183619:web:53030a4351a44ff6bb6ef6"
 };
 
 // Initialisation de Firebase
