@@ -18,8 +18,17 @@ import RH           from './components/RH';
 import Tracabilite  from './components/Tracabilite';
 import Inventaire   from './components/Inventaire';
 
+// Retourne la date locale du navigateur en format YYYY-MM-DD
+// (évite le décalage UTC de toISOString() qui affiche J-1 après minuit)
+const localDateStr = (d = new Date()) => {
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+};
+
 function App() {
-  const [activeDate,    setActiveDate]    = useState(new Date().toISOString().substring(0, 10));
+  const [activeDate,    setActiveDate]    = useState(localDateStr());
   const [activeTab,     setActiveTab]     = useState('accueil');
   const [monthlyGoal,   setMonthlyGoal]   = useState(0);
   const [todayRevenue,  setTodayRevenue]  = useState(0);
@@ -250,10 +259,10 @@ function App() {
                 className="input-control" 
                 style={{ padding: '8px 12px', borderRadius: '12px', border: '1px solid var(--border-color)', width: 'auto' }}
                 value={activeDate}
-                max={new Date().toISOString().substring(0, 10)}
+                max={localDateStr()}
                 onChange={e => setActiveDate(e.target.value)}
               />
-              {activeDate !== new Date().toISOString().substring(0, 10) && (
+              {activeDate !== localDateStr() && (
                 <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 'bold' }}>Mode Rétroactif</span>
               )}
             </div>

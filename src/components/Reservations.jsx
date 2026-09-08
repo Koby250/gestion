@@ -13,7 +13,8 @@ import RechercheExpress from './RechercheExpress';
 import AgendaVisuel from './AgendaVisuel';
 import PanierPrestations from './PanierPrestations';
 
-const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }) => {
+const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const Reservations = ({ activeDate = localDateStr() }) => {
   // Collections state
   const [reservations, setReservations] = useState([]);
   const [services, setServices]         = useState([]);
@@ -62,7 +63,7 @@ const Reservations = ({ activeDate = new Date().toISOString().substring(0, 10) }
 
 
   const getTransactionDate = () => {
-    const todayStr = new Date().toISOString().substring(0, 10);
+    const todayStr = localDateStr();
     if (activeDate === todayStr) {
       return new Date().toISOString();
     } else {

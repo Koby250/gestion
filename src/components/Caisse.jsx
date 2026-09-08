@@ -8,7 +8,8 @@ import SuccessModal from './SuccessModal';
 import BulkActionBar from './BulkActionBar';
 import PanierPrestations from './PanierPrestations';
 
-const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), currentUserNom = '' }) => {
+const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   // State for reference data
   const [services, setServices] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -99,7 +100,7 @@ const Caisse = ({ activeDate = new Date().toISOString().substring(0, 10), curren
   };
 
   const getTransactionDate = () => {
-    const todayStr = new Date().toISOString().substring(0, 10);
+    const todayStr = localDateStr();
     if (activeDate === todayStr) {
       return new Date().toISOString();
     } else {

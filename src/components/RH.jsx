@@ -6,7 +6,8 @@ import BulkActionBar from './BulkActionBar';
 import SuccessModal from './SuccessModal';
 import { logEvent } from '../utils/audit';
 
-const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUserNom = '' }) => {
+const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const RH = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   const [employes, setEmployes] = useState([]);
   const [avances, setAvances] = useState([]);
   const [chargesFixes, setChargesFixes] = useState([]);
@@ -142,7 +143,7 @@ const RH = ({ activeDate = new Date().toISOString().substring(0, 10), currentUse
   const startEditAvance = (av) => {
     setEditingAvanceId(av.id);
     const d = new Date(av.date);
-    const dateStr = d.toISOString().substring(0, 10);
+    const dateStr = localDateStr(d);
     setEditAvanceForm({ 
       montant: av.montant.toString(), 
       date: dateStr, 

@@ -9,7 +9,8 @@ import {
 import RechercheExpress from './RechercheExpress';
 import { computeDetailedGlobalStats } from '../utils/points';
 
-const Accueil = ({ activeDate = new Date().toISOString().substring(0, 10), userRole = '' }) => {
+const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
   const [reservations,  setReservations]  = useState([]);
   const [employes,      setEmployes]      = useState([]);
   const [transactions,  setTransactions]  = useState([]);

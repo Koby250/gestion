@@ -13,7 +13,8 @@ const accountsList = [
   { id: 'autre', label: 'Autre' }
 ];
 
-const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), currentUserNom = '' }) => {
+const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   const [soldes, setSoldes] = useState({ cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 });
   
   // Editing state
@@ -99,7 +100,7 @@ const Tresorerie = ({ activeDate = new Date().toISOString().substring(0, 10), cu
   }, []);
 
   const getTransactionDate = () => {
-    const todayStr = new Date().toISOString().substring(0, 10);
+    const todayStr = localDateStr();
     if (activeDate === todayStr) {
       return new Date().toISOString();
     } else {
