@@ -129,6 +129,7 @@ const Bilan = () => {
             motif: `Cloture Salaire - ${emp.nom} (${moisLabel})`,
             categorie: 'Paiement Salaires',
             employeNom: 'Cloture Bilan',
+            employeId: emp.id,
             modePaiement: 'Interne',
             date: now,
             saisieParNom: 'Systeme — Bilan'
@@ -165,7 +166,11 @@ const Bilan = () => {
       setChargesFixes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    return () => { unsub(); unsubHist(); unsubEmp(); unsubCharges(); };
+    const unsubAvances = onSnapshot(collection(db, 'avances_salaires'), snap => {
+      setAvances(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsub(); unsubHist(); unsubEmp(); unsubCharges(); unsubAvances(); };
   }, []);
 
   // ── Navigation mois ──────────────────────────────────────────────────────
@@ -205,14 +210,14 @@ const Bilan = () => {
   const totalSalaires     = employes.reduce((acc, emp) => acc + (Number(emp.salaireFixe) || 0), 0);
   const totalChargesFixes = chargesFixes.filter(c => c.actif).reduce((acc, c) => acc + (Number(c.montant) || 0), 0);
 
-  // Trésorerie Nette = CA - Salaires - Charges Fixes
+  // Bilan Prévisionnel = CA encaissé - Budgets (Salaires + Charges Fixes)
   const tresorerieNette   = totalCA - totalSalaires - totalChargesFixes;
   const tresoreriePositive = tresorerieNette >= 0;
 
   const pctSalaires     = totalCA > 0 ? Math.min((totalSalaires     / totalCA) * 100, 100) : 0;
   const pctChargesFixes = totalCA > 0 ? Math.min((totalChargesFixes / totalCA) * 100, 100) : 0;
   const pctDepenses     = totalCA > 0 ? Math.min((totalDepenses     / totalCA) * 100, 100) : 0;
-  const margeRestante   = Math.max(0, totalCA - totalSalaires - totalChargesFixes - totalDepenses);
+  const margeRestante   = Math.max(0, totalCA - totalSalaires - totalChargesFixes);
   const pctMarge        = totalCA > 0 ? (margeRestante / totalCA) * 100 : 0;
 
   // ── Top 3 Agents du Mois ─────────────────────────────────────────────────
@@ -955,64 +960,90 @@ const Bilan = () => {
             </div>
 
             {(() => {
-              const totalVersé = employes.filter(e => e.actif).reduce((s, emp) => {
-                return s + monthAvances.filter(a => a.employeId === emp.id).reduce((x, a) => x + Number(a.montant), 0);
+              const totalVerse = employes.filter(e => e.actif).reduce((s, emp) => {
+                const avancesEmp = monthAvances.filter(a => a.employeId === emp.id).reduce((x, a) => x + Number(a.montant), 0);
+                const paiementsEmp = depenses.filter(t => (t.categorie === 'Paiement Salaires' || t.categorie === 'Salaires') && (t.employeId === emp.id || (t.motif && t.motif.includes(emp.nom)))).reduce((x, t) => x + Number(t.montant), 0);
+                return s + avancesEmp + paiementsEmp;
               }, 0);
-              const pctVerse = totalSalaires > 0 ? Math.min((totalVersé / totalSalaires) * 100, 100) : 0;
-              const completed = totalVersé >= totalSalaires;
+              
+              const pctVerse = totalSalaires > 0 ? Math.min((totalVerse / totalSalaires) * 100, 100) : 0;
+              const overBudget = totalVerse > totalSalaires;
+              const completed = totalVerse >= totalSalaires;
 
               return (
                 <>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                    <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>
-                      {totalVersé.toLocaleString('fr-FR')} F
+                    <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: overBudget ? 'var(--danger)' : 'var(--accent-color)' }}>
+                      {totalVerse.toLocaleString('fr-FR')} F
                     </div>
                     <div style={{ fontSize: '0.88rem', color: 'var(--text-muted)' }}>/ {totalSalaires.toLocaleString('fr-FR')} F (total)</div>
                   </div>
                   
                   <div style={{ height: '6px', backgroundColor: 'var(--bg-input)', borderRadius: '4px', marginBottom: '6px' }}>
-                    <div style={{ height: '100%', width: `${pctVerse}%`, backgroundColor: completed ? 'var(--success)' : 'var(--accent-color)', borderRadius: '4px', transition: 'width 0.4s ease' }} />
+                    <div style={{ height: '100%', width: `${pctVerse}%`, backgroundColor: overBudget ? 'var(--danger)' : completed ? 'var(--success)' : 'var(--accent-color)', borderRadius: '4px', transition: 'width 0.4s ease' }} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '8px' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Part du CA global</span>
                     <span style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{totalCA > 0 ? Math.round(pctSalaires) : 0}%</span>
                   </div>
-                  <div style={{ fontSize: '0.8rem', fontWeight: '600', color: completed ? 'var(--success)' : 'var(--text-main)', marginBottom: '8px' }}>
-                    {completed ? 'Salaires entierement verses' : `Reste a verser : ${(totalSalaires - totalVersé).toLocaleString('fr-FR')} F`}
-                  </div>
+                  {totalSalaires - totalVerse !== 0 && (
+                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: overBudget ? 'var(--danger)' : 'var(--text-main)', marginBottom: '8px' }}>
+                      {overBudget ? `Depassement : ${(totalVerse - totalSalaires).toLocaleString('fr-FR')} F` : `Reste a verser : ${(totalSalaires - totalVerse).toLocaleString('fr-FR')} F`}
+                    </div>
+                  )}
+                  {completed && !overBudget && (
+                     <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--success)', marginBottom: '8px' }}>Salaires entierement verses</div>
+                  )}
                 </>
               );
             })()}
 
-            <div style={{ marginTop: '12px', borderTop: '1px solid rgba(37,99,235,0.15)', paddingTop: '10px' }}>
-              {employes.filter(e => e.actif).map(e => {
-                const verse = monthAvances.filter(a => a.employeId === e.id).reduce((s, a) => s + Number(a.montant), 0);
-                const base = Number(e.salaireFixe) || 0;
-                const reste = Math.max(0, base - verse);
-                return (
-                  <div key={e.id} style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid rgba(37,99,235,0.08)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '2px' }}>
-                      <span style={{ color: 'var(--text-main)', fontWeight: '500' }}>{e.nom}</span>
-                      <span style={{ fontWeight: '600', color: 'var(--text-main)' }}>
-                        {verse.toLocaleString('fr-FR')} <span style={{ color: 'var(--text-muted)', fontWeight: '400' }}>/ {base.toLocaleString('fr-FR')} F</span>
-                      </span>
+            {employes.filter(e => e.actif).length > 0 && (
+              <div style={{ marginTop: '12px', borderTop: '1px solid rgba(37,99,235,0.15)', paddingTop: '10px' }}>
+                {employes.filter(e => e.actif).map(e => {
+                  const avancesEmp = monthAvances.filter(a => a.employeId === e.id).reduce((s, a) => s + Number(a.montant), 0);
+                  const paiementsEmp = depenses.filter(t => (t.categorie === 'Paiement Salaires' || t.categorie === 'Salaires') && (t.employeId === e.id || (t.motif && t.motif.includes(e.nom)))).reduce((x, t) => x + Number(t.montant), 0);
+                  const verse = avancesEmp + paiementsEmp;
+                  const base = Number(e.salaireFixe) || 0;
+                  const reste = Math.max(0, base - verse);
+                  const pct = base > 0 ? Math.min((verse / base) * 100, 100) : 0;
+                  const overBudget = verse > base;
+                  const barColor = overBudget ? 'var(--danger)' : pct > 75 && pct < 100 ? '#F59E0B' : pct >= 100 ? 'var(--success)' : 'var(--accent-color)';
+
+                  return (
+                    <div key={e.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(37,99,235,0.08)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '4px' }}>
+                        <span style={{ color: 'var(--text-main)', fontWeight: '500' }}>{e.nom}</span>
+                        <span style={{ fontWeight: '600', color: overBudget ? 'var(--danger)' : 'var(--text-main)' }}>
+                          {verse.toLocaleString('fr-FR')} <span style={{ color: 'var(--text-muted)', fontWeight: '400' }}>/ {base.toLocaleString('fr-FR')} F</span>
+                        </span>
+                      </div>
+                      <div style={{ height: '4px', backgroundColor: 'var(--bg-input)', borderRadius: '4px' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: barColor, borderRadius: '4px', transition: 'width 0.4s ease' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                        {overBudget ? (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--danger)' }}>Depassement : {(verse - base).toLocaleString('fr-FR')} F</div>
+                        ) : reste > 0 ? (
+                          <div style={{ fontSize: '0.72rem', color: '#F59E0B' }}>Reste : {reste.toLocaleString('fr-FR')} F</div>
+                        ) : (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--success)' }}>Solde</div>
+                        )}
+                      </div>
                     </div>
-                    {reste > 0 ? (
-                      <div style={{ fontSize: '0.72rem', color: '#F59E0B' }}>Reste : {reste.toLocaleString('fr-FR')} F</div>
-                    ) : (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--success)' }}>Solde</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
             {employes.filter(e => e.actif).length > 0 && (
               <button
                 onClick={() => {
                   const initForm = {};
                   employes.filter(e => e.actif).forEach(e => {
-                    const verse = monthAvances.filter(a => a.employeId === e.id).reduce((s, a) => s + Number(a.montant), 0);
+                    const avancesEmp = monthAvances.filter(a => a.employeId === e.id).reduce((s, a) => s + Number(a.montant), 0);
+                    const paiementsEmp = depenses.filter(t => (t.categorie === 'Paiement Salaires' || t.categorie === 'Salaires') && (t.employeId === e.id || (t.motif && t.motif.includes(e.nom)))).reduce((x, t) => x + Number(t.montant), 0);
+                    const verse = avancesEmp + paiementsEmp;
                     const reste = Math.max(0, (Number(e.salaireFixe) || 0) - verse);
                     initForm[e.id] = reste;
                   });
@@ -1113,27 +1144,29 @@ const Bilan = () => {
           {/* Seuil de Rentabilité & Marge Nette */}
           <div style={{ backgroundColor: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px', padding: '16px' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
-              Seuil de Rentabilité & Marge
+              Seuil de Rentabilité & Marge Réelle
             </div>
             {(() => {
               const seuilRentabilite = totalSalaires + totalChargesFixes;
               const caPct = seuilRentabilite > 0 ? Math.min((totalCA / seuilRentabilite) * 100, 100) : 100;
               const seuilAtteint = totalCA >= seuilRentabilite;
               
+              const totalAvances = monthAvances.reduce((s, a) => s + Number(a.montant), 0);
               const totalD = depenses.reduce((s, t) => s + Number(t.montant), 0);
-              const margeNette = totalCA - totalSalaires - totalD;
-              const margePct = totalCA > 0 ? (margeNette / totalCA) * 100 : 0;
+              const totalDepensesReelles = totalD + totalAvances;
+              const margeNetteReelle = totalCA - totalDepensesReelles;
+              const margePctReelle = totalCA > 0 ? (margeNetteReelle / totalCA) * 100 : 0;
 
               return (
                 <>
                   <div style={{ marginBottom: '14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px' }}>
                       <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Point Mort</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Point Mort (Budgets alloués)</div>
                         <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text-main)' }}>{seuilRentabilite.toLocaleString('fr-FR')} F</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>CA Actuel</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>CA Actuel encaissé</div>
                         <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: seuilAtteint ? 'var(--success)' : '#F59E0B' }}>{totalCA.toLocaleString('fr-FR')} F</div>
                       </div>
                     </div>
@@ -1141,18 +1174,21 @@ const Bilan = () => {
                       <div style={{ height: '100%', width: `${caPct}%`, backgroundColor: seuilAtteint ? 'var(--success)' : '#F59E0B', borderRadius: '4px', transition: 'width 0.4s ease' }} />
                     </div>
                     <div style={{ fontSize: '0.72rem', fontWeight: '600', color: seuilAtteint ? 'var(--success)' : '#F59E0B', textAlign: 'center' }}>
-                      {seuilAtteint ? `Seuil dépassé de ${(totalCA - seuilRentabilite).toLocaleString('fr-FR')} F` : `Manque ${(seuilRentabilite - totalCA).toLocaleString('fr-FR')} F pour atteindre le seuil`}
+                      {seuilAtteint ? `Seuil dépassé de ${(totalCA - seuilRentabilite).toLocaleString('fr-FR')} F` : `Manque ${(seuilRentabilite - totalCA).toLocaleString('fr-FR')} F pour atteindre le point mort`}
                     </div>
                   </div>
 
                   <div style={{ borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '12px' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Marge Nette Opérationnelle</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Marge Nette Opérationnelle (Trésorerie Réelle)</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px', fontStyle: 'italic' }}>
+                      CA Actuel − Dépenses réelles payées ({totalDepensesReelles.toLocaleString('fr-FR')} F)
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                      <span style={{ fontSize: '1.4rem', fontWeight: '800', color: margeNette >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                        {margePct.toFixed(1)}%
+                      <span style={{ fontSize: '1.4rem', fontWeight: '800', color: margeNetteReelle >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                        {margePctReelle.toFixed(1)}%
                       </span>
-                      <span style={{ fontSize: '0.85rem', color: margeNette >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: '600' }}>
-                        ({margeNette >= 0 ? '+' : ''}{margeNette.toLocaleString('fr-FR')} F)
+                      <span style={{ fontSize: '0.85rem', color: margeNetteReelle >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: '600' }}>
+                        ({margeNetteReelle >= 0 ? '+' : ''}{margeNetteReelle.toLocaleString('fr-FR')} F)
                       </span>
                     </div>
                   </div>
@@ -1162,21 +1198,37 @@ const Bilan = () => {
           </div>
         </div>
 
-        {/* Jauge Globale 3 segments */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '8px', fontSize: '0.82rem', fontWeight: 'bold', flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--accent-color)' }}>Salaires : {totalCA > 0 ? Math.round((totalSalaires / totalCA) * 100) : 0}%</span>
-            <span style={{ color: 'var(--danger)' }}>Charges Fixes : {totalCA > 0 ? Math.round((totalChargesFixes / totalCA) * 100) : 0}%</span>
-            <span style={{ color: 'var(--success)' }}>Marge nette : {totalCA > 0 ? Math.round(((totalCA - totalSalaires - depenses.reduce((s,t)=>s+Number(t.montant),0)) / totalCA) * 100) : 0}%</span>
-          </div>
-          <div style={{ width: '100%', height: '14px', display: 'flex', borderRadius: '10px', overflow: 'hidden', backgroundColor: 'var(--bg-input)' }}>
-            <div style={{ width: `${totalCA > 0 ? Math.min((totalSalaires / totalCA) * 100, 100) : 0}%`, backgroundColor: 'var(--accent-color)', transition: 'width 0.5s ease' }} />
-            <div style={{ width: `${totalCA > 0 ? Math.min((totalChargesFixes / totalCA) * 100, 100) : 0}%`, backgroundColor: 'var(--danger)', transition: 'width 0.5s ease' }} />
-            <div style={{ width: `${totalCA > 0 ? Math.max(((totalCA - totalSalaires - depenses.reduce((s,t)=>s+Number(t.montant),0)) / totalCA) * 100, 0) : 0}%`, backgroundColor: 'var(--success)', transition: 'width 0.5s ease' }} />
-          </div>
-        </div>
+        {/* Jauge Globale de Répartition du CA (Trésorerie Réelle) */}
+        {(() => {
+           const totalAvances = monthAvances.reduce((s, a) => s + Number(a.montant), 0);
+           const paiementsSalairesReels = depenses.filter(t => t.categorie === 'Paiement Salaires' || t.categorie === 'Salaires').reduce((x, t) => x + Number(t.montant), 0) + totalAvances;
+           const autresDepenses = depenses.reduce((s, t) => s + Number(t.montant), 0) - depenses.filter(t => t.categorie === 'Paiement Salaires' || t.categorie === 'Salaires').reduce((x, t) => x + Number(t.montant), 0);
+           
+           const margeReelle = totalCA - paiementsSalairesReels - autresDepenses;
+           const pctSalaires = totalCA > 0 ? (paiementsSalairesReels / totalCA) * 100 : 0;
+           const pctAutres = totalCA > 0 ? (autresDepenses / totalCA) * 100 : 0;
+           const pctMarge = totalCA > 0 ? Math.max((margeReelle / totalCA) * 100, 0) : 0;
 
-        {/* Trésorerie Nette du Mois */}
+           return (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px', fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Répartition réelle du CA encaissé
+                </div>
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '8px', fontSize: '0.82rem', fontWeight: 'bold', flexWrap: 'wrap' }}>
+                  <span style={{ color: 'var(--accent-color)' }}>Salaires Payés : {totalCA > 0 ? Math.round(pctSalaires) : 0}%</span>
+                  <span style={{ color: 'var(--danger)' }}>Autres Dépenses : {totalCA > 0 ? Math.round(pctAutres) : 0}%</span>
+                  <span style={{ color: 'var(--success)' }}>Marge Nette : {totalCA > 0 ? Math.round(pctMarge) : 0}%</span>
+                </div>
+                <div style={{ width: '100%', height: '14px', display: 'flex', borderRadius: '10px', overflow: 'hidden', backgroundColor: 'var(--bg-input)' }}>
+                  <div style={{ width: `${Math.min(pctSalaires, 100)}%`, backgroundColor: 'var(--accent-color)', transition: 'width 0.5s ease' }} />
+                  <div style={{ width: `${Math.min(pctAutres, 100)}%`, backgroundColor: 'var(--danger)', transition: 'width 0.5s ease' }} />
+                  <div style={{ width: `${pctMarge}%`, backgroundColor: 'var(--success)', transition: 'width 0.5s ease' }} />
+                </div>
+              </div>
+           );
+        })()}
+
+        {/* Bilan Prévisionnel du Mois */}
         <div style={{
           padding: '20px',
           borderRadius: '12px',
@@ -1184,7 +1236,7 @@ const Bilan = () => {
           border: `1px solid ${tresoreriePositive ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`
         }}>
           <div style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-            Trésorerie Nette du Mois = CA − Salaires − Charges Fixes
+            Bilan Prévisionnel du Mois = CA encaissé − Budgets (Salaires + Charges Fixes)
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ fontSize: '2rem', fontWeight: '800', color: tresoreriePositive ? 'var(--success)' : 'var(--danger)' }}>
@@ -1196,8 +1248,8 @@ const Bilan = () => {
           </div>
           <div style={{ fontSize: '0.85rem', marginTop: '8px', color: tresoreriePositive ? 'var(--success)' : 'var(--danger)', fontWeight: '600' }}>
             {tresoreriePositive
-              ? `Le CA couvre intégralement les charges fixes et les salaires. Marge disponible : ${fmt(margeRestante)} F.`
-              : `Attention : le CA actuel ne couvre pas encore toutes les charges du mois (déficit de ${fmt(Math.abs(tresorerieNette))} F).`
+              ? `Le CA couvre intégralement les budgets de charges fixes et de salaires. Marge théorique restante : ${fmt(margeRestante)} F.`
+              : `Attention : le CA actuel ne couvre pas encore tous les budgets du mois (déficit théorique de ${fmt(Math.abs(tresorerieNette))} F).`
             }
           </div>
         </div>
