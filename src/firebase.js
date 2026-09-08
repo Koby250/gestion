@@ -3,7 +3,7 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCNG4DVXjzNXLhFSuva0rwHuWkHM757LY",
+  apiKey: "AIzaSyCNG4DVxjzNXLhFSuvA0rwHuWkHTM757LY",
   authDomain: "barber-control-fac68.firebaseapp.com",
   projectId: "barber-control-fac68",
   storageBucket: "barber-control-fac68.appspot.com",
