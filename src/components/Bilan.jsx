@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc as firestoreDeleteDoc } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 import {
   TrendingUp, TrendingDown, Scissors, DollarSign,
-  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag,  User, Percent, Receipt, Gift, Award, Star, Activity, ChevronDown, ChevronUp
+  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag, User, Percent, Receipt, Gift, Award, Star, Activity, ChevronDown, ChevronUp,
+  PlusCircle, Edit2, X, Search, Filter
 } from 'lucide-react';
 import { computeGlobalPoints, computeDetailedGlobalStats } from '../utils/points';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { logEvent } from '../utils/audit';
+
+// Retourne la date locale en YYYY-MM-DD (évite le décalage UTC de toISOString)
+const localDateStr = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // ── Helper : premier et dernier jour d'un mois ────────────────────────────
 const getMonthBounds = (year, month) => {
@@ -46,6 +52,22 @@ const Bilan = () => {
   const [isClosingSalaries, setIsClosingSalaries] = useState(false);
   const [salaryClosureMode, setSalaryClosureMode] = useState('global');
   const [individualSalariesForm, setIndividualSalariesForm] = useState({});
+
+  // ── États Section Dépenses ─────────────────────────────────────────────
+  const [categories, setCategories] = useState([]);
+  const [depenseForm, setDepenseForm] = useState({
+    date: localDateStr(),
+    categorie: '',
+    montant: '',
+    description: '',
+    modePaiement: 'Cash',
+  });
+  const [depenseFilter, setDepenseFilter] = useState('mois'); // 'jour' | 'semaine' | 'mois' | 'tout'
+  const [depenseSearch, setDepenseSearch] = useState('');
+  const [isSavingDepense, setIsSavingDepense] = useState(false);
+  const [editingDepenseId, setEditingDepenseId] = useState(null);
+  const [editDepenseForm, setEditDepenseForm] = useState({});
+  const [showDepenseForm, setShowDepenseForm] = useState(false);
 
   const toggleAgentDetails = (agentId) => {
     setExpandedAgents(prev => ({ ...prev, [agentId]: !prev[agentId] }));
@@ -170,8 +192,92 @@ const Bilan = () => {
       setAvances(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    return () => { unsub(); unsubHist(); unsubEmp(); unsubCharges(); unsubAvances(); };
+    const unsubCats = onSnapshot(collection(db, 'depenses_categories'), snap => {
+      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.actif !== false));
+    });
+
+    return () => { unsub(); unsubHist(); unsubEmp(); unsubCharges(); unsubAvances(); unsubCats(); };
   }, []);
+
+  // ── Handlers CRUD Dépenses ────────────────────────────────────────────────
+  const handleAddDepense = async (e) => {
+    e.preventDefault();
+    if (!depenseForm.categorie || !depenseForm.montant || !depenseForm.date) return;
+    setIsSavingDepense(true);
+    try {
+      const user = auth.currentUser;
+      const nomAuteur = user?.email || 'Bilan';
+      // Construire un ISO string à midi heure locale pour éviter tout décalage
+      const dateISO = new Date(`${depenseForm.date}T12:00:00`).toISOString();
+      await addDoc(collection(db, 'transactions'), {
+        type: 'depense',
+        montant: Number(depenseForm.montant),
+        motif: depenseForm.description || depenseForm.categorie,
+        categorie: depenseForm.categorie,
+        modePaiement: depenseForm.modePaiement,
+        date: dateISO,
+        saisieParNom: nomAuteur,
+        source: 'bilan',
+      });
+      await logEvent(
+        'DEPENSE_CREATE',
+        `Ajout dépense depuis Bilan — ${depenseForm.categorie} : ${Number(depenseForm.montant).toLocaleString('fr-FR')} FCFA (${depenseForm.description || 'sans description'}) le ${depenseForm.date}`
+      );
+      setDepenseForm({ date: localDateStr(), categorie: '', montant: '', description: '', modePaiement: 'Cash' });
+      setShowDepenseForm(false);
+    } catch (err) {
+      console.error('[Bilan] Erreur ajout dépense:', err);
+      alert('Erreur lors de l\'enregistrement.');
+    } finally {
+      setIsSavingDepense(false);
+    }
+  };
+
+  const handleStartEditDepense = (t) => {
+    setEditingDepenseId(t.id);
+    setEditDepenseForm({
+      date: localDateStr(new Date(t.date)),
+      categorie: t.categorie || '',
+      montant: t.montant || '',
+      description: t.motif || '',
+      modePaiement: t.modePaiement || 'Cash',
+    });
+  };
+
+  const handleSaveEditDepense = async (id) => {
+    try {
+      const dateISO = new Date(`${editDepenseForm.date}T12:00:00`).toISOString();
+      await updateDoc(doc(db, 'transactions', id), {
+        montant: Number(editDepenseForm.montant),
+        motif: editDepenseForm.description || editDepenseForm.categorie,
+        categorie: editDepenseForm.categorie,
+        modePaiement: editDepenseForm.modePaiement,
+        date: dateISO,
+      });
+      await logEvent(
+        'DEPENSE_UPDATE',
+        `Modification dépense (Bilan) — ${editDepenseForm.categorie} : ${Number(editDepenseForm.montant).toLocaleString('fr-FR')} FCFA le ${editDepenseForm.date}`
+      );
+      setEditingDepenseId(null);
+    } catch (err) {
+      console.error('[Bilan] Erreur modification dépense:', err);
+      alert('Erreur lors de la modification.');
+    }
+  };
+
+  const handleDeleteDepense = async (t) => {
+    if (!window.confirm(`Supprimer cette dépense de ${Number(t.montant).toLocaleString('fr-FR')} FCFA (${t.categorie}) ?`)) return;
+    try {
+      await firestoreDeleteDoc(doc(db, 'transactions', t.id));
+      await logEvent(
+        'DEPENSE_DELETE',
+        `Suppression dépense (Bilan) — ${t.categorie} : ${Number(t.montant).toLocaleString('fr-FR')} FCFA (${t.motif || 'sans description'})`
+      );
+    } catch (err) {
+      console.error('[Bilan] Erreur suppression dépense:', err);
+      alert('Erreur lors de la suppression.');
+    }
+  };
 
   // ── Navigation mois ──────────────────────────────────────────────────────
   const goToPrevMonth = () => {
@@ -1254,6 +1360,355 @@ const Bilan = () => {
           </div>
         </div>
       </div>
+
+      {/* ── HISTORIQUE DES DÉPENSES ───────────────────────────────────────── */}
+      {(() => {
+        // ── Filtre par période (dates locales) ────────────────────────────
+        const now2 = new Date();
+        const filteredDepenses = depenses
+          .filter(t => {
+            const d = new Date(t.date);
+            if (depenseFilter === 'jour') {
+              return localDateStr(d) === localDateStr();
+            }
+            if (depenseFilter === 'semaine') {
+              const dow = now2.getDay() === 0 ? 7 : now2.getDay();
+              const monday = new Date(now2); monday.setDate(now2.getDate() - dow + 1); monday.setHours(0,0,0,0);
+              const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23,59,59,999);
+              return d >= monday && d <= sunday;
+            }
+            if (depenseFilter === 'mois') return d >= start && d <= end;
+            return true; // 'tout'
+          })
+          .filter(t => {
+            if (!depenseSearch) return true;
+            const s = depenseSearch.toLowerCase();
+            return (t.motif || '').toLowerCase().includes(s)
+                || (t.categorie || '').toLowerCase().includes(s)
+                || (t.modePaiement || '').toLowerCase().includes(s);
+          })
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const totalFiltreDepenses = filteredDepenses.reduce((s, t) => s + Number(t.montant), 0);
+
+        // Labels de toutes les catégories connues (fixes + libres)
+        const allCatLabels = [
+          ...categories.map(c => c.nom),
+          ...chargesFixes.filter(c => c.actif).map(c => c.nom),
+        ].filter((v, i, arr) => arr.indexOf(v) === i).sort();
+
+        return (
+          <div className="card" style={{ marginBottom: '24px' }}>
+            {/* En-tête */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Receipt size={20} color="var(--danger)" />
+                <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+                  Historique des Dépenses — {MOIS_FR[viewMonth]} {viewYear}
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowDepenseForm(v => !v)}
+                className="btn btn-primary"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}
+              >
+                <PlusCircle size={16} />
+                {showDepenseForm ? 'Annuler' : 'Ajouter une dépense'}
+              </button>
+            </div>
+
+            {/* Formulaire d'ajout */}
+            {showDepenseForm && (
+              <form
+                onSubmit={handleAddDepense}
+                style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: '12px', padding: '16px', borderRadius: '12px',
+                  backgroundColor: 'var(--bg-input)', marginBottom: '20px',
+                  border: '1px solid var(--border-color)'
+                }}
+              >
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Date</label>
+                  <input
+                    type="date"
+                    className="input-control"
+                    style={{ margin: 0 }}
+                    value={depenseForm.date}
+                    max={localDateStr()}
+                    onChange={e => setDepenseForm({ ...depenseForm, date: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Catégorie *</label>
+                  <select
+                    className="input-control"
+                    style={{ margin: 0 }}
+                    value={depenseForm.categorie}
+                    onChange={e => setDepenseForm({ ...depenseForm, categorie: e.target.value })}
+                    required
+                  >
+                    <option value="">Sélectionner...</option>
+                    {chargesFixes.filter(c => c.actif).length > 0 && (
+                      <optgroup label="Charges Fixes">
+                        {chargesFixes.filter(c => c.actif).map(c => <option key={c.id} value={c.nom}>{c.nom}</option>)}
+                      </optgroup>
+                    )}
+                    {categories.filter(c => !chargesFixes.some(cf => cf.nom === c.nom)).length > 0 && (
+                      <optgroup label="Autres Catégories">
+                        {categories.filter(c => !chargesFixes.some(cf => cf.nom === c.nom)).map(c => <option key={c.id} value={c.nom}>{c.nom}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Montant (FCFA) *</label>
+                  <input
+                    type="number"
+                    className="input-control"
+                    style={{ margin: 0 }}
+                    placeholder="Ex: 15000"
+                    value={depenseForm.montant}
+                    onChange={e => setDepenseForm({ ...depenseForm, montant: e.target.value })}
+                    required
+                    min="1"
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0, gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Description</label>
+                  <input
+                    type="text"
+                    className="input-control"
+                    style={{ margin: 0 }}
+                    placeholder="Ex: Achat produits capillaires..."
+                    value={depenseForm.description}
+                    onChange={e => setDepenseForm({ ...depenseForm, description: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Mode de paiement</label>
+                  <select
+                    className="input-control"
+                    style={{ margin: 0 }}
+                    value={depenseForm.modePaiement}
+                    onChange={e => setDepenseForm({ ...depenseForm, modePaiement: e.target.value })}
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="NITA">NITA</option>
+                    <option value="AMANA">AMANA</option>
+                    <option value="Carte VISA">Carte VISA</option>
+                    <option value="Interne">Interne</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isSavingDepense}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  >
+                    <Save size={15} />
+                    {isSavingDepense ? 'Enregistrement...' : 'Enregistrer'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Filtres + Recherche */}
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px', alignItems: 'center' }}>
+              {/* Filtres période */}
+              <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--bg-input)', padding: '4px', borderRadius: '10px' }}>
+                {[['jour', "Aujourd'hui"], ['semaine', 'Semaine'], ['mois', 'Ce mois'], ['tout', 'Tout']].map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setDepenseFilter(val)}
+                    className={`nav-btn ${depenseFilter === val ? 'active' : ''}`}
+                    style={{ fontSize: '0.8rem', padding: '5px 10px' }}
+                  >{label}</button>
+                ))}
+              </div>
+
+              {/* Recherche */}
+              <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+                <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  className="input-control"
+                  style={{ paddingLeft: '32px', margin: 0 }}
+                  placeholder="Rechercher catégorie, description..."
+                  value={depenseSearch}
+                  onChange={e => setDepenseSearch(e.target.value)}
+                />
+              </div>
+
+              {/* Compteur + Total */}
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexShrink: 0 }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{filteredDepenses.length} dépense{filteredDepenses.length > 1 ? 's' : ''}</span>
+                <span style={{ fontWeight: '800', fontSize: '1rem', color: 'var(--danger)' }}>−{fmt(totalFiltreDepenses)} FCFA</span>
+              </div>
+            </div>
+
+            {/* Tableau */}
+            <div className="table-responsive">
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px', fontSize: '0.88rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '10px 12px', fontWeight: '600' }}>Date</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '600' }}>Catégorie</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '600' }}>Description</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '600' }}>Mode</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '600', textAlign: 'right' }}>Montant</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '600', textAlign: 'center' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDepenses.length === 0 ? (
+                    <tr><td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>Aucune dépense pour cette période.</td></tr>
+                  ) : (
+                    filteredDepenses.map(t => (
+                      <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: editingDepenseId === t.id ? 'rgba(37,99,235,0.04)' : 'transparent' }}>
+                        {editingDepenseId === t.id ? (
+                          // ── Mode édition inline ──────────────────────────
+                          <>
+                            <td style={{ padding: '8px 10px' }}>
+                              <input
+                                type="date"
+                                className="input-control"
+                                style={{ margin: 0, padding: '4px 8px', fontSize: '0.82rem', width: '130px' }}
+                                value={editDepenseForm.date}
+                                max={localDateStr()}
+                                onChange={e => setEditDepenseForm({ ...editDepenseForm, date: e.target.value })}
+                              />
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <select
+                                className="input-control"
+                                style={{ margin: 0, padding: '4px 8px', fontSize: '0.82rem', width: '140px' }}
+                                value={editDepenseForm.categorie}
+                                onChange={e => setEditDepenseForm({ ...editDepenseForm, categorie: e.target.value })}
+                              >
+                                {allCatLabels.map(l => <option key={l} value={l}>{l}</option>)}
+                              </select>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <input
+                                type="text"
+                                className="input-control"
+                                style={{ margin: 0, padding: '4px 8px', fontSize: '0.82rem' }}
+                                value={editDepenseForm.description}
+                                onChange={e => setEditDepenseForm({ ...editDepenseForm, description: e.target.value })}
+                                placeholder="Description"
+                              />
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <select
+                                className="input-control"
+                                style={{ margin: 0, padding: '4px 8px', fontSize: '0.82rem', width: '100px' }}
+                                value={editDepenseForm.modePaiement}
+                                onChange={e => setEditDepenseForm({ ...editDepenseForm, modePaiement: e.target.value })}
+                              >
+                                {['Cash','NITA','AMANA','Carte VISA','Interne'].map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <input
+                                type="number"
+                                className="input-control"
+                                style={{ margin: 0, padding: '4px 8px', fontSize: '0.82rem', width: '100px', textAlign: 'right' }}
+                                value={editDepenseForm.montant}
+                                onChange={e => setEditDepenseForm({ ...editDepenseForm, montant: e.target.value })}
+                                min="1"
+                              />
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                <button
+                                  onClick={() => handleSaveEditDepense(t.id)}
+                                  className="btn btn-small btn-success"
+                                  title="Enregistrer"
+                                ><Save size={13} /></button>
+                                <button
+                                  onClick={() => setEditingDepenseId(null)}
+                                  className="btn btn-small"
+                                  style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
+                                  title="Annuler"
+                                ><X size={13} /></button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          // ── Mode lecture ──────────────────────────────────
+                          <>
+                            <td style={{ padding: '10px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                              {new Date(t.date).toLocaleDateString('fr-FR')}
+                              <div style={{ fontSize: '0.75rem' }}>{new Date(t.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '700', backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--danger)' }}>
+                                {t.categorie || '—'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', color: 'var(--text-main)' }}>
+                              {t.motif || '—'}
+                              {t.saisieParNom && (
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>par {t.saisieParNom}</div>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <span style={{ padding: '3px 8px', borderRadius: '6px', backgroundColor: 'var(--bg-input)', fontSize: '0.78rem', fontWeight: '600' }}>
+                                {t.modePaiement || '—'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '800', color: 'var(--danger)', whiteSpace: 'nowrap' }}>
+                              −{fmt(Number(t.montant))} FCFA
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                <button
+                                  onClick={() => handleStartEditDepense(t)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-color)', padding: '4px' }}
+                                  title="Modifier"
+                                ><Edit2 size={15} /></button>
+                                <button
+                                  onClick={() => handleDeleteDepense(t)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', padding: '4px' }}
+                                  title="Supprimer"
+                                ><Trash2 size={15} /></button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {filteredDepenses.length > 0 && (
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid var(--border-color)', backgroundColor: 'rgba(239,68,68,0.04)' }}>
+                      <td colSpan="4" style={{ padding: '12px', fontWeight: '700', color: 'var(--text-main)' }}>Total des dépenses affichées</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--danger)', fontSize: '1rem' }}>−{fmt(totalFiltreDepenses)} FCFA</td>
+                      <td />
+                    </tr>
+                    <tr style={{ backgroundColor: 'rgba(16,185,129,0.04)' }}>
+                      <td colSpan="4" style={{ padding: '12px', fontWeight: '700', color: 'var(--text-main)' }}>Bénéfice Net (CA − Dépenses du mois)</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: beneficeNet >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '1rem' }}>
+                        {beneficeNet >= 0 ? '+' : ''}{fmt(beneficeNet)} FCFA
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── HISTORIQUE DES RÉDUCTIONS ET SOINS OFFERTS ─────────────────────── */}
       <div className="card">

@@ -75,6 +75,7 @@ const Tracabilite = () => {
               <option value="TRANSACTION">Transactions (Caisse)</option>
               <option value="TRESORERIE">Trésorerie</option>
               <option value="AVANCE">Avances RH</option>
+              <option value="DEPENSE">Dépenses (Bilan)</option>
               <option value="PARAMETRE">Paramètres</option>
             </select>
           </div>
