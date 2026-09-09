@@ -3,7 +3,7 @@ import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, setDoc } fro
 import { db, auth, app } from '../firebase';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck } from 'lucide-react';
+import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import BulkActionBar from './BulkActionBar';
 import { computeGlobalPoints } from '../utils/points';
@@ -26,6 +26,7 @@ const Parametres = () => {
   // Admin creation state
   const [adminEmail,    setAdminEmail]    = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [adminRole,     setAdminRole]     = useState('agent');
   const [adminLoading,  setAdminLoading]  = useState(false);
   const [adminMsg,      setAdminMsg]      = useState(null); // { type: 'success'|'error', text }
@@ -729,13 +730,37 @@ const Parametres = () => {
           </div>
           <div className="form-group" style={{ flex: 1, minWidth: '200px', margin: 0 }}>
             <label>Mot de passe (min. 6 caractères)</label>
-            <input
-              type="password"
-              className="input-control"
-              placeholder="••••••••"
-              value={adminPassword}
-              onChange={e => { setAdminPassword(e.target.value); setAdminMsg(null); }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showAdminPassword ? "text" : "password"}
+                className="input-control"
+                placeholder="••••••••"
+                value={adminPassword}
+                onChange={e => { setAdminPassword(e.target.value); setAdminMsg(null); }}
+                style={{ paddingRight: '40px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdminPassword(!showAdminPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0
+                }}
+                title={showAdminPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+              >
+                {showAdminPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
           <div className="form-group" style={{ flex: 1, minWidth: '150px', margin: 0 }}>
             <label>Rôle</label>

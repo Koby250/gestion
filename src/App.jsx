@@ -133,18 +133,19 @@ function App() {
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (authLoading) {
+    const logoSrc = theme === 'dark' ? '/logos/blanc.png' : '/logos/noir.png';
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
         justifyContent: 'center', backgroundColor: 'var(--bg-primary)' }}>
         <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-          <Scissors size={36} color="var(--accent-color)" style={{ marginBottom: '12px' }} />
+          <img src={logoSrc} alt="Barber Factory Logo" style={{ height: '80px', marginBottom: '16px', objectFit: 'contain' }} />
           <p>Chargement...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) return <Login />;
+  if (!user) return <Login theme={theme} />;
 
   // Cible journalière dynamique
   const activeDateObj = new Date(activeDate);
@@ -212,8 +213,11 @@ function App() {
 
       {/* ── SIDEBAR ─────────────────────────────────────────────────────── */}
       <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
-        <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <h1><Scissors color="var(--accent-color)" /> Barber Factory</h1>
+        <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img src={theme === 'dark' ? '/logos/blanc.png' : '/logos/noir.png'} alt="Logo" style={{ height: '28px', objectFit: 'contain' }} />
+            <h1 style={{ margin: 0 }}>Barber Factory</h1>
+          </div>
           <button className="close-sidebar-btn" onClick={() => setIsSidebarOpen(false)}>
             <X size={24} />
           </button>

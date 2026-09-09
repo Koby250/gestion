@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
-import { Scissors, Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
+import { Scissors, Mail, Lock, LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
-const Login = () => {
+const Login = ({ theme }) => {
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
 
@@ -63,8 +64,14 @@ const Login = () => {
             borderRadius: '20px',
             padding: '18px',
             marginBottom: '16px',
+            width: '72px',
+            height: '72px'
           }}>
-            <Scissors size={36} color="var(--accent-color)" />
+            <img 
+              src={theme === 'dark' ? '/logos/blanc.png' : '/logos/noir.png'} 
+              alt="Logo Barber Factory" 
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+            />
           </div>
           <h1 style={{
             fontSize: '1.8rem',
@@ -124,15 +131,39 @@ const Login = () => {
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Lock size={14} /> Mot de passe
               </label>
-              <input
-                type="password"
-                className="input-control"
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="input-control"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  style={{ paddingRight: '40px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0
+                  }}
+                  title={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             {/* Bouton connexion */}

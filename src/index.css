@@ -64,7 +64,7 @@ body {
 
 .sidebar-header h1 {
   font-size: 1.5rem;
-  color: var(--accent-color);
+  color: var(--text-main);
   display: flex;
   align-items: center;
   gap: 10px;
