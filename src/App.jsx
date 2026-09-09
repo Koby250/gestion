@@ -257,7 +257,7 @@ function App() {
               <input 
                 type="date" 
                 className="input-control" 
-                style={{ padding: '8px 12px', borderRadius: '12px', border: '1px solid var(--border-color)', width: 'auto' }}
+                style={{ padding: '8px 12px', borderRadius: '12px', border: '1px solid var(--border-color)', width: 'auto', margin: 0 }}
                 value={activeDate}
                 max={localDateStr()}
                 onChange={e => setActiveDate(e.target.value)}
@@ -266,6 +266,22 @@ function App() {
                 <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 'bold' }}>Mode Rétroactif</span>
               )}
             </div>
+
+            {/* Dark Mode Toggle - Compact & near date */}
+            <button 
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} 
+              style={{ 
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '8px', borderRadius: '10px', 
+                backgroundColor: 'transparent', 
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }} 
+              title="Basculer le thème"
+            >
+              {theme === 'light' ? <Moon size={20} color="var(--text-muted)" /> : <Sun size={20} color="#F59E0B" />}
+            </button>
           </div>
 
           {/* Widget double objectif */}
@@ -298,25 +314,6 @@ function App() {
                 </div>
               </div>
             )}
-
-            {/* Dark Mode Toggle - Now more prominent */}
-            <button 
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} 
-              style={{ 
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '10px', borderRadius: '12px', 
-                backgroundColor: 'var(--bg-card)', 
-                color: 'var(--text-main)',
-                border: '1px solid var(--border-color)',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                marginLeft: '10px'
-              }} 
-              title="Basculer le thème"
-            >
-              {theme === 'light' ? <Moon size={22} color="#64748B" /> : <Sun size={22} color="#F59E0B" />}
-            </button>
           </div>
         </header>
 
