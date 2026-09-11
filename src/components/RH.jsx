@@ -89,17 +89,6 @@ const RH = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
     setIsSubmitting(true);
     try {
       const emp = employes.find(emp => emp.id === formAvance.employeId);
-      
-      const txRef = await addDoc(collection(db, 'transactions'), {
-        type: 'depense',
-        montant: Number(formAvance.montant),
-        motif: `Avance sur salaire - ${emp ? emp.nom : 'Inconnu'} (${formAvance.motif})`,
-        categoryId: 'avance_salaire',
-        categoryNom: 'Avance sur Salaire',
-        modePaiement: formAvance.modePaiement,
-        date: new Date(formAvance.date).toISOString(),
-        modifieParNom: currentUserNom
-      });
 
       await addDoc(collection(db, 'avances_salaires'), {
         employeId: formAvance.employeId,

@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc as
 import { db, auth } from '../firebase';
 import {
   TrendingUp, TrendingDown, Scissors, DollarSign,
-  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag, User, Percent, Receipt, Gift, Award, Star, Activity, ChevronDown, ChevronUp,
+  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag, User, Users, Percent, Receipt, Gift, Award, Star, Activity, ChevronDown, ChevronUp,
   PlusCircle, Edit2, X, Search, Filter
 } from 'lucide-react';
 import { computeGlobalPoints, computeDetailedGlobalStats } from '../utils/points';
@@ -234,6 +234,10 @@ const Bilan = () => {
   };
 
   const handleStartEditDepense = (t) => {
+    if (t.isAvance) {
+      alert("Les avances sur salaire doivent être modifiées depuis la page RH.");
+      return;
+    }
     setEditingDepenseId(t.id);
     setEditDepenseForm({
       date: localDateStr(new Date(t.date)),
@@ -266,6 +270,10 @@ const Bilan = () => {
   };
 
   const handleDeleteDepense = async (t) => {
+    if (t.isAvance) {
+      alert("Les avances sur salaire doivent être supprimées depuis la page RH.");
+      return;
+    }
     if (!window.confirm(`Supprimer cette dépense de ${Number(t.montant).toLocaleString('fr-FR')} FCFA (${t.categorie}) ?`)) return;
     try {
       await firestoreDeleteDoc(doc(db, 'transactions', t.id));
@@ -303,7 +311,22 @@ const Bilan = () => {
   });
 
   const prestations = monthTx.filter(t => t.type === 'prestation');
-  const depenses    = monthTx.filter(t => t.type === 'depense');
+  const depenses_raw = monthTx.filter(t => t.type === 'depense' && t.categoryId !== 'avance_salaire' && t.categoryNom !== 'Avance sur Salaire' && t.categorie !== 'Avance sur Salaire');
+
+  const depenses = [
+    ...depenses_raw,
+    ...monthAvances.map(a => ({
+      id: 'av_' + a.id,
+      type: 'depense',
+      montant: Number(a.montant) || 0,
+      motif: a.motif || `Avance sur salaire - ${a.employeNom}`,
+      categorie: 'Avance sur Salaire',
+      date: a.date,
+      modePaiement: a.modePaiement || 'Cash',
+      saisieParNom: a.saisieParNom || a.employeNom,
+      isAvance: true
+    }))
+  ];
 
   const totalCA       = prestations.reduce((s, t) => s + Number(t.montant), 0);
   const totalDepenses = depenses.reduce((s, t) => s + Number(t.montant), 0);
@@ -611,6 +634,22 @@ const Bilan = () => {
   // ── Formatter ────────────────────────────────────────────────────────────
   const fmt = (n) => new Intl.NumberFormat('fr-FR').format(n);
 
+  // ── Indicateurs supplémentaires ──────────────────────────────────────────
+  const totalAvancesMois = monthAvances.reduce((s, a) => s + Number(a.montant || 0), 0);
+  const beneficeNetCorrige = beneficeNet; // beneficeNet already includes avances via depenses array
+
+  // Top service du mois
+  const topService = serviceList.length > 0 ? serviceList[0] : null;
+
+  // Panier moyen par client
+  const clientsUniques = new Set();
+  prestations.forEach(t => {
+    const nom = (t.clientNom || '').toLowerCase().trim();
+    if (nom) clientsUniques.add(nom);
+  });
+  const nbClientsUniques = clientsUniques.size || 1;
+  const panierMoyen = totalCA > 0 ? Math.round(totalCA / nbClientsUniques) : 0;
+
   // ── Stat Cards config ────────────────────────────────────────────────────
   const statCards = [
     {
@@ -628,18 +667,27 @@ const Bilan = () => {
       bg: 'rgba(37, 99, 235, 0.08)'
     },
     {
-      label: 'Total Dépenses',
-      value: `${fmt(totalDepenses)} FCFA`,
+      label: 'Avances sur Salaires',
+      value: `${fmt(totalAvancesMois)} FCFA`,
+      icon: <TrendingDown size={22} />,
+      color: '#f59e0b',
+      bg: 'rgba(245, 158, 11, 0.08)',
+      subtitle: `${monthAvances.length} avance${monthAvances.length !== 1 ? 's' : ''} versée${monthAvances.length !== 1 ? 's' : ''}`
+    },
+    {
+      label: 'Total Dépenses (hors avances)',
+      value: `${fmt(totalDepenses - totalAvancesMois)} FCFA`,
       icon: <TrendingDown size={22} />,
       color: 'var(--danger)',
       bg: 'rgba(239, 68, 68, 0.08)'
     },
     {
       label: 'Bénéfice Net',
-      value: `${fmt(beneficeNet)} FCFA`,
+      value: `${beneficeNetCorrige >= 0 ? '+' : ''}${fmt(beneficeNetCorrige)} FCFA`,
       icon: <DollarSign size={22} />,
-      color: beneficeNet >= 0 ? 'var(--success)' : 'var(--danger)',
-      bg: beneficeNet >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)'
+      color: beneficeNetCorrige >= 0 ? 'var(--success)' : 'var(--danger)',
+      bg: beneficeNetCorrige >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+      subtitle: 'CA − Dépenses − Avances'
     },
     {
       label: 'Réductions Accordées',
@@ -801,6 +849,11 @@ const Bilan = () => {
                 <div style={{ fontSize: '1.6rem', fontWeight: '800', color: card.color, letterSpacing: '-0.02em' }}>
                   {card.value}
                 </div>
+                {card.subtitle && (
+                  <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '4px', fontStyle: 'italic' }}>
+                    {card.subtitle}
+                  </div>
+                )}
               </div>
               <div style={{
                 backgroundColor: card.bg, color: card.color,
@@ -811,6 +864,46 @@ const Bilan = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ── INDICATEURS STRATÉGIQUES ────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+        {/* Panier Moyen */}
+        <div style={{
+          backgroundColor: 'var(--bg-card)', borderRadius: '14px', padding: '16px 20px',
+          border: '1px solid rgba(139,92,246,0.25)', display: 'flex', alignItems: 'center', gap: '14px'
+        }}>
+          <div style={{ backgroundColor: 'rgba(139,92,246,0.12)', color: '#8b5cf6', padding: '12px', borderRadius: '12px', flexShrink: 0 }}>
+            <Users size={22} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '4px' }}>Panier moyen / client</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#8b5cf6', letterSpacing: '-0.02em' }}>{fmt(panierMoyen)} F</div>
+            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '3px', fontStyle: 'italic' }}>{nbClientsUniques} client{nbClientsUniques > 1 ? 's' : ''} distinct{nbClientsUniques > 1 ? 's' : ''} ce mois</div>
+          </div>
+        </div>
+
+        {/* Top Service */}
+        {topService && (
+          <div style={{
+            backgroundColor: 'var(--bg-card)', borderRadius: '14px', padding: '16px 20px',
+            border: '1px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', gap: '14px'
+          }}>
+            <div style={{ backgroundColor: 'rgba(245,158,11,0.12)', color: '#f59e0b', padding: '12px', borderRadius: '12px', flexShrink: 0 }}>
+              <Star size={22} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Top service du mois</div>
+                <span style={{ fontSize: '0.65rem', fontWeight: '800', padding: '1px 7px', borderRadius: '10px', backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}>N°1</span>
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topService.nom}</div>
+              <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                {topService.quantite} fois — <span style={{ color: '#f59e0b', fontWeight: '700' }}>{fmt(topService.total)} F</span> générés
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── CLASSEMENT DES AGENTS ────────────────────────────────── */}
@@ -1257,9 +1350,8 @@ const Bilan = () => {
               const caPct = seuilRentabilite > 0 ? Math.min((totalCA / seuilRentabilite) * 100, 100) : 100;
               const seuilAtteint = totalCA >= seuilRentabilite;
               
-              const totalAvances = monthAvances.reduce((s, a) => s + Number(a.montant), 0);
               const totalD = depenses.reduce((s, t) => s + Number(t.montant), 0);
-              const totalDepensesReelles = totalD + totalAvances;
+              const totalDepensesReelles = totalD;
               const margeNetteReelle = totalCA - totalDepensesReelles;
               const margePctReelle = totalCA > 0 ? (margeNetteReelle / totalCA) * 100 : 0;
 
@@ -1306,9 +1398,8 @@ const Bilan = () => {
 
         {/* Jauge Globale de Répartition du CA (Trésorerie Réelle) */}
         {(() => {
-           const totalAvances = monthAvances.reduce((s, a) => s + Number(a.montant), 0);
-           const paiementsSalairesReels = depenses.filter(t => t.categorie === 'Paiement Salaires' || t.categorie === 'Salaires').reduce((x, t) => x + Number(t.montant), 0) + totalAvances;
-           const autresDepenses = depenses.reduce((s, t) => s + Number(t.montant), 0) - depenses.filter(t => t.categorie === 'Paiement Salaires' || t.categorie === 'Salaires').reduce((x, t) => x + Number(t.montant), 0);
+           const paiementsSalairesReels = depenses.filter(t => t.categorie === 'Paiement Salaires' || t.categorie === 'Salaires' || t.categorie === 'Avance sur Salaire').reduce((x, t) => x + Number(t.montant), 0);
+           const autresDepenses = depenses.reduce((s, t) => s + Number(t.montant), 0) - paiementsSalairesReels;
            
            const margeReelle = totalCA - paiementsSalairesReels - autresDepenses;
            const pctSalaires = totalCA > 0 ? (paiementsSalairesReels / totalCA) * 100 : 0;

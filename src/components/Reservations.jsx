@@ -223,16 +223,28 @@ const Reservations = ({ activeDate = localDateStr() }) => {
 
     setEncaissementLoading(true);
     try {
-      // 1. Créer la transaction de solde dans la Caisse
-      await addDoc(collection(db, 'transactions'), {
+      const firstAgent = res.lignes?.[0]?.agents?.[0] || null;
+
+      const txData = {
         type: 'prestation',
         montant: resteAPayer,
-        motif: `Solde réservation - ${res.clientNom} (${res.serviceNom})`,
-        employeId:  res.employeId,
-        employeNom: res.employeNom,
+        motif: `Solde réservation - ${res.clientNom || 'Inconnu'} (${res.serviceNom || 'Autre'})`,
+        employeId: firstAgent ? firstAgent.id : (res.employeId || ''),
+        employeNom: firstAgent ? firstAgent.nom : (res.employeNom || ''),
         modePaiement: modeEncaissement,
+        lignes: res.lignes || [],
         date: getTransactionDate()
+      };
+
+      // Firebase throws an error if any value is undefined. We clean them up.
+      Object.keys(txData).forEach(key => {
+        if (txData[key] === undefined) {
+          delete txData[key];
+        }
       });
+
+      // 1. Créer la transaction de solde dans la Caisse
+      await addDoc(collection(db, 'transactions'), txData);
       console.log('[Reservations] Transaction solde créée:', resteAPayer, 'FCFA via', modeEncaissement);
 
       await updateDoc(doc(db, 'reservations', res.id), {
@@ -241,7 +253,10 @@ const Reservations = ({ activeDate = localDateStr() }) => {
       });
       console.log('[Reservations] Statut réservation mis à jour → encaisse');
       
-      await logEvent('RESERVATION_UPDATE', `Encaissement du solde (${resteAPayer} FCFA) pour ${res.clientNom}. Mode: ${modeEncaissement}`);
+      await logEvent('RESERVATION_UPDATE', `Encaissement du solde (${resteAPayer} FCFA) pour ${res.clientNom || 'Inconnu'}. Mode: ${modeEncaissement}`);
+
+      // Notification visuelle de succès
+      alert(`Encaissement de ${resteAPayer} FCFA effectué avec succès !`);
 
     } catch (err) {
       console.error('[Reservations] Erreur lors de l\'encaissement:', err);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Calculator, BarChart3, Settings, Scissors, Calendar,
-  LogOut, User, Wallet, Users, History, Menu, X, Sun, Moon, LayoutDashboard, Package
+  LogOut, User, Wallet, Users, History, Menu, X, Sun, Moon, LayoutDashboard, Package, UserCheck
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -17,6 +17,7 @@ import Tresorerie   from './components/Tresorerie';
 import RH           from './components/RH';
 import Tracabilite  from './components/Tracabilite';
 import Inventaire   from './components/Inventaire';
+import Clients      from './components/Clients';
 
 // Retourne la date locale du navigateur en format YYYY-MM-DD
 // (évite le décalage UTC de toISOString() qui affiche J-1 après minuit)
@@ -162,6 +163,7 @@ function App() {
       case 'accueil':      return <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'caisse':       return (userRole === 'admin' || userPerms.accesCaisse) ? <Caisse activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'reservations': return (userRole === 'admin' || userPerms.accesReservations) ? <Reservations activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'clients':      return userRole === 'admin' ? <Clients /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'inventaire':   return (userRole === 'admin' || userPerms.accesInventaire) ? <Inventaire activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'bilan':        return (userRole === 'admin' || userPerms.accesBilan) ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'tresorerie':   return (userRole === 'admin' || userPerms.accesTresorerie) ? <Tresorerie activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
@@ -181,6 +183,9 @@ function App() {
     ] : []),
     ...(userRole === 'admin' || userPerms.accesReservations ? [
       { key: 'reservations', label: 'Reservations',    icon: <Calendar size={20} /> }
+    ] : []),
+    ...(userRole === 'admin' ? [
+      { key: 'clients',    label: 'Clients',            icon: <UserCheck size={20} /> }
     ] : []),
     ...((userRole === 'admin' || userPerms.accesInventaire) ? [
       { key: 'inventaire',   label: 'Inventaire',      icon: <Package size={20} /> }

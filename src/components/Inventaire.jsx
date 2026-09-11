@@ -8,9 +8,9 @@ const Inventaire = ({ currentUserNom = '' }) => {
   const [inventaire, setInventaire] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   
-  const [newInventaire, setNewInventaire] = useState({ nom: '', reference: '', quantite: '', seuilAlerte: '', categorie: 'Général' });
+  const [newInventaire, setNewInventaire] = useState({ nom: '', reference: '', quantite: '', seuilAlerte: '', categorie: 'Général', prixAchat: '' });
   const [editingInventaireId, setEditingInventaireId] = useState(null);
-  const [editInventaireForm, setEditInventaireForm] = useState({ nom: '', reference: '', quantite: '', seuilAlerte: '', categorie: 'Général' });
+  const [editInventaireForm, setEditInventaireForm] = useState({ nom: '', reference: '', quantite: '', seuilAlerte: '', categorie: 'Général', prixAchat: '' });
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategorie, setSelectedCategorie] = useState('Toutes');
@@ -34,10 +34,11 @@ const Inventaire = ({ currentUserNom = '' }) => {
       categorie: newInventaire.categorie || 'Général',
       quantite: Number(newInventaire.quantite) || 0,
       seuilAlerte: Number(newInventaire.seuilAlerte) || 3,
+      prixAchat: Number(newInventaire.prixAchat) || 0,
       actif: true,
       derniereActionPar: currentUserNom
     });
-    setNewInventaire({ nom: '', reference: '', quantite: '', seuilAlerte: '', categorie: 'Général' });
+    setNewInventaire({ nom: '', reference: '', quantite: '', seuilAlerte: '', categorie: 'Général', prixAchat: '' });
     setShowSuccess(true);
   };
 
@@ -48,7 +49,8 @@ const Inventaire = ({ currentUserNom = '' }) => {
       reference: inv.reference || '', 
       quantite: inv.quantite.toString(), 
       seuilAlerte: inv.seuilAlerte.toString(), 
-      categorie: inv.categorie || 'Général' 
+      categorie: inv.categorie || 'Général',
+      prixAchat: inv.prixAchat != null ? inv.prixAchat.toString() : ''
     });
   };
 
@@ -58,7 +60,8 @@ const Inventaire = ({ currentUserNom = '' }) => {
       reference: editInventaireForm.reference || '',
       categorie: editInventaireForm.categorie || 'Général',
       quantite: Number(editInventaireForm.quantite) || 0,
-      seuilAlerte: Number(editInventaireForm.seuilAlerte) || 3
+      seuilAlerte: Number(editInventaireForm.seuilAlerte) || 3,
+      prixAchat: Number(editInventaireForm.prixAchat) || 0
     });
     setEditingInventaireId(null);
     setShowSuccess(true);
@@ -96,6 +99,7 @@ const Inventaire = ({ currentUserNom = '' }) => {
           </select>
           <input type="number" className="input-control" placeholder="Quantité" value={newInventaire.quantite} onChange={e => setNewInventaire({...newInventaire, quantite: e.target.value})} min="0" required />
           <input type="number" className="input-control" placeholder="Seuil d'alerte" value={newInventaire.seuilAlerte} onChange={e => setNewInventaire({...newInventaire, seuilAlerte: e.target.value})} min="0" required />
+          <input type="number" className="input-control" placeholder="Prix d'achat unitaire (FCFA)" value={newInventaire.prixAchat} onChange={e => setNewInventaire({...newInventaire, prixAchat: e.target.value})} min="0" />
           <button type="submit" className="btn btn-primary" style={{ gridColumn: '1 / -1' }}><Plus size={18} /> Ajouter un article</button>
         </form>
 
@@ -162,6 +166,10 @@ const Inventaire = ({ currentUserNom = '' }) => {
                         <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>Seuil d'alerte</label>
                         <input type="number" className="input-control" style={{ width: '100%', margin: 0 }} value={editInventaireForm.seuilAlerte} onChange={e => setEditInventaireForm({...editInventaireForm, seuilAlerte: e.target.value})} min="0" />
                       </div>
+                      <div className="form-group" style={{ margin: 0, flex: 1 }}>
+                        <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>Prix d'achat unitaire (FCFA)</label>
+                        <input type="number" className="input-control" style={{ width: '100%', margin: 0 }} value={editInventaireForm.prixAchat} onChange={e => setEditInventaireForm({...editInventaireForm, prixAchat: e.target.value})} min="0" placeholder="0" />
+                      </div>
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button onClick={() => saveEditInventaire(inv.id)} className="btn btn-success" style={{ flex: 1 }}><CheckCircle size={18} /> Enregistrer</button>
@@ -182,6 +190,21 @@ const Inventaire = ({ currentUserNom = '' }) => {
                       <div style={{ fontSize: '0.9rem' }}>
                         <span style={{ color: isLow ? 'var(--danger)' : 'var(--success)', fontWeight: '700' }}>{inv.quantite} unité(s) en stock</span>
                         <span style={{ color: 'var(--text-muted)', marginLeft: '8px' }}>— Seuil d'alerte : {inv.seuilAlerte}</span>
+                        {inv.prixAchat > 0 && (
+                          <span style={{
+                            marginLeft: '10px', fontSize: '0.82rem', fontWeight: '700',
+                            color: 'var(--accent-color)',
+                            backgroundColor: 'rgba(37,99,235,0.08)',
+                            padding: '2px 8px', borderRadius: '8px', border: '1px solid rgba(37,99,235,0.15)'
+                          }}>
+                            {inv.prixAchat.toLocaleString('fr-FR')} FCFA/unité
+                            {inv.quantite > 0 && (
+                              <span style={{ color: 'var(--text-muted)', fontWeight: '500', marginLeft: '4px' }}>
+                                · Stock : {(inv.prixAchat * inv.quantite).toLocaleString('fr-FR')} F
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>

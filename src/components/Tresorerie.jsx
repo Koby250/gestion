@@ -63,7 +63,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         const amount = Number(t.montant) || 0;
         if (t.type === 'prestation') {
           theo[getModeKey(t.modePaiement)] += amount;
-        } else if (t.type === 'depense') {
+        } else if (t.type === 'depense' && t.categoryId !== 'avance_salaire' && t.categoryNom !== 'Avance sur Salaire' && t.categorie !== 'Avance sur Salaire') {
           theo[getModeKey(t.modePaiement)] -= amount;
         } else if (t.type === 'transfert') {
           if (theo[t.fromAccount] !== undefined) theo[t.fromAccount] -= amount;
@@ -486,6 +486,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
                 };
                 
                 allTransactions.forEach(t => {
+                  if (t.categoryId === 'avance_salaire' || t.categoryNom === 'Avance sur Salaire' || t.categorie === 'Avance sur Salaire') return;
                   const dStr = (t.date || '').substring(0, 10);
                   if (dStr >= startDate) {
                     if (t.type === 'transfert') {
