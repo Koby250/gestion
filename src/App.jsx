@@ -36,7 +36,7 @@ function App() {
   const [monthRevenue,  setMonthRevenue]  = useState(0);
   const [user,          setUser]          = useState(null);
   const [userRole,      setUserRole]      = useState('agent');
-  const [userPerms,     setUserPerms]     = useState({ accesCaisse: false, accesReservations: false, accesInventaire: false, accesBilan: false, accesTresorerie: false, accesParametres: false });
+  const [userPerms,     setUserPerms]     = useState({ accesCaisse: false, accesReservations: false, accesInventaire: false, accesBilan: false, accesTresorerie: false, accesParametres: false, accesClients: false });
   const [userAccesInventaire, setUserAccesInventaire] = useState(false); // legacy compat
   const [currentUserNom, setCurrentUserNom] = useState('');
   const [authLoading,   setAuthLoading]   = useState(true);
@@ -72,6 +72,7 @@ function App() {
               accesBilan:        !!data.accesBilan,
               accesTresorerie:   !!data.accesTresorerie,
               accesParametres:   !!data.accesParametres,
+              accesClients:      !!data.accesClients,
             };
             setUserPerms(perms);
             setUserAccesInventaire(perms.accesInventaire); // legacy compat
@@ -163,7 +164,7 @@ function App() {
       case 'accueil':      return <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'caisse':       return (userRole === 'admin' || userPerms.accesCaisse) ? <Caisse activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'reservations': return (userRole === 'admin' || userPerms.accesReservations) ? <Reservations activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'clients':      return userRole === 'admin' ? <Clients /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'clients':      return (userRole === 'admin' || userPerms.accesClients) ? <Clients /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'inventaire':   return (userRole === 'admin' || userPerms.accesInventaire) ? <Inventaire activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'bilan':        return (userRole === 'admin' || userPerms.accesBilan) ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'tresorerie':   return (userRole === 'admin' || userPerms.accesTresorerie) ? <Tresorerie activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
@@ -184,7 +185,7 @@ function App() {
     ...(userRole === 'admin' || userPerms.accesReservations ? [
       { key: 'reservations', label: 'Reservations',    icon: <Calendar size={20} /> }
     ] : []),
-    ...(userRole === 'admin' ? [
+    ...((userRole === 'admin' || userPerms.accesClients) ? [
       { key: 'clients',    label: 'Clients',            icon: <UserCheck size={20} /> }
     ] : []),
     ...((userRole === 'admin' || userPerms.accesInventaire) ? [

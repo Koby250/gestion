@@ -1,5 +1,7 @@
-
-import { PlusCircle, Trash2, Users } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { PlusCircle, Trash2, Users, Search, UserPlus, X, CheckCircle } from 'lucide-react';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 /**
  * PanierPrestations — Panier multi-services avec multi-agents par ligne.
@@ -26,7 +28,69 @@ const PanierPrestations = ({
   setModePaiement,
   showClientField = true,
   hidePayment = false,
+  clients = [],
+  clientId,
+  setClientId,
 }) => {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showAddClientModal, setShowAddClientModal] = useState(false);
+  const [newClientForm, setNewClientForm] = useState({ nom: '', prenom: '', telephone: '' });
+  const [isSavingClient, setIsSavingClient] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredClients = (clients || []).filter(c => {
+    if (!clientNom) return true;
+    const q = clientNom.toLowerCase();
+    const cNom = (c.nom || '').toLowerCase();
+    const cPrenom = (c.prenom || '').toLowerCase();
+    const cTel = (c.telephone || '').toLowerCase();
+    return cNom.includes(q) || cPrenom.includes(q) || cTel.includes(q);
+  }).slice(0, 5);
+
+  const handleSelectClient = (c) => {
+    const fullName = [c.prenom, c.nom].filter(Boolean).join(' ');
+    setClientNom(fullName);
+    if (setClientId) setClientId(c.id);
+    setShowDropdown(false);
+  };
+
+  const handleSaveNewClient = async (e) => {
+    e.preventDefault();
+    if (!newClientForm.nom.trim() && !newClientForm.prenom.trim()) {
+      alert("Veuillez renseigner au moins un prénom ou un nom.");
+      return;
+    }
+    setIsSavingClient(true);
+    try {
+      const docRef = await addDoc(collection(db, 'clients'), {
+        nom: newClientForm.nom.trim(),
+        prenom: newClientForm.prenom.trim(),
+        telephone: newClientForm.telephone.trim(),
+        suiviAppels: [],
+        createdAt: new Date().toISOString()
+      });
+      const fullName = [newClientForm.prenom, newClientForm.nom].filter(Boolean).join(' ');
+      setClientNom(fullName);
+      if (setClientId) setClientId(docRef.id);
+      setShowAddClientModal(false);
+      setNewClientForm({ nom: '', prenom: '', telephone: '' });
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de la création du client.");
+    } finally {
+      setIsSavingClient(false);
+    }
+  };
 
   const totalGeneral = lignes.reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
 
@@ -130,15 +194,101 @@ const PanierPrestations = ({
   return (
     <div>
       {showClientField && (
-        <div className="form-group" style={{ marginBottom: '15px' }}>
-          <label>Nom du client (Optionnel)</label>
-          <input
-            type="text"
-            className="input-control"
-            placeholder="Ex: Amadou, Client anonyme..."
-            value={clientNom}
-            onChange={e => setClientNom(e.target.value)}
-          />
+        <div className="form-group" style={{ marginBottom: '15px', position: 'relative' }} ref={dropdownRef}>
+          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Nom du client (Optionnel)</span>
+            <button 
+              type="button" 
+              onClick={() => setShowAddClientModal(true)}
+              style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 'bold' }}
+            >
+              <UserPlus size={14} /> Nouveau client
+            </button>
+          </label>
+          <div style={{ position: 'relative' }}>
+            <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              type="text"
+              className="input-control"
+              style={{ paddingLeft: '38px', margin: 0 }}
+              placeholder="Rechercher un client ou saisir un nom libre..."
+              value={clientNom}
+              onChange={e => {
+                setClientNom(e.target.value);
+                if (setClientId) setClientId(null);
+                setShowDropdown(true);
+              }}
+              onFocus={() => setShowDropdown(true)}
+            />
+          </div>
+          {showDropdown && clientNom && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, right: 0, 
+              backgroundColor: 'var(--bg-card)', 
+              border: '1px solid var(--border-color)', 
+              borderRadius: '8px', 
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)', 
+              zIndex: 10,
+              marginTop: '4px',
+              maxHeight: '200px', overflowY: 'auto'
+            }}>
+              {filteredClients.length > 0 ? (
+                filteredClients.map(c => (
+                  <div 
+                    key={c.id} 
+                    onClick={() => handleSelectClient(c)}
+                    style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '8px' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-input)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--accent-color)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold', flexShrink: 0 }}>
+                      {(c.prenom ? c.prenom[0] : (c.nom || '?')[0]).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-main)' }}>{[c.prenom, c.nom].filter(Boolean).join(' ')}</div>
+                      {c.telephone && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{c.telephone}</div>}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ padding: '10px 12px', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Aucun client trouvé pour "{clientNom}"</span>
+                  <button type="button" className="btn btn-small btn-primary" onClick={() => setShowAddClientModal(true)}>
+                    Créer
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal Add Client */}
+      {showAddClientModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><UserPlus size={18} color="var(--accent-color)" /> Nouveau Client</h3>
+              <button type="button" onClick={() => setShowAddClientModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleSaveNewClient} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Prénom</label>
+                <input type="text" className="input-control" value={newClientForm.prenom} onChange={e => setNewClientForm({...newClientForm, prenom: e.target.value})} placeholder="Ex: Idriss" />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Nom</label>
+                <input type="text" className="input-control" value={newClientForm.nom} onChange={e => setNewClientForm({...newClientForm, nom: e.target.value})} placeholder="Ex: Farouk" />
+              </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Téléphone</label>
+                <input type="tel" className="input-control" value={newClientForm.telephone} onChange={e => setNewClientForm({...newClientForm, telephone: e.target.value})} placeholder="Ex: +225 07..." />
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={isSavingClient} style={{ width: '100%', marginTop: '10px' }}>
+                <CheckCircle size={18} /> {isSavingClient ? 'Création...' : 'Créer et Sélectionner'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
 

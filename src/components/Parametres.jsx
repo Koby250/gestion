@@ -43,6 +43,7 @@ const Parametres = () => {
     { key: 'accesInventaire',   label: 'Inventaire' },
     { key: 'accesTresorerie',   label: 'Tresorerie' },
     { key: 'accesBilan',        label: 'Bilan' },
+    { key: 'accesClients',      label: 'Clients' },
     { key: 'accesParametres',   label: 'Parametres' },
   ];
 

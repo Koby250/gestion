@@ -604,14 +604,6 @@ const Reservations = ({ activeDate = localDateStr() }) => {
           </div>
         </div>
 
-        {/* ── FORMULAIRE D'AJOUT (Vue Liste) ─────────────────────────────── */}
-        {viewMode === 'liste' && (
-          <div className="card">
-            <h2 className="card-title">Nouvelle Réservation</h2>
-            {renderReservationForm()}
-          </div>
-        )}
-
         {/* ── LISTE OU AGENDA ────────────────────────────────────────────── */}
         {viewMode === 'agenda' ? (
           <AgendaVisuel 
@@ -630,6 +622,13 @@ const Reservations = ({ activeDate = localDateStr() }) => {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
               <h2 className="card-title" style={{ borderBottom: 'none', margin: 0, padding: 0 }}>Agenda des Rendez-vous</h2>
+              <button
+                onClick={() => setIsFormModalOpen(true)}
+                className="btn btn-primary"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
+              >
+                <PlusCircle size={18} /> Nouvelle réservation
+              </button>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginBottom: '20px', alignItems: 'flex-end' }}>
@@ -788,24 +787,13 @@ const Reservations = ({ activeDate = localDateStr() }) => {
         )}
       </div>
 
-      {/* ── MODAL AJOUT (Vue Agenda) ──────────────────────────────────────── */}
+      {/* ── MODAL AJOUT (Vue Liste + Agenda) ──────────────────────────────── */}
       {isFormModalOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
-            width: '100%', maxWidth: '700px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
-            maxHeight: '90vh', overflowY: 'auto'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <PlusCircle size={20} color="var(--accent-color)" /> Nouvelle Réservation
-              </h3>
-              <button onClick={() => setIsFormModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={20} />
-              </button>
+        <div className="modal-overlay" onClick={() => setIsFormModalOpen(false)}>
+          <div className="modal-content" style={{ maxWidth: '720px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><PlusCircle size={20} color="var(--accent-color)" /> Nouvelle Réservation</h2>
+              <button className="btn-icon" onClick={() => setIsFormModalOpen(false)}><X size={20} /></button>
             </div>
             {renderReservationForm()}
           </div>
@@ -814,22 +802,14 @@ const Reservations = ({ activeDate = localDateStr() }) => {
 
       {/* ── MODAL DÉTAILS ÉVÉNEMENT (Agenda) ──────────────────────────────── */}
       {eventDetailsModal && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
-            width: '100%', maxWidth: '500px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0 }}>Détails de la réservation</h3>
-              <button onClick={() => setEventDetailsModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={20} />
-              </button>
+        <div className="modal-overlay" onClick={() => setEventDetailsModal(null)}>
+          <div className="modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Détails de la réservation</h2>
+              <button className="btn-icon" onClick={() => setEventDetailsModal(null)}><X size={20} /></button>
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <p><strong>Client:</strong> {eventDetailsModal.clientNom} {eventDetailsModal.clientTel ? `(${eventDetailsModal.clientTel})` : ''}</p>
               
               {(() => {
@@ -887,27 +867,11 @@ const Reservations = ({ activeDate = localDateStr() }) => {
 
       {/* ── MODAL ENCAISSEMENT ────────────────────────────────────────────── */}
       {encaissementModal && (
-        <div style={{
-          position: 'fixed', inset: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
-            width: '100%', maxWidth: '420px',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
-            border: '1px solid var(--border-color)'
-          }}>
-            {/* En-tête modal */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h3 style={{ color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <CreditCard size={20} color="var(--accent-color)" /> Encaissement du solde
-              </h3>
-              <button onClick={() => setEncaissementModal(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={20} />
-              </button>
+        <div className="modal-overlay" onClick={() => setEncaissementModal(null)}>
+          <div className="modal-content" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><CreditCard size={20} color="var(--accent-color)" /> Encaissement du solde</h2>
+              <button className="btn-icon" onClick={() => setEncaissementModal(null)}><X size={20} /></button>
             </div>
 
             <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontSize: '0.9rem' }}>
@@ -972,22 +936,11 @@ const Reservations = ({ activeDate = localDateStr() }) => {
 
       {/* ── MODAL NOTES ───────────────────────────────────────────────────── */}
       {notesModal && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '20px',
-            width: '100%', maxWidth: '500px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
-            maxHeight: '90vh', display: 'flex', flexDirection: 'column'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h3 style={{ color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                <MessageSquare size={20} color="var(--accent-color)" /> Notes & Historique
-              </h3>
-              <button onClick={() => setNotesModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={20} />
-              </button>
+        <div className="modal-overlay" onClick={() => setNotesModal(null)}>
+          <div className="modal-content" style={{ maxWidth: '520px', display: 'flex', flexDirection: 'column', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><MessageSquare size={20} color="var(--accent-color)" /> Notes &amp; Historique</h2>
+              <button className="btn-icon" onClick={() => setNotesModal(null)}><X size={20} /></button>
             </div>
             
             <div style={{ flex: 1, overflowY: 'auto', marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -995,7 +948,7 @@ const Reservations = ({ activeDate = localDateStr() }) => {
                 <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>Aucune note pour ce rendez-vous.</p>
               ) : (
                 notesModal.historiqueNotes.map((n, i) => (
-                  <div key={i} style={{ backgroundColor: 'var(--bg-input)', padding: '10px', borderRadius: '8px' }}>
+                  <div key={i} style={{ backgroundColor: 'var(--bg-input)', padding: '10px', borderRadius: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                         {new Date(n.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(',', ' à')}
@@ -1037,28 +990,11 @@ const Reservations = ({ activeDate = localDateStr() }) => {
 
       {/* ── MODAL EDIT ────────────────────────────────────────────────────── */}
       {editModal && (
-        <div 
-          onClick={() => setEditModal(null)}
-          style={{
-            position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
-          }}
-        >
-          <div 
-            onClick={e => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--bg-card)', borderRadius: '20px', padding: '32px',
-              width: '100%', maxWidth: '500px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
-              maxHeight: '90vh', overflowY: 'auto'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                <Edit2 size={20} color="var(--accent-color)" /> Modifier le Rendez-vous
-              </h3>
-              <button onClick={() => setEditModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={20} />
-              </button>
+        <div className="modal-overlay" onClick={() => setEditModal(null)}>
+          <div className="modal-content" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><Edit2 size={20} color="var(--accent-color)" /> Modifier le Rendez-vous</h2>
+              <button className="btn-icon" onClick={() => setEditModal(null)}><X size={20} /></button>
             </div>
 
             <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>

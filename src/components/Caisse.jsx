@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase';
-import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, ShieldAlert, CheckCircle, Search, Edit2 } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, ShieldAlert, CheckCircle, Search, Edit2, X } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
 import SuccessModal from './SuccessModal';
@@ -15,6 +15,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   const [categories, setCategories] = useState([]);
   const [employes, setEmployes] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [clients, setClients] = useState([]);
   const [chargesFixes, setChargesFixes] = useState([]);
 
   // Form state
@@ -32,6 +33,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   // Multi-service panier state
   const [lignesPanier, setLignesPanier] = useState([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
   const [clientNomCaisse, setClientNomCaisse] = useState('');
+  const [clientIdCaisse, setClientIdCaisse] = useState('');
 
   const [activeHistoryTab, setActiveHistoryTab] = useState('aujourd_hui'); // 'aujourd_hui', 'cette_semaine', 'ce_mois'
   const [expandedDays, setExpandedDays] = useState({});
@@ -82,12 +84,17 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
       setChargesFixes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => c.actif));
     });
 
+    const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
+      setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     return () => {
       unsubServices();
       unsubCategories();
       unsubEmployes();
       unsubTransactions();
       unsubCharges();
+      unsubClients();
     };
   }, []);
 
@@ -151,11 +158,24 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         await addDoc(collection(db, 'transactions'), newTransaction);
         await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA. Agents: ${allAgentNoms.join(', ')}. Mode: ${modePaiement}`);
 
+        if (clientIdCaisse) {
+          try {
+            await updateDoc(doc(db, 'clients', clientIdCaisse), {
+              visites: increment(1),
+              chiffreAffaires: increment(totalMontant),
+              lastVisit: new Date().toISOString()
+            });
+          } catch (e) {
+            console.error("Erreur lors de la mise à jour des stats client :", e);
+          }
+        }
+
         // Note: L'attribution des points est désormais calculée dynamiquement dans Bilan/Parametres
 
         // Reset
         setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
         setClientNomCaisse('');
+        setClientIdCaisse('');
         setShowSuccess(true);
 
       } else {
@@ -616,9 +636,12 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
               employes={employes.filter(e => e.categorie !== 'Support / Gestion')}
               clientNom={clientNomCaisse}
               setClientNom={setClientNomCaisse}
+              clientId={clientIdCaisse}
+              setClientId={setClientIdCaisse}
               modePaiement={modePaiement}
               setModePaiement={setModePaiement}
               showClientField={true}
+              clients={clients}
             />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
@@ -802,7 +825,10 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
       {editTxModal && editTxModal.type === 'prestation' && (
         <div className="modal-overlay" onClick={() => setEditTxModal(null)}>
           <div className="modal-content" style={{ maxWidth: '800px', width: '95%' }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: '20px' }}>Modifier la transaction</h2>
+            <div className="modal-header">
+              <h2>Modifier la transaction</h2>
+              <button className="btn-icon" onClick={() => setEditTxModal(null)}><X size={20} /></button>
+            </div>
             <PanierPrestations 
               lignes={editTxLignes}
               setLignes={setEditTxLignes}
@@ -834,7 +860,10 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
       {editDepenseModal && (
         <div className="modal-overlay" onClick={() => setEditDepenseModal(null)}>
           <div className="modal-content" style={{ maxWidth: '520px', width: '95%' }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: '20px', fontSize: '1.1rem' }}>Modifier la dépense</h2>
+            <div className="modal-header">
+              <h2>Modifier la dépense</h2>
+              <button className="btn-icon" onClick={() => setEditDepenseModal(null)}><X size={20} /></button>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label>Motif</label>
