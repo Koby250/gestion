@@ -28,6 +28,7 @@ const Clients = () => {
   const [searchTerm, setSearchTerm]     = useState('');
   const [sortBy, setSortBy]             = useState('nom');
   const [expandedId, setExpandedId]     = useState(null);
+  const [statusFilter, setStatusFilter] = useState('Tous');
 
   // Form state
   const [showForm, setShowForm]     = useState(false);
@@ -47,6 +48,14 @@ const Clients = () => {
     navigator.clipboard.writeText(phone);
     setCopiedPhoneId(id);
     setTimeout(() => setCopiedPhoneId(null), 2000);
+  };
+
+  const handleUpdateQuickNote = async (clientId, notes) => {
+    try {
+      await updateDoc(doc(db, 'clients', clientId), { notes });
+    } catch (err) {
+      console.error("Erreur quick note:", err);
+    }
   };
 
   // ── Chargement des données ────────────────────────────────────────────────
@@ -132,13 +141,13 @@ const Clients = () => {
       let fidelite = 'Nouveau';
       let fideliteColor = 'var(--text-muted)';
       
-      let monthsSinceLastVisit = 0;
+      let daysSinceLastVisit = 0;
       if (derniereVisite) {
         const lastDate = new Date(derniereVisite);
-        monthsSinceLastVisit = (now.getFullYear() - lastDate.getFullYear()) * 12 + (now.getMonth() - lastDate.getMonth());
+        daysSinceLastVisit = Math.floor((now - lastDate) / (1000 * 3600 * 24));
       }
 
-      if (monthsSinceLastVisit >= 2 && nbVisites > 0) {
+      if (daysSinceLastVisit > 30 && nbVisites > 0) {
         fidelite = 'À relancer';
         fideliteColor = '#ef4444'; // red
       } else if (nbVisites >= 15 || totalCA > 200000) {
@@ -169,6 +178,9 @@ const Clients = () => {
   // ── Filtre & tri ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...enrichedClients];
+    if (statusFilter !== 'Tous') {
+      list = list.filter(c => c.fidelite === statusFilter);
+    }
     if (searchTerm) {
       const s = searchTerm.toLowerCase();
       list = list.filter(c =>
@@ -422,7 +434,25 @@ const Clients = () => {
           </div>
         </div>
 
-        {/* ── FILTRES ─────────────────────────────────────────────────────── */}
+        {/* ── FILTRES RAPIDES ──────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', paddingBottom: '4px' }}>
+          {['Tous', 'À relancer', 'VIP', 'Fidèle', 'Régulier', 'Nouveau'].map(f => (
+            <button key={f} 
+              onClick={() => setStatusFilter(f)}
+              style={{
+                padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap',
+                border: statusFilter === f ? 'none' : '1px solid var(--border-color)',
+                backgroundColor: statusFilter === f ? (f === 'À relancer' ? '#ef4444' : f === 'VIP' ? '#f59e0b' : f === 'Fidèle' ? '#8b5cf6' : f === 'Régulier' ? 'var(--accent-color)' : 'var(--text-main)') : 'transparent',
+                color: statusFilter === f ? '#fff' : 'var(--text-main)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {f === 'À relancer' ? 'À relancer > 30j' : f}
+            </button>
+          ))}
+        </div>
+
+        {/* ── FILTRES RECHERCHE ───────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: '14px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 2, minWidth: '220px' }}>
             <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
@@ -508,7 +538,7 @@ const Clients = () => {
                           <a href={`tel:${client.telephone}`} style={{ color: 'var(--accent-color)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: '600' }}>
                             <Phone size={12} /> Appel
                           </a>
-                          <a href={`https://wa.me/${cleanPhoneForWhatsApp(client.telephone)}`} target="_blank" rel="noopener noreferrer" style={{ color: '#25D366', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: '600' }}>
+                          <a href={`https://wa.me/${cleanPhoneForWhatsApp(client.telephone)}?text=${encodeURIComponent(`Bonjour ${client.prenom || client.nom || ''},\n\nNous espérons que vous allez bien ! Ça fait un moment que nous n'avons pas eu le plaisir de vous voir au salon. N'hésitez pas à réserver votre prochain créneau. À très vite !`)}`} target="_blank" rel="noopener noreferrer" style={{ color: '#25D366', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: '600' }}>
                             <MessageCircle size={12} /> WhatsApp
                           </a>
                         </div>
@@ -610,13 +640,20 @@ const Clients = () => {
                       {/* Colonne droite : Suivi d'appels & Notes */}
                       <div style={{ flex: 1, minWidth: '250px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         
-                        {/* Notes Permanentes */}
-                        {client.notes && (
-                          <div style={{ padding: '12px', backgroundColor: 'rgba(245,158,11,0.08)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📝 Notes & Préférences :</span>
-                            <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: '1.4' }}>{client.notes}</p>
-                          </div>
-                        )}
+                        {/* Notes Permanentes (Modifiables à la volée) */}
+                        <div style={{ padding: '12px', backgroundColor: 'rgba(245,158,11,0.08)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between' }}>
+                            <span>📝 Notes & Préférences :</span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontStyle: 'italic', textTransform: 'none' }}>S'enregistre à la sortie</span>
+                          </span>
+                          <textarea 
+                            className="input-control"
+                            style={{ margin: '8px 0 0', width: '100%', resize: 'vertical', minHeight: '60px', backgroundColor: 'var(--bg-card)', fontSize: '0.85rem' }}
+                            placeholder="Ex : Coiffeur favori, allergies, style de coupe..."
+                            defaultValue={client.notes}
+                            onBlur={(e) => handleUpdateQuickNote(client.id, e.target.value)}
+                          />
+                        </div>
 
                         {/* Suivi d'appels */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
