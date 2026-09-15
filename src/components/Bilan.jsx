@@ -641,14 +641,9 @@ const Bilan = () => {
   // Top service du mois
   const topService = serviceList.length > 0 ? serviceList[0] : null;
 
-  // Panier moyen par client
-  const clientsUniques = new Set();
-  prestations.forEach(t => {
-    const nom = (t.clientNom || '').toLowerCase().trim();
-    if (nom) clientsUniques.add(nom);
-  });
-  const nbClientsUniques = clientsUniques.size || 1;
-  const panierMoyen = totalCA > 0 ? Math.round(totalCA / nbClientsUniques) : 0;
+  // Panier moyen par prestation (Ticket moyen)
+  const nbPrestationsEffectives = prestations.length || 1;
+  const panierMoyen = totalCA > 0 ? Math.round(totalCA / nbPrestationsEffectives) : 0;
 
   // ── Stat Cards config ────────────────────────────────────────────────────
   const statCards = [
@@ -877,9 +872,9 @@ const Bilan = () => {
             <Users size={22} />
           </div>
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '4px' }}>Panier moyen / client</div>
+            <div style={{ fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '4px' }}>Panier moyen global</div>
             <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#8b5cf6', letterSpacing: '-0.02em' }}>{fmt(panierMoyen)} F</div>
-            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '3px', fontStyle: 'italic' }}>{nbClientsUniques} client{nbClientsUniques > 1 ? 's' : ''} distinct{nbClientsUniques > 1 ? 's' : ''} ce mois</div>
+            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '3px', fontStyle: 'italic' }}>Sur {prestations.length} prestation{prestations.length > 1 ? 's' : ''} sur la période</div>
           </div>
         </div>
 
