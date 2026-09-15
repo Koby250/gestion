@@ -2,11 +2,11 @@ export const getPointsForService = (serviceNom, transactionDate = null) => {
   if (!serviceNom) return 0;
   const name = serviceNom.toLowerCase();
   
-  // A partir du 15 Septembre 2026, les nouvelles règles s'appliquent.
+  // A partir du 1er Septembre 2026, les nouvelles règles s'appliquent pour tout le mois en cours.
   let isNewRule = true;
   if (transactionDate) {
     const txDateStr = transactionDate.substring(0, 10);
-    if (txDateStr < '2026-09-15') {
+    if (txDateStr < '2026-09-01') {
       isNewRule = false;
     }
   }
