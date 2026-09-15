@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -252,7 +252,13 @@ const Clients = () => {
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const text = event.target.result;
+        let text = event.target.result;
+        
+        // 1. Nettoyage du BOM UTF-8 éventuel
+        if (text.charCodeAt(0) === 0xFEFF) {
+          text = text.slice(1);
+        }
+        
         const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
         if (lines.length < 2) {
           alert("Le fichier est vide ou ne contient que l'en-tête.");
@@ -261,25 +267,37 @@ const Clients = () => {
         }
         
         const headerLine = lines[0];
-        const delimiter = headerLine.includes(';') ? ';' : ',';
-        const headers = headerLine.split(delimiter).map(h => h.trim().toLowerCase());
+        // 2. Détection automatique du séparateur (, ou ;)
+        const delimiter = (headerLine.match(/;/g) || []).length > (headerLine.match(/,/g) || []).length ? ';' : ',';
         
-        const prenomIdx = headers.findIndex(h => h.includes('prenom') || h.includes('prénom'));
-        const nomIdx = headers.findIndex(h => h === 'nom' || h === 'name');
-        const telIdx = headers.findIndex(h => h.includes('tel') || h.includes('téléphone') || h.includes('phone'));
+        // 3. Normalisation des en-têtes (minuscules, sans accents, sans espaces)
+        const normalize = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, '');
+        const headers = headerLine.split(delimiter).map(h => normalize(h.trim()));
+        
+        const prenomIdx = headers.findIndex(h => h === 'prenom' || h === 'firstname' || h === 'name');
+        const nomIdx = headers.findIndex(h => h === 'nom' || h === 'lastname' || h === 'surname');
+        const telIdx = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h === 'contact' || h === 'numero');
         const dateIdx = headers.findIndex(h => h.includes('date') || h.includes('anniversaire') || h.includes('birth'));
 
         let importedCount = 0;
+        let ignoredCount = 0;
 
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''));
           
-          const p = prenomIdx >= 0 ? cols[prenomIdx] : '';
-          const n = nomIdx >= 0 ? cols[nomIdx] : '';
-          const t = telIdx >= 0 ? cols[telIdx] : '';
-          let d = dateIdx >= 0 ? cols[dateIdx] : '';
+          const p = prenomIdx >= 0 && cols[prenomIdx] ? cols[prenomIdx].trim() : '';
+          const n = nomIdx >= 0 && cols[nomIdx] ? cols[nomIdx].trim() : '';
+          let t = telIdx >= 0 && cols[telIdx] ? cols[telIdx].trim() : '';
+          let d = dateIdx >= 0 && cols[dateIdx] ? cols[dateIdx].trim() : '';
 
-          if (!p && !n) continue;
+          // Nettoyage du téléphone (suppression des espaces)
+          t = t.replace(/\s+/g, '');
+
+          // 4. Validation souple : le téléphone ET au moins un nom ou prénom sont requis
+          if (!t || (!p && !n)) {
+            ignoredCount++;
+            continue;
+          }
 
           let finalDate = null;
           if (d) {
@@ -287,27 +305,32 @@ const Clients = () => {
             if (dateParts.length >= 2) {
               const day = dateParts[0].padStart(2, '0');
               const month = dateParts[1].padStart(2, '0');
-              finalDate = `${month}-${day}`;
+              if (!isNaN(day) && !isNaN(month)) {
+                finalDate = `${month}-${day}`;
+              }
             }
           }
 
           const payload = {
-            prenom: p || '',
-            nom: n || '',
-            telephone: t || '',
+            prenom: p,
+            nom: n,
+            telephone: t,
             birthDate: finalDate,
             notes: 'Importé via CSV',
             suiviAppels: [],
             visites: 0,
+            visits: 0, // pour correspondre à la demande explicite
             chiffreAffaires: 0,
-            createdAt: new Date().toISOString()
+            totalSpent: 0, // pour correspondre à la demande explicite
+            createdAt: serverTimestamp()
           };
           
           await addDoc(collection(db, 'clients'), payload);
           importedCount++;
         }
         
-        alert(`${importedCount} clients ont été importés avec succès !`);
+        // 5. Message de confirmation détaillé
+        alert(`${importedCount} clients ont été importés avec succès !\n${ignoredCount > 0 ? `${ignoredCount} lignes ignorées (données invalides ou incomplètes).` : ''}`);
         setShowCsvModal(false);
       } catch (err) {
         console.error("Erreur import CSV:", err);
