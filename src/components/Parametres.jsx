@@ -11,6 +11,7 @@ import { computeGlobalPoints } from '../utils/points';
 const Parametres = () => {
   // Collection States
   const [services, setServices] = useState([]);
+  const [servicesDomicile, setServicesDomicile] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employes, setEmployes] = useState([]);
   const [chargesFixes, setChargesFixes] = useState([]);
@@ -36,6 +37,7 @@ const Parametres = () => {
 
   // Forms States (Add)
   const [newService, setNewService] = useState({ nom: '', prix: '' });
+  const [newServiceDomicile, setNewServiceDomicile] = useState({ nom: '', prix: '' });
   const [newCategory, setNewCategory] = useState({ nom: '' });
   const MODULES_AGENTS = [
     { key: 'accesCaisse',       label: 'Caisse' },
@@ -55,6 +57,9 @@ const Parametres = () => {
   const [editingServiceId, setEditingServiceId] = useState(null);
   const [editServiceForm, setEditServiceForm] = useState({ nom: '', prix: '' });
 
+  const [editingServiceDomicileId, setEditingServiceDomicileId] = useState(null);
+  const [editServiceDomicileForm, setEditServiceDomicileForm] = useState({ nom: '', prix: '' });
+
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [editCategoryForm, setEditCategoryForm] = useState({ nom: '' });
 
@@ -68,6 +73,7 @@ const Parametres = () => {
 
   // Bulk Selection States
   const [selectedServices, setSelectedServices] = useState([]);
+  const [selectedServicesDomicile, setSelectedServicesDomicile] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [selectedEmployes, setSelectedEmployes] = useState([]);
   const [selectedCharges, setSelectedCharges] = useState([]);
@@ -76,6 +82,10 @@ const Parametres = () => {
   useEffect(() => {
     const unsubServices = onSnapshot(collection(db, 'services'), (snapshot) => {
       setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubServicesDomicile = onSnapshot(collection(db, 'services_domicile'), (snapshot) => {
+      setServicesDomicile(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     
     const unsubCategories = onSnapshot(collection(db, 'depenses_categories'), (snapshot) => {
@@ -126,6 +136,7 @@ const Parametres = () => {
 
     return () => {
       unsubServices();
+      unsubServicesDomicile();
       unsubCategories();
       unsubEmployes();
       unsubSettings();
@@ -142,6 +153,13 @@ const Parametres = () => {
     if (!newService.nom || !newService.prix) return;
     await addDoc(collection(db, 'services'), { nom: newService.nom, prixDefaut: Number(newService.prix), actif: true });
     setNewService({ nom: '', prix: '' });
+  };
+
+  const handleAddServiceDomicile = async (e) => {
+    e.preventDefault();
+    if (!newServiceDomicile.nom || !newServiceDomicile.prix) return;
+    await addDoc(collection(db, 'services_domicile'), { nom: newServiceDomicile.nom, prixDefaut: Number(newServiceDomicile.prix), actif: true });
+    setNewServiceDomicile({ nom: '', prix: '' });
   };
 
   const handleAddCategory = async (e) => {
@@ -247,6 +265,16 @@ const Parametres = () => {
     await updateDoc(doc(db, 'services', id), { nom: editServiceForm.nom, prixDefaut: Number(editServiceForm.prix) });
     await logEvent('PARAMETRE_UPDATE', `Modification du service: ${editServiceForm.nom} (${editServiceForm.prix} FCFA)`);
     setEditingServiceId(null);
+  };
+
+  const startEditServiceDomicile = (service) => {
+    setEditingServiceDomicileId(service.id);
+    setEditServiceDomicileForm({ nom: service.nom, prix: service.prixDefaut.toString() });
+  };
+  const saveEditServiceDomicile = async (id) => {
+    await updateDoc(doc(db, 'services_domicile', id), { nom: editServiceDomicileForm.nom, prixDefaut: Number(editServiceDomicileForm.prix) });
+    await logEvent('PARAMETRE_UPDATE', `Modification du service à domicile: ${editServiceDomicileForm.nom} (${editServiceDomicileForm.prix} FCFA)`);
+    setEditingServiceDomicileId(null);
   };
 
   // Handlers Edit (Category)
@@ -452,6 +480,81 @@ const Parametres = () => {
                     {service.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
                   </button>
                   <button onClick={() => handleDelete('services', service.id)} className="btn btn-small btn-danger" title="Supprimer">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* SECTION SERVICES À DOMICILE */}
+      <div className="card">
+        <h2 className="card-title">Prestations & Services (À domicile)</h2>
+        
+        <form onSubmit={handleAddServiceDomicile} style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <input 
+            type="text" 
+            className="input-control" 
+            placeholder="Nom du service (domicile)" 
+            value={newServiceDomicile.nom} 
+            onChange={(e) => setNewServiceDomicile({...newServiceDomicile, nom: e.target.value})}
+            style={{ flex: 1, minWidth: '150px' }}
+          />
+          <input 
+            type="number" 
+            className="input-control" 
+            placeholder="Prix (FCFA)" 
+            value={newServiceDomicile.prix} 
+            onChange={(e) => setNewServiceDomicile({...newServiceDomicile, prix: e.target.value})}
+            style={{ width: '150px' }}
+          />
+          <button type="submit" className="btn btn-primary"><Plus size={18} /> Ajouter</button>
+        </form>
+
+        <BulkActionBar 
+          selectedIds={selectedServicesDomicile} 
+          collectionName="services_domicile" 
+          onClearSelection={() => setSelectedServicesDomicile([])} 
+        />
+        {servicesDomicile.length > 0 && (
+          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input type="checkbox" id="selectAllServicesDomicile" onChange={e => toggleAll(e, servicesDomicile, setSelectedServicesDomicile)} checked={servicesDomicile.length > 0 && selectedServicesDomicile.length === servicesDomicile.length} style={{ cursor: 'pointer' }} />
+            <label htmlFor="selectAllServicesDomicile" style={{ fontSize: '0.85rem', cursor: 'pointer', color: 'var(--text-muted)' }}>Tout sélectionner</label>
+          </div>
+        )}
+
+        <div className="list-container">
+          {servicesDomicile.map(service => (
+            <div key={service.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px', backgroundColor: selectedServicesDomicile.includes(service.id) ? 'rgba(37,99,235,0.05)' : 'transparent' }}>
+              
+              <input type="checkbox" checked={selectedServicesDomicile.includes(service.id)} onChange={() => toggleSelection(service.id, selectedServicesDomicile, setSelectedServicesDomicile)} style={{ cursor: 'pointer', marginRight: '5px' }} />
+
+              {editingServiceDomicileId === service.id ? (
+                <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
+                  <input type="text" className="input-control" value={editServiceDomicileForm.nom} onChange={e => setEditServiceDomicileForm({...editServiceDomicileForm, nom: e.target.value})} />
+                  <input type="number" className="input-control" value={editServiceDomicileForm.prix} onChange={e => setEditServiceDomicileForm({...editServiceDomicileForm, prix: e.target.value})} style={{ width: '100px' }} />
+                  <button onClick={() => saveEditServiceDomicile(service.id)} className="btn btn-success btn-small"><CheckCircle size={14} /></button>
+                  <button onClick={() => setEditingServiceDomicileId(null)} className="btn btn-small" style={{background:'var(--bg-input)'}}><X size={14}/></button>
+                </div>
+              ) : (
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 'bold', color: service.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>{service.nom}</span>
+                  <span style={{ marginLeft: '10px', color: 'var(--accent-color)', fontWeight: 'bold' }}>{service.prixDefaut} FCFA</span>
+                  {!service.actif && <span style={{ marginLeft: '10px', fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
+                </div>
+              )}
+
+              {editingServiceDomicileId !== service.id && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => startEditServiceDomicile(service)} className="btn btn-small" style={{backgroundColor: 'var(--bg-input)', color: 'var(--text-main)'}} title="Modifier">
+                    <Edit2 size={14} />
+                  </button>
+                  <button onClick={() => toggleStatus('services_domicile', service.id, service.actif)} className={`btn btn-small ${service.actif ? 'btn-danger' : 'btn-success'}`} title={service.actif ? "Archiver" : "Activer"}>
+                    {service.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
+                  </button>
+                  <button onClick={() => handleDelete('services_domicile', service.id)} className="btn btn-small btn-danger" title="Supprimer">
                     <Trash2 size={14} />
                   </button>
                 </div>
