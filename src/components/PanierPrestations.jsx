@@ -21,6 +21,7 @@ const PanierPrestations = ({
   lignes,
   setLignes,
   services,
+  servicesDomicile = [],
   employes,
   clientNom,
   setClientNom,
@@ -129,13 +130,17 @@ const PanierPrestations = ({
 
         // Auto-fill price when service changes
         if (field === 'serviceId') {
-          const service = services.find(s => s.id === value);
+          const isDomicile = value.startsWith('dom_');
+          const realId = isDomicile ? value.replace('dom_', '') : value;
+          const service = isDomicile ? (servicesDomicile || []).find(s => s.id === realId) : services.find(s => s.id === realId);
           if (service) {
+            updated[index].serviceId = realId;
             updated[index].serviceNom = service.nom;
             updated[index].prixBase = service.prixDefaut;
             updated[index].prixFinal = service.prixDefaut;
             updated[index].remiseType = 'aucune';
             updated[index].remiseValeur = '';
+            updated[index].isDomicile = isDomicile;
           }
         }
 
@@ -327,14 +332,25 @@ const PanierPrestations = ({
                 <label>Service</label>
                 <select
                   className="input-control"
-                  value={ligne.serviceId}
+                  value={ligne.isDomicile ? `dom_${ligne.serviceId}` : ligne.serviceId}
                   onChange={e => updateLigne(index, 'serviceId', e.target.value)}
                   required
                 >
                   <option value="">Choisir un service</option>
-                  {services.map(s => (
-                    <option key={s.id} value={s.id}>{s.nom} — {s.prixDefaut} FCFA</option>
-                  ))}
+                  {services && services.length > 0 && (
+                    <optgroup label="Au salon">
+                      {services.map(s => (
+                        <option key={s.id} value={s.id}>{s.nom} — {s.prixDefaut} FCFA</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {servicesDomicile && servicesDomicile.length > 0 && (
+                    <optgroup label="À domicile">
+                      {servicesDomicile.map(s => (
+                        <option key={`dom_${s.id}`} value={`dom_${s.id}`}>{s.nom} — {s.prixDefaut} FCFA</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 

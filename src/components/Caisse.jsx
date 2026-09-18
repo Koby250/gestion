@@ -12,6 +12,7 @@ const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth
 const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   // State for reference data
   const [services, setServices] = useState([]);
+  const [servicesDomicile, setServicesDomicile] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employes, setEmployes] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -63,6 +64,10 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
       setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(s => s.actif));
     });
     
+    const unsubServicesDomicile = onSnapshot(collection(db, 'services_domicile'), (snapshot) => {
+      setServicesDomicile(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(s => s.actif));
+    });
+    
     const unsubCategories = onSnapshot(collection(db, 'depenses_categories'), (snapshot) => {
       setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(c => c.actif));
     });
@@ -90,6 +95,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
 
     return () => {
       unsubServices();
+      unsubServicesDomicile();
       unsubCategories();
       unsubEmployes();
       unsubTransactions();
@@ -152,6 +158,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
             remiseValeur: l.remiseValeur,
             remiseMotif: l.remiseMotif,
             agents: l.agents,
+            isDomicile: !!l.isDomicile
           }))
         };
 
@@ -633,6 +640,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
               lignes={lignesPanier}
               setLignes={setLignesPanier}
               services={services}
+              servicesDomicile={servicesDomicile}
               employes={employes.filter(e => e.categorie !== 'Support / Gestion')}
               clientNom={clientNomCaisse}
               setClientNom={setClientNomCaisse}
@@ -833,6 +841,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
               lignes={editTxLignes}
               setLignes={setEditTxLignes}
               services={services}
+              servicesDomicile={servicesDomicile}
               employes={employes}
               clientNom={editTxClientNom}
               setClientNom={setEditTxClientNom}

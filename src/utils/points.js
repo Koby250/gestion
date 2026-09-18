@@ -1,4 +1,4 @@
-export const getPointsForService = (serviceNom, transactionDate = null) => {
+export const getPointsForService = (serviceNom, transactionDate = null, isDomicile = false) => {
   if (!serviceNom) return 0;
   const name = serviceNom.toLowerCase();
   
@@ -11,20 +11,22 @@ export const getPointsForService = (serviceNom, transactionDate = null) => {
     }
   }
 
+  let basePoints = 0;
+
   // Autres services (inchangés)
-  if (name.includes('gommage') || name.includes('manucure')) return 1;
-  if (name.includes('pédicure') || name.includes('pedicure')) return 5;
-  if (name.includes('visage premium')) return 4;
-  if (name.includes('visage standard')) return 3;
-  if (name.includes('visage')) return 3; // Fallback
+  if (name.includes('gommage') || name.includes('manucure')) basePoints = 1;
+  else if (name.includes('pédicure') || name.includes('pedicure')) basePoints = 5;
+  else if (name.includes('visage premium')) basePoints = 4;
+  else if (name.includes('visage standard')) basePoints = 3;
+  else if (name.includes('visage')) basePoints = 3; // Fallback
   
   // Prestations de coiffure principale
-  if (name.includes('coiffure') || name.includes('coupe') || name.includes('barbe')) {
-    return isNewRule ? 1 : 2;
+  else if (name.includes('coiffure') || name.includes('coupe') || name.includes('barbe')) {
+    basePoints = isNewRule ? 1 : 2;
   }
   
   // Prestations capillaires annexes (uniquement avec nouvelle règle)
-  if (isNewRule) {
+  else if (isNewRule) {
     if (
       name.includes('teinture') || 
       name.includes('défrisage') || 
@@ -34,11 +36,11 @@ export const getPointsForService = (serviceNom, transactionDate = null) => {
       name.includes('shampoing') || 
       name.includes('soin capillaire')
     ) {
-      return 0.5;
+      basePoints = 0.5;
     }
   }
   
-  return 0;
+  return basePoints + (isDomicile ? 1 : 0);
 };
 
 export const computeGlobalPoints = (transactions) => {
@@ -47,7 +49,7 @@ export const computeGlobalPoints = (transactions) => {
   (transactions || []).forEach(t => {
     if (t.type === 'prestation' && t.lignes && t.lignes.length > 0) {
       t.lignes.forEach(l => {
-        const pts = getPointsForService(l.serviceNom, t.date);
+        const pts = getPointsForService(l.serviceNom, t.date, !!l.isDomicile);
         const agents = l.agents || [];
         const numAgents = agents.length || 1;
         const ptsToGive = pts / numAgents;
@@ -70,7 +72,7 @@ export const computeDetailedGlobalStats = (transactions) => {
   (transactions || []).forEach(t => {
     if (t.type === 'prestation' && t.lignes && t.lignes.length > 0) {
       t.lignes.forEach(l => {
-        const pts = getPointsForService(l.serviceNom, t.date);
+        const pts = getPointsForService(l.serviceNom, t.date, !!l.isDomicile);
         const agents = l.agents || [];
         const numAgents = agents.length || 1;
         const ptsToGive = pts / numAgents;
