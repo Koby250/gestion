@@ -18,6 +18,7 @@ import RH           from './components/RH';
 import Tracabilite  from './components/Tracabilite';
 import Inventaire   from './components/Inventaire';
 import Clients      from './components/Clients';
+import BirthdayWidget from './components/BirthdayWidget';
 
 // Retourne la date locale du navigateur en format YYYY-MM-DD
 // (évite le décalage UTC de toISOString() qui affiche J-1 après minuit)
@@ -332,6 +333,7 @@ function App() {
         </main>
       </div>
 
+      {user && <BirthdayWidget />}
     </div>
   );
 }

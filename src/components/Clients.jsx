@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -27,16 +27,22 @@ const Clients = () => {
   const [transactions, setTransactions] = useState([]);
   const [searchTerm, setSearchTerm]     = useState('');
   const [sortBy, setSortBy]             = useState('nom');
-  const [expandedId, setExpandedId]     = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
   const [statusFilter, setStatusFilter] = useState('Tous');
+  const [letterFilter, setLetterFilter] = useState('');
 
   // Form state
   const [showForm, setShowForm]     = useState(false);
   const [editingId, setEditingId]   = useState(null);
   const [showCsvModal, setShowCsvModal] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   const [form, setForm]             = useState({ nom: '', prenom: '', telephone: '', notes: '', birthDate: '' });
   const [isSaving, setIsSaving]     = useState(false);
+
+  // Pagination
+  const ITEMS_PER_PAGE = 50;
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Call tracking form state
   const [callNote, setCallNote]     = useState('');
@@ -55,6 +61,30 @@ const Clients = () => {
       await updateDoc(doc(db, 'clients', clientId), { notes });
     } catch (err) {
       console.error("Erreur quick note:", err);
+    }
+  };
+
+  const handleUpdateBirthdate = async (clientId, birthDate) => {
+    try {
+      await updateDoc(doc(db, 'clients', clientId), { birthDate });
+    } catch (err) {
+      console.error("Erreur birthDate:", err);
+    }
+  };
+
+  const AVAILABLE_TAGS = [
+    'À rappeler', 'Ne décroche pas', 'Numéro invalide', 
+    'Numéro indisponible', 'Injoignable', 'Client régulier', 'VIP'
+  ];
+
+  const handleToggleTag = async (clientId, tag, currentTags = []) => {
+    const newTags = currentTags.includes(tag)
+      ? currentTags.filter(t => t !== tag)
+      : [...currentTags, tag];
+    try {
+      await updateDoc(doc(db, 'clients', clientId), { tags: newTags });
+    } catch (err) {
+      console.error("Erreur toggle tag:", err);
     }
   };
 
@@ -175,11 +205,36 @@ const Clients = () => {
     });
   }, [clients, reservations, transactions]);
 
+  // ── Compteurs par lettre (sur l'ensemble des clients enrichis, avant tout filtre) ──
+  const letterCounts = useMemo(() => {
+    const counts = {};
+    enrichedClients.forEach(c => {
+      // La lettre pivot est la 1ère lettre du nom, sinon du prénom
+      const pivot = (c.nom || c.prenom || '').trim();
+      if (!pivot) return;
+      const letter = pivot[0].toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // retire les accents (É → E)
+      counts[letter] = (counts[letter] || 0) + 1;
+    });
+    return counts;
+  }, [enrichedClients]);
+
+  // Lettres présentes, triées
+  const activeLetters = useMemo(() => Object.keys(letterCounts).sort(), [letterCounts]);
+
   // ── Filtre & tri ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...enrichedClients];
     if (statusFilter !== 'Tous') {
       list = list.filter(c => c.fidelite === statusFilter);
+    }
+    if (letterFilter) {
+      list = list.filter(c => {
+        const pivot = (c.nom || c.prenom || '').trim();
+        if (!pivot) return false;
+        const l = pivot[0].toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return l === letterFilter;
+      });
     }
     if (searchTerm) {
       const s = searchTerm.toLowerCase();
@@ -189,13 +244,24 @@ const Clients = () => {
         (c.telephone || '').includes(s)
       );
     }
-    if (sortBy === 'nom') list.sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+    // Toujours trier par nom A→Z en priorité, sauf si un autre tri est sélectionné
+    if (sortBy === 'nom') list.sort((a, b) => (a.nom || a.prenom || '').localeCompare(b.nom || b.prenom || '', 'fr'));
     if (sortBy === 'visites') list.sort((a, b) => b.nbVisites - a.nbVisites);
     if (sortBy === 'ca') list.sort((a, b) => b.totalCA - a.totalCA);
     if (sortBy === 'derniereVisite') list.sort((a, b) => (b.derniereVisite || '').localeCompare(a.derniereVisite || ''));
     if (sortBy === 'relancer') list.sort((a, b) => (a.fidelite === 'À relancer' ? -1 : 1));
     return list;
-  }, [enrichedClients, searchTerm, sortBy]);
+  }, [enrichedClients, searchTerm, sortBy, statusFilter, letterFilter]);
+
+  // Réinitialise la page à 1 dès que les filtres changent
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, sortBy, statusFilter, letterFilter]);
+
+  // Clients de la page courante
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginatedClients = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filtered.slice(start, start + ITEMS_PER_PAGE);
+  }, [filtered, currentPage]);
 
   // ── KPIs globaux ─────────────────────────────────────────────────────────
   const totalCA      = enrichedClients.reduce((s, c) => s + c.totalCA, 0);
@@ -261,69 +327,104 @@ const Clients = () => {
     if (!file) return;
 
     setIsImporting(true);
+    setImportProgress({ current: 0, total: 0 });
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         let text = event.target.result;
-        
-        // 1. Nettoyage du BOM UTF-8 éventuel
-        if (text.charCodeAt(0) === 0xFEFF) {
-          text = text.slice(1);
-        }
-        
+
+        // ── 1. Nettoyage du BOM UTF-8 et des caractères invisibles ───────────
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
         const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
         if (lines.length < 2) {
           alert("Le fichier est vide ou ne contient que l'en-tête.");
           setIsImporting(false);
           return;
         }
-        
-        const headerLine = lines[0];
-        // 2. Détection automatique du séparateur (, ou ;)
-        const delimiter = (headerLine.match(/;/g) || []).length > (headerLine.match(/,/g) || []).length ? ';' : ',';
-        
-        // 3. Normalisation des en-têtes (minuscules, sans accents, sans espaces)
-        const normalize = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, '');
-        const headers = headerLine.split(delimiter).map(h => normalize(h.trim()));
-        
-        const prenomIdx = headers.findIndex(h => h === 'prenom' || h === 'firstname' || h === 'name');
-        const nomIdx = headers.findIndex(h => h === 'nom' || h === 'lastname' || h === 'surname');
-        const telIdx = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h === 'contact' || h === 'numero');
-        const dateIdx = headers.findIndex(h => h.includes('date') || h.includes('anniversaire') || h.includes('birth'));
 
-        let importedCount = 0;
+        // ── 2. Détection automatique du séparateur (, ou ;) ──────────────────
+        const headerLine = lines[0];
+        const delimiter = (headerLine.match(/;/g) || []).length > (headerLine.match(/,/g) || []).length ? ';' : ',';
+
+        // ── 3. Normalisation élargie des en-têtes (FR + EN, accents, espaces) ─
+        const normalize = (str) =>
+          str.normalize('NFD')
+             .replace(/[\u0300-\u036f]/g, '')
+             .toLowerCase()
+             .replace(/[\s_\-]+/g, '');
+
+        const headers = headerLine.split(delimiter).map(h =>
+          normalize(h.replace(/^"|"$/g, '').trim())
+        );
+
+        // Mapping élargi : prénom
+        const PRENOM_KEYS  = new Set(['prenom', 'firstname', 'givenname', 'name', 'displayname', 'fullname', 'contactname']);
+        // Mapping élargi : nom
+        const NOM_KEYS     = new Set(['nom', 'lastname', 'surname', 'familyname']);
+        // Mapping élargi : téléphone (plusieurs colonnes possibles, priorité Mobile > Home > Business)
+        const TEL_PRIORITY = ['mobilephone', 'mobile', 'cellphone', 'cell', 'tel', 'telephone', 'phone',
+                              'homephone', 'businessphone', 'workphone', 'contact', 'numero', 'phonenumber'];
+
+        const prenomIdx = headers.findIndex(h => PRENOM_KEYS.has(h));
+        const nomIdx    = headers.findIndex(h => NOM_KEYS.has(h));
+
+        // Cherche la 1ère colonne téléphone selon l'ordre de priorité
+        let telIdx = -1;
+        for (const key of TEL_PRIORITY) {
+          const idx = headers.findIndex(h => h.includes(key));
+          if (idx !== -1) { telIdx = idx; break; }
+        }
+        // Fallback générique si aucune correspondance exacte
+        if (telIdx === -1) telIdx = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h.includes('mobile') || h.includes('numero') || h.includes('contact'));
+
+        const dateIdx = headers.findIndex(h =>
+          h.includes('birthday') || h.includes('birthdate') || h.includes('anniversaire') || (h.includes('date') && h.includes('birth'))
+        );
+
+        // ── 4. Construction des payloads valides ────────────────────────────
+        const payloads = [];
         let ignoredCount = 0;
 
         for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''));
-          
-          const p = prenomIdx >= 0 && cols[prenomIdx] ? cols[prenomIdx].trim() : '';
-          const n = nomIdx >= 0 && cols[nomIdx] ? cols[nomIdx].trim() : '';
-          let t = telIdx >= 0 && cols[telIdx] ? cols[telIdx].trim() : '';
-          let d = dateIdx >= 0 && cols[dateIdx] ? cols[dateIdx].trim() : '';
+          // Gestion des champs entre guillemets contenant des virgules
+          const cols = lines[i].match(/(?:"([^"]*(?:""[^"]*)*)"|\'([^\']*)\'|([^,;]+)|(?<=,|;)(?=,|;)|^(?=,)|(?<=,)$)/g)
+            ? lines[i].split(delimiter)
+            : lines[i].split(delimiter);
+          const parsedCols = cols.map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
 
-          // Nettoyage du téléphone (suppression des espaces)
-          t = t.replace(/\s+/g, '');
+          const p = (prenomIdx >= 0 && parsedCols[prenomIdx]) ? parsedCols[prenomIdx].trim() : '';
+          const n = (nomIdx    >= 0 && parsedCols[nomIdx])    ? parsedCols[nomIdx].trim()    : '';
+          let   t = (telIdx    >= 0 && parsedCols[telIdx])    ? parsedCols[telIdx].trim()    : '';
+          const d = (dateIdx   >= 0 && parsedCols[dateIdx])   ? parsedCols[dateIdx].trim()   : '';
 
-          // 4. Validation souple : le téléphone ET au moins un nom ou prénom sont requis
-          if (!t || (!p && !n)) {
-            ignoredCount++;
-            continue;
-          }
+          // Nettoyage du numéro de téléphone (espaces, tirets, points)
+          t = t.replace(/[\s\.\-]/g, '');
 
+          // Ignorer uniquement si aucun numéro de téléphone valide
+          if (!t) { ignoredCount++; continue; }
+          // Un nom ou prénom est requis (peut être extrait de displayname)
+          if (!p && !n) { ignoredCount++; continue; }
+
+          // Parsing de date anniversaire (formats JJ/MM, MM/JJ, JJ-MM, MM-JJ)
           let finalDate = null;
           if (d) {
-            const dateParts = d.split(/[/ -]/);
+            const dateParts = d.split(/[\/ \-]/);
             if (dateParts.length >= 2) {
-              const day = dateParts[0].padStart(2, '0');
-              const month = dateParts[1].padStart(2, '0');
-              if (!isNaN(day) && !isNaN(month)) {
+              const part0 = dateParts[0].padStart(2, '0');
+              const part1 = dateParts[1].padStart(2, '0');
+              if (!isNaN(part0) && !isNaN(part1)) {
+                // Heuristique : si part0 > 12, c'est un jour (format JJ/MM)
+                const [month, day] = parseInt(part0) > 12
+                  ? [part1, part0]
+                  : [part0, part1];
                 finalDate = `${month}-${day}`;
               }
             }
           }
 
-          const payload = {
+          payloads.push({
             prenom: p,
             nom: n,
             telephone: t,
@@ -331,27 +432,54 @@ const Clients = () => {
             notes: 'Importé via CSV',
             suiviAppels: [],
             visites: 0,
-            visits: 0, // pour correspondre à la demande explicite
+            visits: 0,
             chiffreAffaires: 0,
-            totalSpent: 0, // pour correspondre à la demande explicite
+            totalSpent: 0,
             createdAt: serverTimestamp()
-          };
-          
-          await addDoc(collection(db, 'clients'), payload);
-          importedCount++;
+          });
         }
-        
-        // 5. Message de confirmation détaillé
-        alert(`${importedCount} clients ont été importés avec succès !\n${ignoredCount > 0 ? `${ignoredCount} lignes ignorées (données invalides ou incomplètes).` : ''}`);
+
+        // ── 5. Découpage en lots de 400 et commit séquentiel ─────────────────
+        const BATCH_SIZE = 400;
+        const totalBatches = Math.ceil(payloads.length / BATCH_SIZE);
+        setImportProgress({ current: 0, total: totalBatches });
+
+        let importedCount = 0;
+        let batchErrors   = 0;
+
+        for (let b = 0; b < totalBatches; b++) {
+          const chunk = payloads.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach(payload => {
+            const ref = doc(collection(db, 'clients'));
+            batch.set(ref, payload);
+          });
+          try {
+            await batch.commit();
+            importedCount += chunk.length;
+          } catch (batchErr) {
+            console.error(`[Import CSV] Erreur lot ${b + 1}/${totalBatches}:`, batchErr);
+            batchErrors += chunk.length;
+          }
+          setImportProgress({ current: b + 1, total: totalBatches });
+        }
+
+        // ── 6. Résumé détaillé ────────────────────────────────────────────────
+        const parts = [`✅ ${importedCount} contact${importedCount > 1 ? 's' : ''} importé${importedCount > 1 ? 's' : ''} avec succès.`];
+        if (ignoredCount > 0) parts.push(`⏭️ ${ignoredCount} ligne${ignoredCount > 1 ? 's' : ''} ignorée${ignoredCount > 1 ? 's' : ''} (sans numéro de téléphone valide).`);
+        if (batchErrors  > 0) parts.push(`⚠️ ${batchErrors} contact${batchErrors > 1 ? 's' : ''} non importé${batchErrors > 1 ? 's' : ''} (erreur Firestore).`);
+        alert(parts.join('\n'));
         setShowCsvModal(false);
+
       } catch (err) {
-        console.error("Erreur import CSV:", err);
+        console.error('[Import CSV] Erreur globale:', err);
         alert("Une erreur est survenue lors de l'importation du fichier.");
       } finally {
         setIsImporting(false);
+        setImportProgress({ current: 0, total: 0 });
       }
     };
-    reader.readAsText(file);
+    reader.readAsText(file, 'UTF-8');
     e.target.value = '';
   };
 
@@ -452,6 +580,71 @@ const Clients = () => {
           ))}
         </div>
 
+        {/* ── INDEX ALPHABÉTIQUE A-Z ───────────────────────────────────────── */}
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: '4px',
+            backgroundColor: 'var(--bg-input)', borderRadius: '12px',
+            padding: '10px 12px', border: '1px solid var(--border-color)'
+          }}>
+            {/* Bouton « Tous » */}
+            <button
+              onClick={() => setLetterFilter('')}
+              style={{
+                minWidth: '36px', height: '32px', padding: '0 8px',
+                borderRadius: '8px', border: 'none', cursor: 'pointer',
+                fontWeight: '700', fontSize: '0.78rem',
+                backgroundColor: letterFilter === '' ? 'var(--accent-color)' : 'transparent',
+                color: letterFilter === '' ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.15s ease',
+                display: 'flex', alignItems: 'center', gap: '4px'
+              }}
+              title="Afficher tous les clients"
+            >
+              ★ Tous
+            </button>
+
+            {/* Séparateur */}
+            <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '2px 4px', flexShrink: 0 }} />
+
+            {/* Lettres A-Z */}
+            {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => {
+              const count = letterCounts[letter] || 0;
+              const isActive = letterFilter === letter;
+              const hasClients = count > 0;
+              return (
+                <button
+                  key={letter}
+                  onClick={() => hasClients && setLetterFilter(isActive ? '' : letter)}
+                  title={hasClients ? `${count} client${count > 1 ? 's' : ''} — ${letter}` : `Aucun client commençant par ${letter}`}
+                  style={{
+                    position: 'relative',
+                    minWidth: '32px', height: '32px', padding: '0 4px',
+                    borderRadius: '7px', border: 'none',
+                    cursor: hasClients ? 'pointer' : 'default',
+                    fontWeight: '700', fontSize: '0.8rem',
+                    backgroundColor: isActive ? 'var(--accent-color)' : (hasClients ? 'var(--bg-card)' : 'transparent'),
+                    color: isActive ? '#fff' : (hasClients ? 'var(--text-main)' : 'var(--text-muted)'),
+                    opacity: hasClients ? 1 : 0.3,
+                    transition: 'all 0.15s ease',
+                    border: isActive ? 'none' : (hasClients ? '1px solid var(--border-color)' : 'none'),
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1
+                  }}
+                >
+                  <span>{letter}</span>
+                  {hasClients && (
+                    <span style={{
+                      fontSize: '0.52rem', fontWeight: '800', lineHeight: 1,
+                      color: isActive ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)',
+                      marginTop: '1px'
+                    }}>{count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* ── FILTRES RECHERCHE ───────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: '14px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 2, minWidth: '220px' }}>
@@ -460,7 +653,7 @@ const Clients = () => {
               type="text" className="input-control"
               style={{ paddingLeft: '38px', width: '100%', margin: 0 }}
               placeholder="Rechercher par nom, prénom ou téléphone…"
-              value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+              value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setLetterFilter(''); }}
             />
           </div>
           <select className="input-control" style={{ flex: 1, minWidth: '170px', margin: 0 }}
@@ -482,7 +675,12 @@ const Clients = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {filtered.map(client => (
+            {/* Compteur de résultats */}
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{filtered.length} client{filtered.length > 1 ? 's' : ''} — page {currentPage}/{totalPages}</span>
+              <span style={{ fontSize: '0.75rem' }}>Affichage de {Math.min(ITEMS_PER_PAGE, filtered.length - (currentPage - 1) * ITEMS_PER_PAGE)} sur {filtered.length}</span>
+            </div>
+            {paginatedClients.map(client => (
               <div key={client.id} style={{
                 backgroundColor: 'var(--bg-input)', borderRadius: '14px',
                 border: client.fidelite === 'À relancer' ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border-color)', 
@@ -571,12 +769,12 @@ const Clients = () => {
 
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                    <button className="btn btn-small"
-                      style={{ backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-muted)' }}
-                      onClick={() => setExpandedId(expandedId === client.id ? null : client.id)}
-                      title="Voir détails & Historique"
+                    <button className="btn btn-small btn-primary"
+                      style={{ border: 'none', padding: '6px 12px', fontSize: '0.8rem' }}
+                      onClick={() => setSelectedClient(client.id)}
+                      title="Ouvrir la fiche client"
                     >
-                      {expandedId === client.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      Ouvrir
                     </button>
                     <button className="btn btn-small"
                       style={{ backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}
@@ -588,116 +786,60 @@ const Clients = () => {
                     </button>
                   </div>
                 </div>
-
-                {/* Historique et Suivi (Expansé) */}
-                {expandedId === client.id && (() => {
-                  const nomComplet = [client.prenom, client.nom].filter(Boolean).join(' ').toLowerCase().trim();
-                  const legacyNom = (client.nom || '').toLowerCase().trim();
-                  
-                  const clientRes = reservations.filter(r => {
-                    const rNom = (r.clientNom || '').toLowerCase().trim();
-                    return rNom === nomComplet || rNom === legacyNom || (legacyNom && rNom.includes(legacyNom));
-                  }).slice(0, 10);
-                  
-                  const appels = client.suiviAppels || [];
-
-                  return (
-                    <div style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', display: 'flex', flexWrap: 'wrap', gap: '20px', padding: '20px' }}>
-                      
-                      {/* Colonne gauche : Historique Réservations */}
-                      <div style={{ flex: 1, minWidth: '250px' }}>
-                        <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Calendar size={14} /> Derniers passages
-                        </div>
-                        {clientRes.length === 0 ? (
-                          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Aucun historique de réservation trouvé.</p>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {clientRes.map(r => (
-                              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.84rem', padding: '8px 12px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                <div>
-                                  <div style={{ color: 'var(--text-main)', fontWeight: '600' }}>{r.serviceNom || 'Prestation'}</div>
-                                  <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{r.datePrevue}</div>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                  <span style={{ fontWeight: '700', color: r.statut === 'encaisse' || r.statut === 'paye_totalement' ? 'var(--success)' : 'var(--text-muted)' }}>
-                                    {r.prixTotal?.toLocaleString('fr-FR')} F
-                                  </span>
-                                  <span style={{
-                                    fontSize: '0.65rem', padding: '2px 6px', borderRadius: '6px', fontWeight: '600', textTransform: 'uppercase',
-                                    backgroundColor: r.statut === 'encaisse' || r.statut === 'paye_totalement' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.1)',
-                                    color: r.statut === 'encaisse' || r.statut === 'paye_totalement' ? 'var(--success)' : 'var(--danger)'
-                                  }}>
-                                    {r.statut === 'encaisse' || r.statut === 'paye_totalement' ? 'Payé' : r.statut?.replace('_', ' ')}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Colonne droite : Suivi d'appels & Notes */}
-                      <div style={{ flex: 1, minWidth: '250px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        
-                        {/* Notes Permanentes (Modifiables à la volée) */}
-                        <div style={{ padding: '12px', backgroundColor: 'rgba(245,158,11,0.08)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between' }}>
-                            <span>📝 Notes & Préférences :</span>
-                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontStyle: 'italic', textTransform: 'none' }}>S'enregistre à la sortie</span>
-                          </span>
-                          <textarea 
-                            className="input-control"
-                            style={{ margin: '8px 0 0', width: '100%', resize: 'vertical', minHeight: '60px', backgroundColor: 'var(--bg-card)', fontSize: '0.85rem' }}
-                            placeholder="Ex : Coiffeur favori, allergies, style de coupe..."
-                            defaultValue={client.notes}
-                            onBlur={(e) => handleUpdateQuickNote(client.id, e.target.value)}
-                          />
-                        </div>
-
-                        {/* Suivi d'appels */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Phone size={14} /> Campagne & Suivi d'Appels
-                          </div>
-                          
-                          <form onSubmit={(e) => handleAddCallNote(client.id, e)} style={{ display: 'flex', gap: '8px' }}>
-                            <input 
-                              type="text" 
-                              className="input-control" 
-                              placeholder="Note de l'appel (ex: Occupé, Rdv pris pour samedi...)"
-                              value={expandedId === client.id ? callNote : ''}
-                              onChange={e => setCallNote(e.target.value)}
-                              style={{ margin: 0, flex: 1, fontSize: '0.85rem' }}
-                            />
-                            <button type="submit" className="btn btn-primary" style={{ padding: '0 12px' }} disabled={savingCall === client.id}>
-                              <Send size={16} />
-                            </button>
-                          </form>
-
-                          {appels.length > 0 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px', maxHeight: '180px', overflowY: 'auto' }}>
-                              {appels.map((appel, idx) => (
-                                <div key={idx} style={{ padding: '10px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', borderLeft: '3px solid var(--accent-color)' }}>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                                    {new Date(appel.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
-                                  </div>
-                                  <div style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>{appel.note}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {appels.length === 0 && (
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Aucun suivi d'appel enregistré.</div>
-                          )}
-                        </div>
-
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             ))}
+
+            {/* ── PAGINATION ───────────────────────────────────────────────── */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                <button
+                  className="btn"
+                  style={{ backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', color: 'var(--text-main)', opacity: currentPage === 1 ? 0.4 : 1, cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                  ← Précédent
+                </button>
+
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                    .reduce((acc, p, idx, arr) => {
+                      if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, idx) =>
+                      p === '...' ? (
+                        <span key={`ellipsis-${idx}`} style={{ padding: '6px 4px', color: 'var(--text-muted)', lineHeight: '32px' }}>…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => setCurrentPage(p)}
+                          style={{
+                            width: '36px', height: '36px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem',
+                            backgroundColor: currentPage === p ? 'var(--accent-color)' : 'var(--bg-input)',
+                            color: currentPage === p ? '#fff' : 'var(--text-main)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )
+                  }
+                </div>
+
+                <button
+                  className="btn"
+                  style={{ backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', color: 'var(--text-main)', opacity: currentPage === totalPages ? 0.4 : 1, cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                >
+                  Suivant →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -792,33 +934,59 @@ const Clients = () => {
             </div>
             <div className="modal-body">
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-                Importez une liste de clients depuis un fichier CSV.
+                Importez une liste de clients depuis un fichier CSV (Outlook, Google Contacts, etc.). Fichiers de plus de 4 000 contacts supportés.
               </p>
-              
+
               <div style={{ backgroundColor: 'var(--bg-input)', padding: '16px', borderRadius: '12px', fontSize: '0.9rem' }}>
-                <p style={{ margin: '0 0 10px 0', fontWeight: '700', color: 'var(--text-main)' }}>Format attendu :</p>
-                <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <li>La 1ère ligne doit être l'en-tête (ex: <strong>prenom, nom, telephone, anniversaire</strong>).</li>
-                  <li><strong>L'anniversaire est 100% facultatif.</strong> Seul le prénom (ou le nom) est requis.</li>
-                  <li>Le séparateur peut être une virgule (,) ou un point-virgule (;).</li>
-                  <li>Si vous incluez un anniversaire, le format attendu est <strong>JJ/MM</strong> ou <strong>JJ-MM</strong>.</li>
-                </ul>
+                <p style={{ margin: '0 0 10px 0', fontWeight: '700', color: 'var(--text-main)' }}>En-têtes reconnus automatiquement :</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                  <div><span style={{ color: 'var(--text-main)', fontWeight: '700' }}>Prénom :</span> First Name, Display Name, prenom, name</div>
+                  <div><span style={{ color: 'var(--text-main)', fontWeight: '700' }}>Nom :</span> Last Name, nom, surname</div>
+                  <div><span style={{ color: 'var(--text-main)', fontWeight: '700' }}>Tél. :</span> Mobile Phone, Home Phone, Business Phone, telephone, phone…</div>
+                  <div><span style={{ color: 'var(--text-main)', fontWeight: '700' }}>Séparateur :</span> virgule (,) ou point-virgule (;) détecté auto.</div>
+                </div>
+                <p style={{ margin: '10px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  ⚠️ Seules les lignes <strong>sans numéro de téléphone</strong> sont ignorées. Les emojis et caractères spéciaux sont supportés.
+                </p>
               </div>
 
+              {/* Barre de progression d'import */}
+              {isImporting && importProgress.total > 0 && (
+                <div style={{ marginTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    <span>Importation en cours…</span>
+                    <span>Lot {importProgress.current}/{importProgress.total}</span>
+                  </div>
+                  <div style={{ height: '6px', backgroundColor: 'var(--border-color)', borderRadius: '99px', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', borderRadius: '99px',
+                      backgroundColor: 'var(--accent-color)',
+                      width: `${importProgress.total > 0 ? Math.round((importProgress.current / importProgress.total) * 100) : 0}%`,
+                      transition: 'width 0.4s ease'
+                    }} />
+                  </div>
+                </div>
+              )}
+
               <div>
-                <input 
-                  type="file" 
-                  accept=".csv" 
-                  id="csv-upload" 
-                  style={{ display: 'none' }} 
-                  onChange={handleCsvUpload} 
+                <input
+                  type="file"
+                  accept=".csv"
+                  id="csv-upload"
+                  style={{ display: 'none' }}
+                  onChange={handleCsvUpload}
+                  disabled={isImporting}
                 />
-                <label 
-                  htmlFor="csv-upload" 
-                  className="btn btn-primary" 
-                  style={{ display: 'flex', justifyContent: 'center', cursor: 'pointer', padding: '14px', width: '100%', fontSize: '1rem' }}
+                <label
+                  htmlFor="csv-upload"
+                  className="btn btn-primary"
+                  style={{ display: 'flex', justifyContent: 'center', cursor: isImporting ? 'not-allowed' : 'pointer', padding: '14px', width: '100%', fontSize: '1rem', opacity: isImporting ? 0.7 : 1 }}
                 >
-                  {isImporting ? 'Importation en cours...' : 'Sélectionner un fichier CSV'}
+                  {isImporting
+                    ? (importProgress.total > 0
+                        ? `⏳ Lot ${importProgress.current}/${importProgress.total} en cours…`
+                        : '⏳ Analyse du fichier…')
+                    : '📂 Sélectionner un fichier CSV'}
                 </label>
               </div>
             </div>
@@ -826,6 +994,196 @@ const Clients = () => {
         </div>
       )}
 
+      {/* ── MODAL FICHE CLIENT (Modale dédiée) ──────────────────────────── */}
+      {selectedClient && (() => {
+        // Retrouver la dernière version du client en temps réel
+        const client = clients.find(c => c.id === selectedClient) || null;
+        if (!client) return null; // Sécurité si supprimé pendant l'ouverture
+
+        const nomComplet = [client.prenom, client.nom].filter(Boolean).join(' ').toLowerCase().trim();
+        const legacyNom = (client.nom || '').toLowerCase().trim();
+        const clientRes = reservations.filter(r => {
+          const rNom = (r.clientNom || '').toLowerCase().trim();
+          return rNom === nomComplet || rNom === legacyNom || (legacyNom && rNom.includes(legacyNom));
+        }).slice(0, 10);
+        
+        const appels = client.suiviAppels || [];
+        const clientTags = client.tags || [];
+
+        return (
+          <div className="modal-overlay" onClick={() => setSelectedClient(null)}>
+            <div className="modal-content" style={{ maxWidth: '850px', width: '95%', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '85vh' }} onClick={e => e.stopPropagation()}>
+              
+              <div className="modal-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{
+                    width: '46px', height: '46px', borderRadius: '50%', flexShrink: 0,
+                    background: 'var(--bg-input)', border: '2px solid var(--accent-color)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: '800', fontSize: '1.2rem', color: 'var(--accent-color)'
+                  }}>
+                    {(client.prenom ? client.prenom[0] : (client.nom || '?')[0]).toUpperCase()}
+                  </div>
+                  <div>
+                    <h2 style={{ margin: 0, padding: 0, border: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {[client.prenom, client.nom].filter(Boolean).join(' ')}
+                    </h2>
+                    {client.telephone && (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                        <Phone size={14} /> {client.telephone}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button className="btn-icon" onClick={() => setSelectedClient(null)}><X size={24} /></button>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', overflowY: 'auto', flex: 1, backgroundColor: 'var(--bg-primary)' }}>
+                
+                {/* Colonne GAUCHE : Tags, Infos, Notes */}
+                <div style={{ flex: '1 1 300px', padding: '24px', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  
+                  {/* TAGS */}
+                  <div>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🏷️ Tags & Statuts
+                    </h4>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {AVAILABLE_TAGS.map(tag => {
+                        const isActive = clientTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            onClick={() => handleToggleTag(client.id, tag, clientTags)}
+                            style={{
+                              padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600',
+                              border: `1px solid ${isActive ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                              backgroundColor: isActive ? 'var(--accent-color)' : 'var(--bg-card)',
+                              color: isActive ? '#fff' : 'var(--text-main)',
+                              cursor: 'pointer', transition: 'all 0.2s ease'
+                            }}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ANNIVERSAIRE */}
+                  <div>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🎂 Date d'anniversaire
+                    </h4>
+                    <input 
+                      type="text" 
+                      className="input-control" 
+                      placeholder="Ex: 25-12 ou 25/12"
+                      defaultValue={client.birthDate || ''}
+                      onBlur={(e) => handleUpdateBirthdate(client.id, e.target.value)}
+                      style={{ margin: 0, width: '100%', maxWidth: '200px' }}
+                    />
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Format attendu : JJ-MM ou JJ/MM (S'enregistre en quittant le champ)</div>
+                  </div>
+
+                  {/* NOTES */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: '#f59e0b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      📝 Notes & Préférences internes
+                    </h4>
+                    <textarea 
+                      className="input-control"
+                      style={{ margin: 0, width: '100%', resize: 'vertical', minHeight: '120px', flex: 1, backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)' }}
+                      placeholder="Ex: Coiffeur favori, allergies, style de coupe..."
+                      defaultValue={client.notes}
+                      onBlur={(e) => handleUpdateQuickNote(client.id, e.target.value)}
+                    />
+                  </div>
+
+                </div>
+
+                {/* Colonne DROITE : Historique Appels & Réservations */}
+                <div style={{ flex: '1.5 1 400px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  
+                  {/* SUIVI D'APPELS */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Phone size={16} /> Campagne & Suivi d'Appels
+                    </h4>
+                    
+                    <form onSubmit={(e) => handleAddCallNote(client.id, e)} style={{ display: 'flex', gap: '8px' }}>
+                      <input 
+                        type="text" 
+                        className="input-control" 
+                        placeholder="Note de l'appel (ex: Occupé, Rdv pris pour samedi...)"
+                        value={callNote}
+                        onChange={e => setCallNote(e.target.value)}
+                        style={{ margin: 0, flex: 1, fontSize: '0.9rem' }}
+                      />
+                      <button type="submit" className="btn btn-primary" style={{ padding: '0 16px' }} disabled={savingCall === client.id}>
+                        <Send size={18} />
+                      </button>
+                    </form>
+
+                    {appels.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto', paddingRight: '8px' }}>
+                        {appels.map((appel, idx) => (
+                          <div key={idx} style={{ padding: '12px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', borderLeft: '4px solid var(--accent-color)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600' }}>
+                              {new Date(appel.date).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })}
+                            </div>
+                            <div style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{appel.note}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px', backgroundColor: 'var(--bg-card)', borderRadius: '8px' }}>Aucun suivi d'appel enregistré pour ce client.</div>
+                    )}
+                  </div>
+
+                  <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
+
+                  {/* DERNIERS PASSAGES */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={16} /> Derniers passages (Réservations)
+                    </h4>
+                    
+                    {clientRes.length === 0 ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '12px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', fontStyle: 'italic' }}>Aucun historique de réservation trouvé.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto', paddingRight: '8px' }}>
+                        {clientRes.map(r => (
+                          <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', padding: '12px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                            <div>
+                              <div style={{ color: 'var(--text-main)', fontWeight: '700' }}>{r.serviceNom || 'Prestation'}</div>
+                              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '2px' }}>{new Date(r.datePrevue).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                              <span style={{ fontWeight: '800', color: r.statut === 'encaisse' || r.statut === 'paye_totalement' ? 'var(--success)' : 'var(--text-muted)' }}>
+                                {r.prixTotal?.toLocaleString('fr-FR')} F
+                              </span>
+                              <span style={{
+                                fontSize: '0.7rem', padding: '2px 8px', borderRadius: '6px', fontWeight: '700', textTransform: 'uppercase',
+                                backgroundColor: r.statut === 'encaisse' || r.statut === 'paye_totalement' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.1)',
+                                color: r.statut === 'encaisse' || r.statut === 'paye_totalement' ? 'var(--success)' : 'var(--danger)'
+                              }}>
+                                {r.statut === 'encaisse' || r.statut === 'paye_totalement' ? 'Payé' : r.statut?.replace('_', ' ')}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
