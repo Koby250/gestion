@@ -211,6 +211,14 @@ body {
   color: var(--text-main);
 }
 
+.topbar-goals-wrapper {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
+}
+
 .topbar-goal {
   display: flex;
   flex-direction: column;
@@ -537,6 +545,11 @@ body {
   .topbar-goal {
     min-width: 100%;
     width: 100%;
+  }
+
+  .topbar-goals-wrapper {
+    width: 100%;
+    flex: none;
   }
 
   /* Bilan : basculer tableau -> cartes sur mobile */

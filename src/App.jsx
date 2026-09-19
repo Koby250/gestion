@@ -297,7 +297,7 @@ function App() {
           </div>
 
           {/* Widget double objectif */}
-          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+          <div className="topbar-goals-wrapper">
             {/* Objectif Journalier */}
             <div className="topbar-goal">
               <div className="goal-labels">
