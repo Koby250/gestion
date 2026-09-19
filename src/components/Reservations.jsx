@@ -14,7 +14,7 @@ import AgendaVisuel from './AgendaVisuel';
 import PanierPrestations from './PanierPrestations';
 
 const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const Reservations = ({ activeDate = localDateStr() }) => {
+const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPrefill }) => {
   // Collections state
   const [reservations, setReservations] = useState([]);
   const [services, setServices]         = useState([]);
@@ -92,6 +92,16 @@ const Reservations = ({ activeDate = localDateStr() }) => {
     );
     return () => { unsubServices(); unsubEmployes(); unsubReservations(); };
   }, []);
+
+  // ── Pré-remplissage depuis la Fiche Client ─────────────────────────────────
+  useEffect(() => {
+    if (prefilledClient) {
+      setClientNom([prefilledClient.prenom, prefilledClient.nom].filter(Boolean).join(' '));
+      setClientTel(prefilledClient.telephone || '');
+      setIsFormModalOpen(true);
+      if (onClearPrefill) onClearPrefill();
+    }
+  }, [prefilledClient, onClearPrefill]);
 
   // ── Créer une réservation ─────────────────────────────────────────────────
   const handleSave = async (e) => {

@@ -42,6 +42,7 @@ function App() {
   const [currentUserNom, setCurrentUserNom] = useState('');
   const [authLoading,   setAuthLoading]   = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [prefilledReservationClient, setPrefilledReservationClient] = useState(null);
 
   // Dark Mode
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
@@ -164,8 +165,8 @@ function App() {
     switch (activeTab) {
       case 'accueil':      return <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'caisse':       return (userRole === 'admin' || userPerms.accesCaisse) ? <Caisse activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'reservations': return (userRole === 'admin' || userPerms.accesReservations) ? <Reservations activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'clients':      return (userRole === 'admin' || userPerms.accesClients) ? <Clients /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'reservations': return (userRole === 'admin' || userPerms.accesReservations) ? <Reservations activeDate={activeDate} prefilledClient={prefilledReservationClient} onClearPrefill={() => setPrefilledReservationClient(null)} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'clients':      return (userRole === 'admin' || userPerms.accesClients) ? <Clients onNavigateToReservation={(c) => { setPrefilledReservationClient(c); setActiveTab('reservations'); }} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'inventaire':   return (userRole === 'admin' || userPerms.accesInventaire) ? <Inventaire activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'bilan':        return (userRole === 'admin' || userPerms.accesBilan) ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'tresorerie':   return (userRole === 'admin' || userPerms.accesTresorerie) ? <Tresorerie activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;

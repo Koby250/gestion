@@ -6,7 +6,7 @@ import { db } from '../firebase';
 import {
   Users, Plus, Search, Edit2, Trash2, X, CheckCircle,
   Phone, Calendar, TrendingUp, Star, Award, ChevronDown, ChevronUp, User,
-  MessageCircle, Cake, Clock, Send, Upload, Copy
+  MessageCircle, Cake, Clock, Send, Upload, Copy, Tag, StickyNote
 } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 
@@ -21,13 +21,17 @@ const getMonthFromDate = (dateStr) => {
   return null;
 };
 
-const Clients = () => {
+const Clients = ({ onNavigateToReservation }) => {
   const [clients, setClients]           = useState([]);
   const [reservations, setReservations] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [searchTerm, setSearchTerm]     = useState('');
   const [sortBy, setSortBy]             = useState('nom');
   const [selectedClient, setSelectedClient] = useState(null);
+  const [localClientData, setLocalClientData] = useState({ tags: [], birthDate: '', notes: '' });
+  const [isSavingLocal, setIsSavingLocal] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  
   const [statusFilter, setStatusFilter] = useState('Tous');
   const [letterFilter, setLetterFilter] = useState('');
 
@@ -61,6 +65,35 @@ const Clients = () => {
       await updateDoc(doc(db, 'clients', clientId), { notes });
     } catch (err) {
       console.error("Erreur quick note:", err);
+    }
+  };
+
+  const openClient = (c) => {
+    setSelectedClient(c.id);
+    setLocalClientData({
+      tags: c.tags || [],
+      birthDate: c.birthDate || '',
+      notes: c.notes || ''
+    });
+    setSaveSuccess(false);
+  };
+
+  const saveLocalClientData = async (clientId) => {
+    setIsSavingLocal(true);
+    setSaveSuccess(false);
+    try {
+      await updateDoc(doc(db, 'clients', clientId), {
+        tags: localClientData.tags,
+        birthDate: localClientData.birthDate,
+        notes: localClientData.notes
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch(err) {
+      console.error("Erreur saveLocalClientData:", err);
+      alert("Erreur lors de la sauvegarde.");
+    } finally {
+      setIsSavingLocal(false);
     }
   };
 
@@ -771,7 +804,7 @@ const Clients = () => {
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                     <button className="btn btn-small btn-primary"
                       style={{ border: 'none', padding: '6px 12px', fontSize: '0.8rem' }}
-                      onClick={() => setSelectedClient(client.id)}
+                      onClick={() => openClient(client)}
                       title="Ouvrir la fiche client"
                     >
                       Ouvrir
@@ -1008,7 +1041,6 @@ const Clients = () => {
         }).slice(0, 10);
         
         const appels = client.suiviAppels || [];
-        const clientTags = client.tags || [];
 
         return (
           <div className="modal-overlay" onClick={() => setSelectedClient(null)}>
@@ -1035,7 +1067,21 @@ const Clients = () => {
                     )}
                   </div>
                 </div>
-                <button className="btn-icon" onClick={() => setSelectedClient(null)}><X size={24} /></button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button 
+                    className="btn btn-primary" 
+                    style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
+                    onClick={() => {
+                      if (onNavigateToReservation) {
+                        setSelectedClient(null);
+                        onNavigateToReservation(client);
+                      }
+                    }}
+                  >
+                    <Calendar size={16} /> Planifier un RDV
+                  </button>
+                  <button className="btn-icon" onClick={() => setSelectedClient(null)}><X size={24} /></button>
+                </div>
               </div>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', overflowY: 'auto', flex: 1, backgroundColor: 'var(--bg-primary)' }}>
@@ -1046,15 +1092,15 @@ const Clients = () => {
                   {/* TAGS */}
                   <div>
                     <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      🏷️ Tags & Statuts
+                      <Tag size={16} /> Tags & Statuts
                     </h4>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                       {AVAILABLE_TAGS.map(tag => {
-                        const isActive = clientTags.includes(tag);
+                        const isActive = localClientData.tags.includes(tag);
                         return (
                           <button
                             key={tag}
-                            onClick={() => handleToggleTag(client.id, tag, clientTags)}
+                            onClick={() => setLocalClientData(prev => ({ ...prev, tags: isActive ? prev.tags.filter(t => t !== tag) : [...prev.tags, tag] }))}
                             style={{
                               padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600',
                               border: `1px solid ${isActive ? 'var(--accent-color)' : 'var(--border-color)'}`,
@@ -1073,31 +1119,54 @@ const Clients = () => {
                   {/* ANNIVERSAIRE */}
                   <div>
                     <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      🎂 Date d'anniversaire
+                      <Cake size={16} /> Date d'anniversaire
                     </h4>
                     <input 
                       type="text" 
                       className="input-control" 
                       placeholder="Ex: 25-12 ou 25/12"
-                      defaultValue={client.birthDate || ''}
-                      onBlur={(e) => handleUpdateBirthdate(client.id, e.target.value)}
+                      value={localClientData.birthDate}
+                      onChange={(e) => setLocalClientData(prev => ({ ...prev, birthDate: e.target.value }))}
                       style={{ margin: 0, width: '100%', maxWidth: '200px' }}
                     />
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Format attendu : JJ-MM ou JJ/MM (S'enregistre en quittant le champ)</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Format attendu : JJ-MM ou JJ/MM</div>
                   </div>
 
                   {/* NOTES */}
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: '#f59e0b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      📝 Notes & Préférences internes
+                      <StickyNote size={16} /> Notes & Préférences internes
                     </h4>
                     <textarea 
                       className="input-control"
                       style={{ margin: 0, width: '100%', resize: 'vertical', minHeight: '120px', flex: 1, backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)' }}
                       placeholder="Ex: Coiffeur favori, allergies, style de coupe..."
-                      defaultValue={client.notes}
-                      onBlur={(e) => handleUpdateQuickNote(client.id, e.target.value)}
+                      value={localClientData.notes}
+                      onChange={(e) => setLocalClientData(prev => ({ ...prev, notes: e.target.value }))}
                     />
+                  </div>
+
+                  {/* BOUTON ENREGISTRER */}
+                  <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
+                    <button 
+                      onClick={() => saveLocalClientData(client.id)}
+                      disabled={isSavingLocal}
+                      style={{
+                        width: '100%', padding: '12px', borderRadius: '8px', border: 'none',
+                        backgroundColor: saveSuccess ? '#10b981' : 'var(--accent-color)',
+                        color: '#fff', fontWeight: 'bold', fontSize: '0.95rem',
+                        cursor: 'pointer', transition: 'background-color 0.3s ease',
+                        display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px'
+                      }}
+                    >
+                      {saveSuccess ? (
+                        <><CheckCircle size={18} /> Validé !</>
+                      ) : isSavingLocal ? (
+                        'Enregistrement...'
+                      ) : (
+                        'Enregistrer les modifications'
+                      )}
+                    </button>
                   </div>
 
                 </div>
