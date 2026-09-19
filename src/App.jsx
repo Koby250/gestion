@@ -311,8 +311,8 @@ function App() {
               </div>
             </div>
 
-            {/* Objectif Mensuel */}
-            {monthlyGoal > 0 && (
+            {/* Objectif Mensuel — admin uniquement */}
+            {userRole === 'admin' && monthlyGoal > 0 && (
               <div className="topbar-goal">
                 <div className="goal-labels">
                   <span>Obj. {MOIS_FR[activeDateObj.getMonth()]}</span>
