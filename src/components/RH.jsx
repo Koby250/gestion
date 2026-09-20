@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Users, AlertTriangle, CheckCircle, ShieldAlert, Plus, Trash2, Edit2, X, Save, Search } from 'lucide-react';
 import BulkActionBar from './BulkActionBar';
@@ -81,8 +81,16 @@ const RH = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   const handleAddAvance = async (e) => {
     e.preventDefault();
     setMsg(null);
-    if (!formAvance.employeId || !formAvance.montant || !formAvance.date) {
+
+    // Validation renforcée
+    if (!formAvance.employeId || !formAvance.montant || !formAvance.modePaiement || !formAvance.date) {
       setMsg({ type: 'error', text: 'Veuillez remplir tous les champs obligatoires.' });
+      return;
+    }
+
+    const montantValid = Number(formAvance.montant);
+    if (isNaN(montantValid) || montantValid <= 0) {
+      setMsg({ type: 'error', text: 'Le montant doit être supérieur à zéro.' });
       return;
     }
 
@@ -90,25 +98,28 @@ const RH = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
     try {
       const emp = employes.find(emp => emp.id === formAvance.employeId);
 
-      await addDoc(collection(db, 'avances_salaires'), {
+      const payload = {
         employeId: formAvance.employeId,
         employeNom: emp ? emp.nom : 'Inconnu',
-        montant: Number(formAvance.montant),
+        montant: montantValid,
         date: new Date(formAvance.date).toISOString(),
         modePaiement: formAvance.modePaiement,
-        motif: formAvance.motif,
+        motif: formAvance.motif || 'Avance sur salaire',
         statut: 'En cours',
-        saisieParNom: currentUserNom,
-        transactionId: txRef.id
-      });
+        saisieParNom: currentUserNom || 'Système',
+        createdAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, 'avances_salaires'), payload);
       
-      await logEvent('AVANCE_CREATE', `Attribution d'une avance de ${formAvance.montant} FCFA à ${emp ? emp.nom : 'Inconnu'} par ${currentUserNom}`);
+      await logEvent('AVANCE_CREATE', `Attribution d'une avance de ${montantValid} FCFA à ${emp ? emp.nom : 'Inconnu'} par ${currentUserNom || 'Système'}`);
 
       setFormAvance({ ...formAvance, montant: '', motif: 'Avance sur salaire' });
       setShowSuccess(true);
       setMsg(null);
-    } catch {
-      setMsg({ type: 'error', text: "Erreur lors de l'enregistrement." });
+    } catch (error) {
+      console.error("Erreur détaillée lors de l'enregistrement de l'avance :", error.code, error.message);
+      setMsg({ type: 'error', text: `Erreur: ${error.message}` });
     } finally {
       setIsSubmitting(false);
     }
