@@ -56,7 +56,7 @@ const PanierPrestations = ({
     const cPrenom = (c.prenom || '').toLowerCase();
     const cTel = (c.telephone || '').toLowerCase();
     return cNom.includes(q) || cPrenom.includes(q) || cTel.includes(q);
-  }).slice(0, 5);
+  });
 
   const handleSelectClient = (c) => {
     const fullName = [c.prenom, c.nom].filter(Boolean).join(' ');
@@ -235,7 +235,7 @@ const PanierPrestations = ({
               boxShadow: '0 4px 12px rgba(0,0,0,0.1)', 
               zIndex: 10,
               marginTop: '4px',
-              maxHeight: '200px', overflowY: 'auto'
+              maxHeight: '300px', overflowY: 'auto'
             }}>
               {filteredClients.length > 0 ? (
                 filteredClients.map(c => (
