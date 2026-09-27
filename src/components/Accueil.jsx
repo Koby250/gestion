@@ -524,10 +524,11 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
                 },
               };
 
-              // Tri d'affichage : 2, 1, 3
+              // DOM: 1er en premier → apparaît en haut sur mobile
+              // CSS order: 2e à gauche, 1er au centre, 3e à droite sur desktop
               const displayOrder = top3.length === 3
-                ? [top3[1], top3[0], top3[2]]
-                : top3.length === 2 ? [top3[1], top3[0]]
+                ? [top3[0], top3[1], top3[2]]
+                : top3.length === 2 ? [top3[0], top3[1]]
                 : [top3[0]];
 
               return (
