@@ -45,10 +45,15 @@ function App() {
   const [prefilledReservationClient, setPrefilledReservationClient] = useState(null);
 
   // Dark Mode
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    // dark is the base design — light mode overrides via [data-theme="light"]
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
     localStorage.setItem('theme', theme);
   }, [theme]);
 
@@ -137,19 +142,35 @@ function App() {
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (authLoading) {
-    const logoSrc = theme === 'dark' ? '/logos/blanc.png' : '/logos/noir.png';
+    const logoSrc = theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png';
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', backgroundColor: 'var(--bg-primary)' }}>
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-          <img src={logoSrc} alt="Barber Factory Logo" style={{ height: '80px', marginBottom: '16px', objectFit: 'contain' }} />
-          <p>Chargement...</p>
+        justifyContent: 'center', backgroundColor: 'var(--bg-primary)', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ position: 'relative', display: 'inline-flex' }}>
+          <div style={{
+            width: '72px', height: '72px', borderRadius: '18px',
+            background: 'linear-gradient(135deg, rgba(212,168,83,0.15), rgba(212,168,83,0.05))',
+            border: '1px solid rgba(212,168,83,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 0 30px rgba(212,168,83,0.15)'
+          }}>
+            <img src={logoSrc} alt="Barber Factory Logo" style={{ height: '44px', objectFit: 'contain' }} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '36px', height: '3px', borderRadius: '99px',
+            background: 'linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-light))',
+            animation: 'shimmer 1.5s infinite',
+            backgroundSize: '200% 100%'
+          }} />
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Chargement...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) return <Login theme={theme} />;
+  if (!user) return <Login theme={theme === 'light' ? 'light' : 'dark'} />;
 
   // Cible journalière dynamique
   const activeDateObj = new Date(activeDate);
@@ -221,13 +242,17 @@ function App() {
 
       {/* ── SIDEBAR ─────────────────────────────────────────────────────── */}
       <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
-        <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="sidebar-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src={theme === 'dark' ? '/logos/blanc.png' : '/logos/noir.png'} alt="Logo" style={{ height: '28px', objectFit: 'contain' }} />
-            <h1 style={{ margin: 0 }}>Barber Factory</h1>
+            <img
+              src={theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png'}
+              alt="Logo"
+              className="sidebar-brand-logo"
+            />
+            <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Barber Factory</h1>
           </div>
           <button className="close-sidebar-btn" onClick={() => setIsSidebarOpen(false)}>
-            <X size={24} />
+            <X size={20} />
           </button>
         </div>
 
@@ -245,14 +270,14 @@ function App() {
 
         <div className="sidebar-footer">
           <div className="sidebar-user">
-            <div className="sidebar-user-avatar"><User size={16} /></div>
+            <div className="sidebar-user-avatar"><User size={15} /></div>
             <div className="sidebar-user-info">
-              <span className="sidebar-user-email" title={user.email}>{user.email}</span>
+              <span className="sidebar-user-email" title={user.email}>{currentUserNom || user.email}</span>
               <span className="sidebar-user-role">{userRole === 'admin' ? 'Administrateur' : 'Agent'}</span>
             </div>
           </div>
           <button onClick={handleSignOut} className="btn-logout" title="Déconnecter">
-            <LogOut size={16} />
+            <LogOut size={15} />
           </button>
         </div>
       </aside>
@@ -261,38 +286,40 @@ function App() {
       <div className="main-wrapper">
 
         <header className="topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button className="hamburger-btn" onClick={() => setIsSidebarOpen(true)}>
-              <Menu size={24} />
+              <Menu size={22} />
             </button>
-            <div className="topbar-date" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input 
-                type="date" 
-                className="input-control" 
-                style={{ padding: '8px 12px', borderRadius: '12px', border: '1px solid var(--border-color)', width: 'auto', margin: 0 }}
+            <div className="topbar-date">
+              <input
+                type="date"
+                className="input-control"
+                style={{ padding: '8px 12px', width: 'auto', margin: 0, fontSize: '0.88rem' }}
                 value={activeDate}
                 max={localDateStr()}
                 onChange={e => setActiveDate(e.target.value)}
               />
               {activeDate !== localDateStr() && (
-                <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 'bold' }}>Mode Rétroactif</span>
+                <span className="retroactif-badge">Mode Rétroactif</span>
               )}
             </div>
 
-            {/* Dark Mode Toggle - Compact & near date */}
-            <button 
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} 
-              style={{ 
+            {/* Theme Toggle */}
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '8px', borderRadius: '10px', 
-                backgroundColor: 'transparent', 
-                border: 'none',
+                padding: '8px', borderRadius: '10px',
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border-color)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
-              }} 
+                color: 'var(--text-muted)',
+                flexShrink: 0,
+              }}
               title="Basculer le thème"
             >
-              {theme === 'light' ? <Moon size={20} color="var(--text-muted)" /> : <Sun size={20} color="#F59E0B" />}
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} color="var(--gold)" />}
             </button>
           </div>
 
@@ -302,12 +329,12 @@ function App() {
             <div className="topbar-goal">
               <div className="goal-labels">
                 <span>Obj. Jour</span>
-                <span style={{ color: dailyPct >= 100 ? 'var(--success)' : 'inherit', textAlign: 'right' }}>
+                <span style={{ color: dailyPct >= 100 ? 'var(--success)' : 'var(--text-soft)', fontWeight: 600 }}>
                   {todayRevenue.toLocaleString('fr-FR')} / {dynamicDailyGoal.toLocaleString('fr-FR')} F
                 </span>
               </div>
               <div className="goal-progress-bar">
-                <div className="goal-progress-fill" style={{ width: `${dailyPct}%` }} />
+                <div className="goal-progress-fill" style={{ width: `${dailyPct}%`, background: dailyPct >= 100 ? 'linear-gradient(90deg, var(--success), #5CFCB5)' : undefined }} />
               </div>
             </div>
 
@@ -316,13 +343,13 @@ function App() {
               <div className="topbar-goal">
                 <div className="goal-labels">
                   <span>Obj. {MOIS_FR[activeDateObj.getMonth()]}</span>
-                  <span style={{ color: monthlyPct >= 100 ? 'var(--success)' : 'inherit', textAlign: 'right' }}>
+                  <span style={{ color: monthlyPct >= 100 ? 'var(--success)' : 'var(--text-soft)', fontWeight: 600 }}>
                     {monthRevenue.toLocaleString('fr-FR')} / {monthlyGoal.toLocaleString('fr-FR')} F ({Math.round(monthlyPct)}%)
                   </span>
                 </div>
                 <div className="goal-progress-bar">
                   <div className="goal-progress-fill"
-                    style={{ width: `${monthlyPct}%`, backgroundColor: monthlyPct >= 100 ? 'var(--success)' : 'var(--accent-color)' }} />
+                    style={{ width: `${monthlyPct}%`, background: monthlyPct >= 100 ? 'linear-gradient(90deg, var(--success), #5CFCB5)' : undefined }} />
                 </div>
               </div>
             )}
