@@ -633,27 +633,18 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
                           <span style={{ fontSize:'0.55em', fontWeight:'700', marginLeft:'4px', opacity:0.75 }}>PTS</span>
                         </div>
 
-                        {/* Stats grid détaillée */}
+                        {/* Stat soins */}
                         <div style={{
                           width:'100%', zIndex:2, marginBottom:'12px',
-                          display:'grid', gridTemplateColumns:'1fr 1fr',
-                          gap:'6px',
                         }}>
                           <div style={{
                             background:'rgba(255,255,255,0.03)',
                             border:`1px solid ${cfg.borderColor}`,
-                            borderRadius:'10px', padding:'7px 8px',
+                            borderRadius:'10px', padding:'8px 14px',
+                            textAlign:'center',
                           }}>
-                            <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'2px' }}>Soins</div>
-                            <div style={{ fontSize:'1rem', fontWeight:'800', color: cfg.accentColor }}>{agent.totalServicesCount}</div>
-                          </div>
-                          <div style={{
-                            background:'rgba(255,255,255,0.03)',
-                            border:`1px solid ${cfg.borderColor}`,
-                            borderRadius:'10px', padding:'7px 8px',
-                          }}>
-                            <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'2px' }}>Services</div>
-                            <div style={{ fontSize:'1rem', fontWeight:'800', color: cfg.accentColor }}>{Object.keys(agent.servicesCount || {}).length}</div>
+                            <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'3px' }}>Soins cette semaine</div>
+                            <div style={{ fontSize:'1.2rem', fontWeight:'900', color: cfg.accentColor }}>{agent.totalServicesCount}</div>
                           </div>
                         </div>
 
