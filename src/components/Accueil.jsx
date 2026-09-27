@@ -543,6 +543,7 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
                     return (
                       <div
                         key={agent.id}
+                        className={`podium-card podium-card-${rank}`}
                         onClick={() => toggleAgentDetails(agent.id)}
                         style={{
                           flex: cfg.flex,
@@ -560,7 +561,6 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
                           flexDirection: 'column',
                           alignItems: 'center',
                           textAlign: 'center',
-                          order: cfg.order,
                         }}
                         onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-8px)'; }}
                         onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}

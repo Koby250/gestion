@@ -1024,3 +1024,16 @@ tr:last-child td {
 .fade-in-up {
   animation: fadeInUp 0.35s ease forwards;
 }
+
+/* ── Podium Responsive Ordering ───────────────────── */
+@media (min-width: 768px) {
+  .podium-card-1 { order: 2; }
+  .podium-card-2 { order: 1; }
+  .podium-card-3 { order: 3; }
+}
+
+@media (max-width: 767px) {
+  .podium-card-1 { order: 1 !important; }
+  .podium-card-2 { order: 2 !important; }
+  .podium-card-3 { order: 3 !important; }
+}
