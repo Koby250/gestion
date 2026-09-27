@@ -334,7 +334,7 @@ function App() {
                 </span>
               </div>
               <div className="goal-progress-bar">
-                <div className="goal-progress-fill" style={{ width: `${dailyPct}%`, background: dailyPct >= 100 ? 'linear-gradient(90deg, var(--success), #5CFCB5)' : undefined }} />
+                <div className="goal-progress-fill goal-progress-fill--daily" style={{ width: `${dailyPct}%` }} />
               </div>
             </div>
 
@@ -348,8 +348,7 @@ function App() {
                   </span>
                 </div>
                 <div className="goal-progress-bar">
-                  <div className="goal-progress-fill"
-                    style={{ width: `${monthlyPct}%`, background: monthlyPct >= 100 ? 'linear-gradient(90deg, var(--success), #5CFCB5)' : undefined }} />
+                  <div className="goal-progress-fill goal-progress-fill--monthly" style={{ width: `${monthlyPct}%` }} />
                 </div>
               </div>
             )}

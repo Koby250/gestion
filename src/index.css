@@ -371,10 +371,21 @@ body {
 
 .goal-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-light));
   border-radius: 99px;
   transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
+}
+
+/* Objectif journalier — vert émeraude premium */
+.goal-progress-fill--daily {
+  background: linear-gradient(90deg, #064e3b, #059669, #34d399);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
+}
+
+/* Objectif mensuel — bleu saphir premium */
+.goal-progress-fill--monthly {
+  background: linear-gradient(90deg, #1e3a8a, #2563eb, #60a5fa);
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.4);
 }
 
 .goal-progress-fill::after {
@@ -384,7 +395,7 @@ body {
   right: 0;
   width: 20px;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25));
   border-radius: 99px;
 }
 
@@ -566,30 +577,46 @@ body {
 
 /* ── Custom Components ────────────────────────────── */
 .agent-badge {
-  padding: 7px 14px;
+  padding: 7px 16px;
   border-radius: 9999px;
-  border: 1px solid var(--border-color);
+  border: 1.5px solid var(--border-color);
   background-color: var(--bg-input);
-  color: var(--text-soft);
+  color: var(--text-muted);
   font-weight: 500;
   cursor: pointer;
   font-size: 0.84rem;
-  transition: all 0.2s ease;
+  transition: all 0.18s ease;
   font-family: 'Inter', sans-serif;
+  position: relative;
+  letter-spacing: 0.01em;
 }
 
 .agent-badge:hover {
   border-color: var(--gold);
-  background-color: var(--gold-subtle);
+  background-color: rgba(212,168,83,0.1);
   color: var(--gold-light);
+  transform: translateY(-1px);
 }
 
 .agent-badge.selected {
-  background: linear-gradient(135deg, rgba(212,168,83,0.2), rgba(212,168,83,0.08));
-  border-color: var(--gold);
-  color: var(--gold);
-  font-weight: 700;
-  box-shadow: 0 0 12px var(--gold-glow);
+  background: linear-gradient(135deg, #D4A853, #B8872E);
+  border-color: #D4A853;
+  color: #0A0800;
+  font-weight: 800;
+  box-shadow:
+    0 0 0 3px rgba(212,168,83,0.25),
+    0 4px 14px rgba(212,168,83,0.45),
+    0 1px 3px rgba(0,0,0,0.4);
+  transform: translateY(-2px);
+  padding-left: 12px;
+  padding-right: 16px;
+}
+
+.agent-badge.selected::before {
+  content: '✓';
+  margin-right: 5px;
+  font-weight: 900;
+  font-size: 0.78rem;
 }
 
 .btn-add-prestation {
@@ -987,6 +1014,11 @@ tr:last-child td {
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 .fade-in-up {
