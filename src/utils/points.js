@@ -14,7 +14,8 @@ export const getPointsForService = (serviceNom, transactionDate = null, isDomici
   let basePoints = 0;
 
   // Autres services (inchangés)
-  if (name.includes('gommage') || name.includes('manucure')) basePoints = 1;
+  if (name.includes('gommage')) basePoints = 2;
+  else if (name.includes('manucure')) basePoints = 1;
   else if (name.includes('pédicure') || name.includes('pedicure')) basePoints = 5;
   else if (name.includes('visage premium')) basePoints = 4;
   else if (name.includes('visage standard')) basePoints = 3;
