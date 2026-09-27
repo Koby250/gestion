@@ -613,10 +613,9 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
                           <div style={{ flex:1, height:'1px', background:`linear-gradient(90deg, ${cfg.accentColor}60, transparent)` }} />
                         </div>
 
-                        {/* Nom */}
                         <div style={{
                           fontWeight:'800', fontSize: cfg.fontSize,
-                          color:'var(--text-main)', marginBottom:'4px',
+                          color:'#FFFFFF', marginBottom:'4px',
                           letterSpacing:'-0.02em', lineHeight:1.2, zIndex:2,
                           textShadow: isFirst ? `0 0 20px ${cfg.glowColor}` : 'none',
                         }}>
