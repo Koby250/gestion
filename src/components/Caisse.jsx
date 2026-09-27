@@ -82,7 +82,9 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
 
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     const unsubTransactions = onSnapshot(q, (snapshot) => {
-      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const allTx = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Filter out treasury adjustments so they don't appear in the daily cash register
+      setTransactions(allTx.filter(t => t.type !== 'ajustement'));
     });
 
     const unsubCharges = onSnapshot(collection(db, 'charges_fixes'), (snapshot) => {

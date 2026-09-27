@@ -40,7 +40,9 @@ const Tracabilite = () => {
     return () => { unsubLogs(); unsubAvances(); };
   }, []);
 
-  const logs = [...auditLogs, ...retroAvances].sort((a, b) => new Date(b.date) - new Date(a.date));
+  // Exclure les ajustements de trésorerie de la traçabilité selon la demande
+  const baseLogs = [...auditLogs, ...retroAvances].filter(l => l.action !== 'TRESORERIE_UPDATE');
+  const logs = baseLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const getActionColor = (action) => {
     if (action.includes('DELETE') || action.includes('CANCEL')) return 'var(--danger)';
