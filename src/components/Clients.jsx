@@ -524,6 +524,63 @@ const Clients = ({ onNavigateToReservation }) => {
     } catch (err) { console.error(err); }
   };
 
+  // ── Détection numéro nigérien (+227) ──────────────────────────────────────
+  const isNigerPhone = (phone) => {
+    if (!phone) return false;
+    const cleaned = phone.replace(/[\s\.\-\(\)]/g, '');
+    // Format international : +227XXXXXXXX ou 00227XXXXXXXX
+    if (cleaned.startsWith('+227')) return true;
+    if (cleaned.startsWith('00227')) return true;
+    // Format local Niger : 8 chiffres commençant par 7, 8, 9 (mobile) ou 2 (fixe Niamey etc.)
+    if (/^[2789]\d{7}$/.test(cleaned)) return true;
+    return false;
+  };
+
+  // ── Purge des numéros non-nigériens ───────────────────────────────────────
+  const [isPurging, setIsPurging] = useState(false);
+
+  const handlePurgeNonNiger = async () => {
+    const nonNigerClients = clients.filter(c => !isNigerPhone(c.telephone));
+    if (nonNigerClients.length === 0) {
+      alert('✅ Tous les numéros sont déjà nigériens (+227). Aucune suppression nécessaire.');
+      return;
+    }
+
+    const confirmed1 = window.confirm(
+      `⚠️ ATTENTION — Opération irréversible !\n\n` +
+      `${nonNigerClients.length} client(s) ont un numéro non-nigérien (hors +227) et vont être SUPPRIMÉS de la base.\n\n` +
+      `Voulez-vous continuer ?`
+    );
+    if (!confirmed1) return;
+
+    const confirmed2 = window.confirm(
+      `🔴 DERNIÈRE CONFIRMATION\n\n` +
+      `Vous allez supprimer définitivement ${nonNigerClients.length} client(s) non-nigériens.\n` +
+      `Cette action est IRRÉVERSIBLE.\n\nCliquez OK pour confirmer.`
+    );
+    if (!confirmed2) return;
+
+    setIsPurging(true);
+    try {
+      const BATCH_SIZE = 400;
+      let deleted = 0;
+      for (let i = 0; i < nonNigerClients.length; i += BATCH_SIZE) {
+        const chunk = nonNigerClients.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(c => batch.delete(doc(db, 'clients', c.id)));
+        await batch.commit();
+        deleted += chunk.length;
+      }
+      await logEvent('CLIENT_PURGE', `Purge numéros non-nigériens : ${deleted} client(s) supprimés`);
+      alert(`✅ Purge terminée !\n${deleted} client(s) non-nigériens supprimés.\nSeuls les numéros +227 (Niger) sont conservés.`);
+    } catch (err) {
+      console.error('[Purge] Erreur:', err);
+      alert('❌ Erreur lors de la purge. Vérifiez la console.');
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
   // Suivi d'appels
   const handleAddCallNote = async (clientId, e) => {
     e.preventDefault();
@@ -585,7 +642,24 @@ const Clients = ({ onNavigateToReservation }) => {
             <Users size={22} color="var(--accent-color)" />
             <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Base de Données Clients</h2>
           </div>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              className="btn"
+              onClick={handlePurgeNonNiger}
+              disabled={isPurging}
+              title="Supprimer tous les clients dont le numéro n'est pas nigérien (+227)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                backgroundColor: isPurging ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.12)',
+                color: '#ef4444',
+                border: '1px solid rgba(239,68,68,0.4)',
+                fontWeight: '700',
+                opacity: isPurging ? 0.7 : 1,
+                cursor: isPurging ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isPurging ? '⏳ Purge en cours…' : '🇳🇪 Garder Niger uniquement'}
+            </button>
             <button className="btn" onClick={() => setShowCsvModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}>
               <Upload size={18} /> Importer (CSV)
             </button>
