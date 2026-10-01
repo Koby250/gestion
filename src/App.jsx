@@ -142,7 +142,7 @@ function App() {
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (authLoading) {
-    const logoSrc = theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png';
+    const logoSrc = '/gestion.svg';
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
         justifyContent: 'center', backgroundColor: 'var(--bg-primary)', flexDirection: 'column', gap: '20px' }}>
@@ -154,7 +154,7 @@ function App() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 0 30px rgba(212,168,83,0.15)'
           }}>
-            <img src={logoSrc} alt="Barber Factory Logo" style={{ height: '44px', objectFit: 'contain' }} />
+            <img src={logoSrc} alt="Gestion Logo" style={{ height: '44px', objectFit: 'contain' }} />
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
@@ -245,11 +245,11 @@ function App() {
         <div className="sidebar-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <img
-              src={theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png'}
+              src="/gestion.svg"
               alt="Logo"
               className="sidebar-brand-logo"
             />
-            <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Barber Factory</h1>
+            <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Gestion</h1>
           </div>
           <button className="close-sidebar-btn" onClick={() => setIsSidebarOpen(false)}>
             <X size={20} />

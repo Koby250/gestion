@@ -38,7 +38,7 @@ const Login = ({ theme }) => {
     }
   };
 
-  const logoSrc = theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png';
+  const logoSrc = '/gestion.svg';
 
   return (
     <div style={{
@@ -84,7 +84,7 @@ const Login = ({ theme }) => {
           }}>
             <img
               src={logoSrc}
-              alt="Logo Barber Factory"
+              alt="Logo Gestion"
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
           </div>
@@ -97,7 +97,7 @@ const Login = ({ theme }) => {
             letterSpacing: '-0.03em',
             fontFamily: 'Inter, sans-serif',
           }}>
-            Barber Factory
+            Gestion
           </h1>
           <p style={{
             color: 'var(--text-muted)',
@@ -147,7 +147,7 @@ const Login = ({ theme }) => {
               <input
                 type="email"
                 className="input-control"
-                placeholder="admin@barberfactory.com"
+                placeholder="admin@gestion.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
@@ -219,7 +219,7 @@ const Login = ({ theme }) => {
           color: 'var(--text-muted)',
           letterSpacing: '0.03em',
         }}>
-          Barber Factory &mdash; Accès réservé aux membres autorisés
+          Gestion &mdash; Accès réservé aux membres autorisés
         </p>
       </div>
     </div>

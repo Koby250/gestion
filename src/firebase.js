@@ -3,12 +3,12 @@ import { getFirestore }                    from "firebase/firestore";
 import { getAuth }                         from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey:            "AIzaSyCNG4DVxjzNXLhFSuvA0rwHuWkHTM757LY",
-  authDomain:        "barber-control-fac68.firebaseapp.com",
-  projectId:         "barber-control-fac68",
-  storageBucket:     "barber-control-fac68.appspot.com",
-  messagingSenderId: "927192202405",
-  appId:             "1:927192202405:web:507bd13fb904a3e1f7614c",
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 

@@ -149,8 +149,8 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
             }}>
               <div>
                 <img
-                  src="/logos/blanc.png"
-                  alt="Barber Factory"
+                  src="/gestion.svg"
+                  alt="Gestion"
                   crossOrigin="anonymous"
                   style={{ height: '44px', objectFit: 'contain', display: 'block', marginBottom: '6px' }}
                 />
@@ -312,7 +312,7 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
             {/* PIED DE PAGE */}
             <div style={{ backgroundColor: '#f8f8f8', borderTop: '3px solid #f0a500', padding: '12px 28px', textAlign: 'center' }}>
               <p style={{ margin: 0, fontSize: '10px', color: '#888', lineHeight: '1.6' }}>
-                Merci de votre confiance et à bientôt au Barber Factory !<br />
+                Merci de votre confiance et à bientôt sur Gestion !<br />
                 <strong>+227 88 13 10 58</strong> · Niamey, Niger
               </p>
             </div>
