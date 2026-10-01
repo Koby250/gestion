@@ -43,6 +43,7 @@ const Bilan = () => {
   const [rankServiceFilter, setRankServiceFilter] = useState('Tous');
   const [rankPeriodFilter, setRankPeriodFilter] = useState('mensuel');
   const [expandedAgents, setExpandedAgents] = useState({});
+  const [expandedAvancesEmp, setExpandedAvancesEmp] = useState({});
 
   const [avances, setAvances] = useState([]);
   const [showClosureModal, setShowClosureModal] = useState(false);
@@ -1943,52 +1944,63 @@ const Bilan = () => {
 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {Object.values(byEmp).sort((a, b) => b.total - a.total).map((emp, idx) => (
-                <div key={idx} style={{ backgroundColor: 'var(--bg-input)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: emp.avances.length > 0 ? '1px solid var(--border-color)' : 'none', backgroundColor: 'rgba(245,158,11,0.06)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <User size={15} color="#f59e0b" />
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)' }}>{emp.nom}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{emp.avances.length} avance{emp.avances.length > 1 ? 's' : ''} ce mois</div>
-                      </div>
-                    </div>
-                    <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#f59e0b' }}>
-                      -{fmt(emp.total)} FCFA
-                    </div>
-                  </div>
-
-                  <div>
-                    {emp.avances
-                      .sort((a, b) => new Date(b.date) - new Date(a.date))
-                      .map((a, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px 9px 58px', borderBottom: i < emp.avances.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
-                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minWidth: '80px' }}>
-                              {new Date(a.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                            </span>
-                            {a.motif && (
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{a.motif}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            {a.modePaiement && (
-                              <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                                {a.modePaiement}
-                              </span>
-                            )}
-                            <span style={{ fontWeight: '700', color: '#f59e0b', fontSize: '0.9rem' }}>
-                              -{fmt(Number(a.montant || 0))} F
-                            </span>
-                          </div>
+              {Object.values(byEmp).sort((a, b) => b.total - a.total).map((emp, idx) => {
+                const isExpanded = !!expandedAvancesEmp[emp.nom];
+                return (
+                  <div key={idx} style={{ backgroundColor: 'var(--bg-input)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+                    <div 
+                      onClick={() => setExpandedAvancesEmp(prev => ({ ...prev, [emp.nom]: !isExpanded }))}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: (isExpanded && emp.avances.length > 0) ? '1px solid var(--border-color)' : 'none', backgroundColor: 'rgba(245,158,11,0.06)', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <User size={15} color="#f59e0b" />
                         </div>
-                      ))
-                    }
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)' }}>{emp.nom}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{emp.avances.length} avance{emp.avances.length > 1 ? 's' : ''} ce mois</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#f59e0b' }}>
+                          -{fmt(emp.total)} FCFA
+                        </div>
+                        {isExpanded ? <ChevronUp size={18} color="var(--text-muted)" /> : <ChevronDown size={18} color="var(--text-muted)" />}
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div>
+                        {emp.avances
+                          .sort((a, b) => new Date(b.date) - new Date(a.date))
+                          .map((a, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px 9px 58px', borderBottom: i < emp.avances.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
+                              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minWidth: '80px' }}>
+                                  {new Date(a.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                </span>
+                                {a.motif && (
+                                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{a.motif}</span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                {a.modePaiement && (
+                                  <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                                    {a.modePaiement}
+                                  </span>
+                                )}
+                                <span style={{ fontWeight: '700', color: '#f59e0b', fontSize: '0.9rem' }}>
+                                  -{fmt(Number(a.montant || 0))} F
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 0 4px' }}>
                 <div style={{ fontWeight: '800', fontSize: '1rem', color: '#f59e0b' }}>
