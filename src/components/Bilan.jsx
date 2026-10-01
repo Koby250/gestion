@@ -45,6 +45,7 @@ const Bilan = () => {
   const [expandedAgents, setExpandedAgents] = useState({});
   const [expandedAvancesEmp, setExpandedAvancesEmp] = useState({});
 
+  const [servicesDisponibles, setServicesDisponibles] = useState([]);
   const [avances, setAvances] = useState([]);
   const [showClosureModal, setShowClosureModal] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -188,7 +189,11 @@ const Bilan = () => {
       setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.actif !== false));
     });
 
-    return () => { unsub(); unsubHist(); unsubEmp(); unsubCharges(); unsubAvances(); unsubCats(); };
+    const unsubServices = onSnapshot(collection(db, 'services'), snap => {
+      setServicesDisponibles(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.actif !== false));
+    });
+
+    return () => { unsub(); unsubHist(); unsubEmp(); unsubCharges(); unsubAvances(); unsubCats(); unsubServices(); };
   }, []);
 
   // ── Handlers CRUD Dépenses ────────────────────────────────────────────────
@@ -490,7 +495,7 @@ const Bilan = () => {
     return map;
   };
 
-  const SERVICE_FILTERS = ['Tous', 'Coiffure', 'Barbe', 'P\u00e9dicure', 'Manucure', 'Visage', 'Gommage'];
+  const SERVICE_FILTERS = ['Tous', ...servicesDisponibles.map(s => s.nom).sort((a, b) => a.localeCompare(b))];
 
   const filteredRankStats = computeFilteredPoints(rankTxSource, rankServiceFilter);
 
