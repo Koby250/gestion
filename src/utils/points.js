@@ -21,24 +21,23 @@ export const getPointsForService = (serviceNom, transactionDate = null, isDomici
   else if (name.includes('visage standard')) basePoints = 3;
   else if (name.includes('visage')) basePoints = 3; // Fallback
   
-  // Prestations de coiffure principale
-  else if (name.includes('coiffure') || name.includes('coupe') || name.includes('barbe')) {
+  // Prestations de coiffure principale et tout ce qui est lié aux cheveux (contours, coloration, etc.)
+  else if (
+    name.includes('coiffure') || 
+    name.includes('coupe') || 
+    name.includes('barbe') ||
+    name.includes('contour') ||
+    name.includes('teinture') || 
+    name.includes('défrisage') || 
+    name.includes('defrisage') || 
+    name.includes('coloration') || 
+    name.includes('décoloration') || 
+    name.includes('decoloration') || 
+    name.includes('shampooing') || 
+    name.includes('shampoing') || 
+    name.includes('soin capillaire')
+  ) {
     basePoints = isNewRule ? 1 : 2;
-  }
-  
-  // Prestations capillaires annexes (uniquement avec nouvelle règle)
-  else if (isNewRule) {
-    if (
-      name.includes('teinture') || 
-      name.includes('défrisage') || 
-      name.includes('defrisage') || 
-      name.includes('coloration') || 
-      name.includes('shampooing') || 
-      name.includes('shampoing') || 
-      name.includes('soin capillaire')
-    ) {
-      basePoints = 0.5;
-    }
   }
   
   return basePoints + (isDomicile ? 1 : 0);
