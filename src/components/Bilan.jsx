@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag, User, Users, Percent, Receipt, Gift, Award, Star, Activity, ChevronDown, ChevronUp,
   PlusCircle, Edit2, X, Search, Filter
 } from 'lucide-react';
-import { computeGlobalPoints, computeDetailedGlobalStats } from '../utils/points';
+import { computeGlobalPoints, computeDetailedGlobalStats, getPointsForService } from '../utils/points';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { logEvent } from '../utils/audit';
 
@@ -80,42 +80,32 @@ const Bilan = () => {
       const now = new Date().toISOString();
       const activeCharges = chargesFixes.filter(c => c.actif);
 
+      // On enregistre uniquement les charges qui n'ont pas du tout été payées ce mois
+      // (realise === 0 et budget > 0). Les charges déjà saisies en dépenses ne sont
+      // PAS recréées pour éviter tout doublon.
       for (const c of activeCharges) {
         const realise = depenses
           .filter(t => t.categorie === c.nom)
           .reduce((s, t) => s + Number(t.montant), 0);
         const budget = Number(c.montant) || 0;
-        const ecart = budget - realise;
 
-        if (ecart === 0) continue;
+        if (realise > 0 || budget === 0) continue; // déjà payé ou pas de budget
 
-        if (ecart > 0) {
-          await addDoc(collection(db, 'transactions'), {
-            type: 'prestation',
-            montant: ecart,
-            motif: `Reliquat ${c.nom} — Cloture ${moisLabel}`,
-            categorie: c.nom,
-            employeNom: 'Cloture Bilan',
-            modePaiement: 'Interne',
-            date: now,
-            saisieParNom: 'Systeme — Bilan'
-          });
-        } else {
-          await addDoc(collection(db, 'transactions'), {
-            type: 'depense',
-            montant: Math.abs(ecart),
-            motif: `Combler deficit ${c.nom} — Cloture ${moisLabel}`,
-            categorie: c.nom,
-            employeNom: 'Cloture Bilan',
-            modePaiement: 'Interne',
-            date: now,
-            saisieParNom: 'Systeme — Bilan'
-          });
-        }
+        // Charge non encore payée → on l'enregistre comme dépense
+        await addDoc(collection(db, 'transactions'), {
+          type: 'depense',
+          montant: budget,
+          motif: `Cloture charge fixe — ${c.nom} (${moisLabel})`,
+          categorie: c.nom,
+          employeNom: 'Cloture Bilan',
+          modePaiement: 'Interne',
+          date: now,
+          saisieParNom: 'Systeme — Bilan'
+        });
       }
 
       setShowClosureModal(false);
-      alert(`Cloture des charges (${moisLabel}) effectuee avec succes.`);
+      alert(`Cloture des charges fixes (${moisLabel}) enregistrée.`);
     } catch (err) {
       console.error(err);
       alert('Erreur lors de la cloture des charges.');
@@ -132,6 +122,7 @@ const Bilan = () => {
       const activeEmployes = employes.filter(e => e.actif);
 
       for (const emp of activeEmployes) {
+        // On compte uniquement les avances du mois comme déjà versés
         const empAvances = monthAvances
           .filter(a => a.employeId === emp.id)
           .reduce((sum, a) => sum + Number(a.montant), 0);
@@ -310,23 +301,12 @@ const Bilan = () => {
     return d >= start && d <= end;
   });
 
-  const prestations = monthTx.filter(t => t.type === 'prestation');
+  // Les dépenses pures : sans les avances (qui ont leur propre section)
+  const prestations  = monthTx.filter(t => t.type === 'prestation');
   const depenses_raw = monthTx.filter(t => t.type === 'depense' && t.categoryId !== 'avance_salaire' && t.categoryNom !== 'Avance sur Salaire' && t.categorie !== 'Avance sur Salaire');
 
-  const depenses = [
-    ...depenses_raw,
-    ...monthAvances.map(a => ({
-      id: 'av_' + a.id,
-      type: 'depense',
-      montant: Number(a.montant) || 0,
-      motif: a.motif || `Avance sur salaire - ${a.employeNom}`,
-      categorie: 'Avance sur Salaire',
-      date: a.date,
-      modePaiement: a.modePaiement || 'Cash',
-      saisieParNom: a.saisieParNom || a.employeNom,
-      isAvance: true
-    }))
-  ];
+  // depenses = uniquement les vraies dépenses (charges, achats, etc.), avances exclues
+  const depenses = depenses_raw;
 
   const totalCA       = prestations.reduce((s, t) => s + Number(t.montant), 0);
   const totalDepenses = depenses.reduce((s, t) => s + Number(t.montant), 0);
@@ -482,6 +462,7 @@ const Bilan = () => {
   const rankDetailedStats = computeDetailedGlobalStats(rankTxSource);
 
   // Points filtrés par service pour le classement
+  // Utilise getPointsForService (même logique que l'Accueil) avec prise en compte de la date
   const computeFilteredPoints = (txList, serviceFilter) => {
     const map = {};
     txList.forEach(t => {
@@ -494,17 +475,11 @@ const Bilan = () => {
         }
         const agents = l.agents || [];
         const numAgents = agents.length || 1;
+        // Utilise la même fonction que l'Accueil pour les points
+        const pts = getPointsForService(l.serviceNom, t.date, !!l.isDomicile);
         agents.forEach(ag => {
           if (!ag.id) return;
           if (!map[ag.id]) map[ag.id] = { points: 0, services: {} };
-          const sname = (l.serviceNom || '').toLowerCase();
-          let pts = 0;
-          if (sname.includes('gommage') || sname.includes('manucure')) pts = 1;
-          else if (sname.includes('coiffure') || sname.includes('coupe') || sname.includes('barbe')) pts = 2;
-          else if (sname.includes('visage standard')) pts = 3;
-          else if (sname.includes('visage premium')) pts = 4;
-          else if (sname.includes('p\u00e9dicure') || sname.includes('pedicure')) pts = 5;
-          else if (sname.includes('visage')) pts = 3;
           map[ag.id].points += pts / numAgents;
           const sn = l.serviceNom || 'Autre';
           map[ag.id].services[sn] = (map[ag.id].services[sn] || 0) + 1;
@@ -636,7 +611,6 @@ const Bilan = () => {
 
   // ── Indicateurs supplémentaires ──────────────────────────────────────────
   const totalAvancesMois = monthAvances.reduce((s, a) => s + Number(a.montant || 0), 0);
-  const beneficeNetCorrige = beneficeNet; // beneficeNet already includes avances via depenses array
 
   // Top service du mois
   const topService = serviceList.length > 0 ? serviceList[0] : null;
@@ -670,19 +644,20 @@ const Bilan = () => {
       subtitle: `${monthAvances.length} avance${monthAvances.length !== 1 ? 's' : ''} versée${monthAvances.length !== 1 ? 's' : ''}`
     },
     {
-      label: 'Total Dépenses (hors avances)',
-      value: `${fmt(totalDepenses - totalAvancesMois)} FCFA`,
+      label: 'Total Dépenses',
+      value: `${fmt(totalDepenses)} FCFA`,
       icon: <TrendingDown size={22} />,
       color: 'var(--danger)',
-      bg: 'rgba(239, 68, 68, 0.08)'
+      bg: 'rgba(239, 68, 68, 0.08)',
+      subtitle: 'Charges et dépenses courantes'
     },
     {
       label: 'Bénéfice Net',
-      value: `${beneficeNetCorrige >= 0 ? '+' : ''}${fmt(beneficeNetCorrige)} FCFA`,
+      value: `${beneficeNet >= 0 ? '+' : ''}${fmt(beneficeNet)} FCFA`,
       icon: <DollarSign size={22} />,
-      color: beneficeNetCorrige >= 0 ? 'var(--success)' : 'var(--danger)',
-      bg: beneficeNetCorrige >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
-      subtitle: 'CA − Dépenses − Avances'
+      color: beneficeNet >= 0 ? 'var(--success)' : 'var(--danger)',
+      bg: beneficeNet >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+      subtitle: 'CA − Dépenses (avances en sus)'
     },
     {
       label: 'Réductions Accordées',
@@ -945,111 +920,248 @@ const Bilan = () => {
             {/* PODIUM Top 3 */}
             {allAgentsRankedFiltered.length >= 1 && (() => {
               const top3 = allAgentsRankedFiltered.slice(0, Math.min(3, allAgentsRankedFiltered.length));
-              const podiumOrder = top3.length === 3 ? [top3[1], top3[0], top3[2]] :
-                                  top3.length === 2 ? [top3[1], top3[0]] : [top3[0]];
-              const podiumConfig = [
-                { rank: 2, color: '#9ca3af', bg: 'rgba(156,163,175,0.08)', border: 'rgba(156,163,175,0.25)', height: '80px', medal: '2' },
-                { rank: 1, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.3)',  height: '110px', medal: '1' },
-                { rank: 3, color: '#cd7c3e', bg: 'rgba(205,124,62,0.08)',  border: 'rgba(205,124,62,0.25)', height: '60px',  medal: '3' },
-              ];
-              const getConfig = (rank) => podiumConfig.find(c => c.rank === rank) || podiumConfig[2];
+
+              const Rank1Decor = () => (
+                <svg style={{ position:'absolute', top:0, left:0, width:'100%', height:'100%', pointerEvents:'none', opacity:0.18 }} viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice">
+                  {[0,30,60,90,120,150,180,210,240,270,300,330].map((angle, i) => (
+                    <line key={i} x1="150" y1="0"
+                      x2={150 + Math.cos((angle - 90) * Math.PI/180) * 300}
+                      y2={Math.sin((angle - 90) * Math.PI/180) * 300}
+                      stroke="#D4A853" strokeWidth="0.8" strokeDasharray="4 8"
+                    />
+                  ))}
+                  <circle cx="150" cy="0" r="80" fill="none" stroke="#D4A853" strokeWidth="0.6" />
+                  <circle cx="150" cy="0" r="140" fill="none" stroke="#D4A853" strokeWidth="0.4" />
+                  <path d="M0,0 L40,0 L0,40 Z" fill="#D4A853" opacity="0.15"/>
+                  <path d="M300,0 L260,0 L300,40 Z" fill="#D4A853" opacity="0.15"/>
+                  <line x1="30" y1="380" x2="270" y2="380" stroke="#D4A853" strokeWidth="0.6" />
+                  <circle cx="150" cy="380" r="3" fill="#D4A853" />
+                </svg>
+              );
+
+              const Rank2Decor = () => (
+                <svg style={{ position:'absolute', top:0, left:0, width:'100%', height:'100%', pointerEvents:'none', opacity:0.15 }} viewBox="0 0 260 360" preserveAspectRatio="xMidYMid slice">
+                  {[0,1,2,3].map(row => [0,1,2,3].map(col => (
+                    <polygon key={`${row}-${col}`}
+                      points={`${col*70 + (row%2)*35},${row*60} ${col*70+(row%2)*35+30},${row*60} ${col*70+(row%2)*35+45},${row*60+25} ${col*70+(row%2)*35+30},${row*60+50} ${col*70+(row%2)*35},${row*60+50} ${col*70+(row%2)*35-15},${row*60+25}`}
+                      fill="none" stroke="#A8B4C4" strokeWidth="0.5"
+                    />
+                  )))}
+                  <path d="M10,10 L25,0 L40,10 L25,20 Z" fill="#A8B4C4" opacity="0.2"/>
+                  <path d="M220,10 L235,0 L250,10 L235,20 Z" fill="#A8B4C4" opacity="0.2"/>
+                  <line x1="0" y1="100" x2="15" y2="100" stroke="#A8B4C4" strokeWidth="1.5"/>
+                  <line x1="245" y1="100" x2="260" y2="100" stroke="#A8B4C4" strokeWidth="1.5"/>
+                </svg>
+              );
+
+              const Rank3Decor = () => (
+                <svg style={{ position:'absolute', top:0, left:0, width:'100%', height:'100%', pointerEvents:'none', opacity:0.15 }} viewBox="0 0 260 360" preserveAspectRatio="xMidYMid slice">
+                  <line x1="0" y1="0" x2="260" y2="360" stroke="#CD7C3E" strokeWidth="0.5" strokeDasharray="6 12"/>
+                  <line x1="260" y1="0" x2="0" y2="360" stroke="#CD7C3E" strokeWidth="0.5" strokeDasharray="6 12"/>
+                  <polygon points="0,0 50,0 0,50" fill="#CD7C3E" opacity="0.12"/>
+                  <polygon points="260,0 210,0 260,50" fill="#CD7C3E" opacity="0.12"/>
+                  <polygon points="0,360 50,360 0,310" fill="#CD7C3E" opacity="0.12"/>
+                  <polygon points="260,360 210,360 260,310" fill="#CD7C3E" opacity="0.12"/>
+                  <circle cx="130" cy="180" r="80" fill="none" stroke="#CD7C3E" strokeWidth="0.5" strokeDasharray="4 8"/>
+                </svg>
+              );
+
+              const rankConfig = {
+                1: {
+                  gradient:    'linear-gradient(160deg, #1A1200 0%, #0F0C00 40%, #0A0A0A 100%)',
+                  borderColor: '#6B4E00',
+                  glowColor:   'rgba(212,168,83,0.4)',
+                  accentColor: '#D4A853',
+                  barGradient: 'linear-gradient(90deg, #6B3800, #D4A853, #FFE08A)',
+                  medalBg:     'conic-gradient(from 0deg, #6B3800, #D4A853, #FFE08A, #D4A853, #6B3800)',
+                  medalText:   '#1A0A00',
+                  crownSize:   64,
+                  fontSize:    '1.25rem',
+                  ptsFontSize: '2rem',
+                  shadowStyle: '0 0 0 1px #6B4E00, 0 0 30px rgba(212,168,83,0.3), 0 16px 48px rgba(0,0,0,0.7)',
+                  Decor:       Rank1Decor,
+                  padding:     '32px 24px 24px',
+                  flex:        '1 1 38%',
+                  order:       2,
+                },
+                2: {
+                  gradient:    'linear-gradient(160deg, #0E1218 0%, #080C12 40%, #0A0A0A 100%)',
+                  borderColor: '#3A4858',
+                  glowColor:   'rgba(168,180,196,0.25)',
+                  accentColor: '#A8B4C4',
+                  barGradient: 'linear-gradient(90deg, #3A4858, #A8B4C4, #D8E4F4)',
+                  medalBg:     'conic-gradient(from 0deg, #3A4858, #A8B4C4, #D8E4F4, #A8B4C4, #3A4858)',
+                  medalText:   '#0A0E14',
+                  crownSize:   50,
+                  fontSize:    '1.05rem',
+                  ptsFontSize: '1.5rem',
+                  shadowStyle: '0 0 0 1px #3A4858, 0 0 16px rgba(168,180,196,0.15), 0 12px 36px rgba(0,0,0,0.6)',
+                  Decor:       Rank2Decor,
+                  padding:     '26px 18px 18px',
+                  flex:        '1 1 28%',
+                  order:       1,
+                },
+                3: {
+                  gradient:    'linear-gradient(160deg, #180A00 0%, #100600 40%, #0A0A0A 100%)',
+                  borderColor: '#6B3A18',
+                  glowColor:   'rgba(205,124,62,0.25)',
+                  accentColor: '#CD7C3E',
+                  barGradient: 'linear-gradient(90deg, #6B3A18, #CD7C3E, #E8A060)',
+                  medalBg:     'conic-gradient(from 0deg, #6B3A18, #CD7C3E, #E8A060, #CD7C3E, #6B3A18)',
+                  medalText:   '#1A0800',
+                  crownSize:   46,
+                  fontSize:    '1rem',
+                  ptsFontSize: '1.4rem',
+                  shadowStyle: '0 0 0 1px #6B3A18, 0 0 14px rgba(205,124,62,0.18), 0 10px 30px rgba(0,0,0,0.6)',
+                  Decor:       Rank3Decor,
+                  padding:     '24px 18px 18px',
+                  flex:        '1 1 28%',
+                  order:       3,
+                },
+              };
+
+              const displayOrder = top3.length === 3
+                ? [top3[0], top3[1], top3[2]]
+                : top3.length === 2 ? [top3[0], top3[1]]
+                : [top3[0]];
+
               return (
-                <div className="podium-container">
-                  {podiumOrder.map((agent, pIdx) => {
+                <div style={{ display:'flex', gap:'12px', alignItems:'stretch', marginBottom:'24px', flexWrap:'wrap' }}>
+                  {displayOrder.map((agent) => {
                     const rank = top3.indexOf(agent) + 1;
-                    const cfg = getConfig(rank);
-                    const progressToFirst = maxPoints > 0 ? (agent.points / maxPoints) * 100 : 0;
+                    const cfg = rankConfig[rank] || rankConfig[3];
+                    const { Decor } = cfg;
+                    const progressPct = maxPoints > 0 ? (agent.points / maxPoints) * 100 : 0;
+                    const isFirst = rank === 1;
+
                     return (
                       <div
                         key={agent.id}
-                        className={`podium-item rank-${rank}`}
-                        style={{
-                          background: `linear-gradient(160deg, ${cfg.bg} 0%, var(--bg-card) 100%)`,
-                          border: `1px solid ${cfg.border}`,
-                          cursor: 'pointer'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
-                        onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                         onClick={() => toggleAgentDetails(agent.id)}
+                        style={{
+                          flex: cfg.flex,
+                          minWidth: '190px',
+                          position: 'relative',
+                          borderRadius: '22px',
+                          border: `1px solid ${cfg.borderColor}`,
+                          background: cfg.gradient,
+                          boxShadow: cfg.shadowStyle,
+                          padding: cfg.padding,
+                          cursor: 'pointer',
+                          overflow: 'hidden',
+                          transition: 'transform 0.25s ease, box-shadow 0.25s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          textAlign: 'center',
+                          order: cfg.order,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-8px)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
                       >
-                        {/* Medaille */}
-                        <div style={{
-                          width: rank === 1 ? '48px' : '38px',
-                          height: rank === 1 ? '48px' : '38px',
-                          borderRadius: '50%',
-                          backgroundColor: cfg.color,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          margin: '0 auto 10px auto',
-                          fontSize: rank === 1 ? '1.4rem' : '1.1rem',
-                          fontWeight: '900',
-                          color: rank === 1 ? '#1a1200' : '#fff',
-                          boxShadow: `0 4px 14px ${cfg.border}`
-                        }}>
-                          {cfg.medal}
+                        <Decor />
+
+                        {/* Médaille */}
+                        <div style={{ position:'relative', zIndex:2, marginBottom:'14px', marginTop: isFirst ? '10px' : '4px' }}>
+                          <div style={{
+                            width: `${cfg.crownSize + 16}px`, height: `${cfg.crownSize + 16}px`,
+                            borderRadius:'50%',
+                            background: `conic-gradient(from 0deg, transparent 30%, ${cfg.accentColor}55 50%, transparent 70%)`,
+                            display:'flex', alignItems:'center', justifyContent:'center',
+                            animation: isFirst ? 'spin 8s linear infinite' : undefined,
+                          }}>
+                            <div style={{
+                              width: `${cfg.crownSize + 4}px`, height: `${cfg.crownSize + 4}px`,
+                              borderRadius:'50%',
+                              background: 'rgba(0,0,0,0.6)',
+                              border: `1.5px solid ${cfg.borderColor}`,
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                            }}>
+                              <div style={{
+                                width: `${cfg.crownSize}px`, height: `${cfg.crownSize}px`,
+                                borderRadius:'50%',
+                                background: cfg.medalBg,
+                                display:'flex', alignItems:'center', justifyContent:'center',
+                                fontSize: isFirst ? '1.8rem' : rank === 2 ? '1.4rem' : '1.25rem',
+                                fontWeight:'900',
+                                color: cfg.medalText,
+                                boxShadow: `inset 0 2px 4px rgba(255,255,255,0.3), 0 0 20px ${cfg.glowColor}`,
+                              }}>
+                                {rank === 1 ? '♛' : rank === 2 ? '②' : '③'}
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
-                        <div style={{ fontWeight: '800', fontSize: rank === 1 ? '1rem' : '0.9rem', color: 'var(--text-main)', marginBottom: '4px' }}>
+                        {/* Séparateur ornemental */}
+                        <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'10px', zIndex:2, width:'80%' }}>
+                          <div style={{ flex:1, height:'1px', background:`linear-gradient(90deg, transparent, ${cfg.accentColor}60)` }} />
+                          <div style={{ width:'5px', height:'5px', borderRadius:'50%', background: cfg.accentColor, boxShadow:`0 0 6px ${cfg.accentColor}` }} />
+                          <div style={{ flex:1, height:'1px', background:`linear-gradient(90deg, ${cfg.accentColor}60, transparent)` }} />
+                        </div>
+
+                        <div style={{ fontWeight:'800', fontSize: cfg.fontSize, color:'#FFFFFF', marginBottom:'4px', letterSpacing:'-0.02em', lineHeight:1.2, zIndex:2, textShadow: isFirst ? `0 0 20px ${cfg.glowColor}` : 'none' }}>
                           {agent.nom}
                         </div>
 
-                        <div style={{ fontSize: rank === 1 ? '1.5rem' : '1.2rem', fontWeight: '900', color: cfg.color, letterSpacing: '-0.03em' }}>
-                          {agent.points} pts
+                        <div style={{ fontSize: cfg.ptsFontSize, fontWeight:'900', color: cfg.accentColor, letterSpacing:'-0.04em', lineHeight:1, marginBottom:'12px', zIndex:2, textShadow:`0 0 24px ${cfg.glowColor}, 0 0 48px ${cfg.glowColor}` }}>
+                          {agent.points}
+                          <span style={{ fontSize:'0.55em', fontWeight:'700', marginLeft:'4px', opacity:0.75 }}>PTS</span>
                         </div>
 
+                        {/* Soins */}
+                        <div style={{ width:'100%', zIndex:2, marginBottom:'12px' }}>
+                          <div style={{ background:'rgba(255,255,255,0.03)', border:`1px solid ${cfg.borderColor}`, borderRadius:'10px', padding:'8px 14px', textAlign:'center' }}>
+                            <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'3px' }}>Soins cette période</div>
+                            <div style={{ fontSize:'1.2rem', fontWeight:'900', color: cfg.accentColor }}>{agent.totalServicesCount}</div>
+                          </div>
+                        </div>
+
+                        {/* Badge polyvalent */}
+                        {agent.polyvalent && (
+                          <div style={{ marginBottom:'10px', zIndex:2 }}>
+                            <span style={{ fontSize:'0.62rem', fontWeight:'700', color:'#c084fc', border:'1px solid rgba(192,132,252,0.35)', background:'rgba(192,132,252,0.08)', padding:'3px 10px', borderRadius:'99px', display:'inline-flex', alignItems:'center', gap:'5px', letterSpacing:'0.06em' }}>
+                              <Star size={8} /> Polyvalent
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Détails soins toggle */}
                         {agent.totalServicesCount > 0 && (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', fontWeight: '600' }}>
-                            {agent.totalServicesCount} soin{agent.totalServicesCount > 1 ? 's' : ''}
-                            {expandedAgents[agent.id] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                          <div style={{ fontSize:'0.7rem', color:'var(--text-muted)', marginBottom:'8px', display:'flex', alignItems:'center', gap:'4px', zIndex:2, cursor:'pointer' }}>
+                            <Scissors size={10} />
+                            {expandedAgents[agent.id] ? 'Masquer' : 'Voir le détail'}
+                            {expandedAgents[agent.id] ? <ChevronUp size={11}/> : <ChevronDown size={11}/>}
                           </div>
                         )}
 
                         {expandedAgents[agent.id] && Object.entries(agent.servicesCount || {}).length > 0 && (
-                          <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '8px' }}>
+                          <div style={{ display:'flex', gap:'4px', flexWrap:'wrap', justifyContent:'center', marginBottom:'10px', zIndex:2 }}>
                             {Object.entries(agent.servicesCount).map(([sName, sCount]) => (
-                              <span key={sName} title={sName} style={{
-                                fontSize: '0.65rem', backgroundColor: 'var(--bg-primary)',
-                                padding: '2px 5px', borderRadius: '4px', color: 'var(--text-muted)',
-                                border: '1px solid var(--border-color)'
-                              }}>
-                                <strong>{sCount}x</strong> {sName}
+                              <span key={sName} style={{ fontSize:'0.62rem', background:'rgba(255,255,255,0.03)', border:`1px solid ${cfg.borderColor}`, padding:'2px 8px', borderRadius:'6px', color: cfg.accentColor, fontWeight:'600' }}>
+                                {sCount}× {sName}
                               </span>
                             ))}
                           </div>
                         )}
 
-                        {agent.polyvalent && (
-                          <div style={{ marginTop: '6px' }}>
-                            <span style={{ fontSize: '0.65rem', fontWeight: '700', color: '#8b5cf6', border: '1px solid #8b5cf6', padding: '1px 7px', borderRadius: '10px' }}>
-                              <Star size={8} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '2px' }} />
-                              Polyvalent
-                            </span>
+                        {/* Barre de progression */}
+                        <div style={{ width:'100%', zIndex:2 }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.62rem', color:'var(--text-muted)', marginBottom:'5px' }}>
+                            <span>{rank === 1 ? 'Leader' : `${(allAgentsRankedFiltered[0].points - agent.points).toFixed(1)} pts pour le 1er`}</span>
+                            <span style={{ color: cfg.accentColor, fontWeight:700 }}>{Math.round(progressPct)}%</span>
                           </div>
-                        )}
-
-                        {/* Barre de progression vers le #1 */}
-                        {rank !== 1 && (
-                          <div style={{ marginTop: '10px' }}>
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                              {(allAgentsRankedFiltered[0].points - agent.points).toFixed(1)} pts pour le 1er
-                            </div>
-                            <div style={{ height: '4px', backgroundColor: 'var(--bg-input)', borderRadius: '4px', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${progressToFirst}%`, backgroundColor: cfg.color, borderRadius: '4px', transition: 'width 0.6s ease' }} />
-                            </div>
+                          <div style={{ height:'6px', borderRadius:'99px', background:'rgba(255,255,255,0.05)', overflow:'hidden', position:'relative' }}>
+                            <div style={{ height:'100%', width:`${progressPct}%`, background: cfg.barGradient, borderRadius:'99px', transition:'width 1s cubic-bezier(0.34,1.56,0.64,1)', boxShadow:`0 0 10px ${cfg.glowColor}` }} />
                           </div>
-                        )}
-
-                        {/* Piédestal */}
-                        <div style={{
-                          marginTop: '12px', height: cfg.height, borderRadius: '8px 8px 0 0',
-                          backgroundColor: cfg.color, opacity: 0.15, marginLeft: '-12px', marginRight: '-12px', marginBottom: '-16px'
-                        }} />
-                        <div style={{
-                          position: 'absolute', bottom: 0, left: 0, right: 0, height: cfg.height,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '2.5rem', fontWeight: '900', color: cfg.color, opacity: 0.2
-                        }}>
-                          {cfg.medal}
                         </div>
+
+                        {/* Ligne décorative bas */}
+                        <div style={{ position:'absolute', bottom:0, left:0, right:0, height:'2px', background: cfg.barGradient, opacity: isFirst ? 1 : 0.55 }} />
+
+                        {/* Coins décoratifs */}
+                        <div style={{ position:'absolute', bottom:'12px', left:'12px', width:'10px', height:'10px', borderLeft:`1px solid ${cfg.accentColor}50`, borderBottom:`1px solid ${cfg.accentColor}50`, borderRadius:'0 0 0 4px' }} />
+                        <div style={{ position:'absolute', bottom:'12px', right:'12px', width:'10px', height:'10px', borderRight:`1px solid ${cfg.accentColor}50`, borderBottom:`1px solid ${cfg.accentColor}50`, borderRadius:'0 0 4px 0' }} />
                       </div>
                     );
                   })}
@@ -1796,7 +1908,100 @@ const Bilan = () => {
         );
       })()}
 
+      {/* ── AVANCES SUR SALAIRES ──────────────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Users size={20} color="#f59e0b" />
+            <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+              Avances sur Salaires — {MOIS_FR[viewMonth]} {viewYear}
+            </h2>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              {monthAvances.length} avance{monthAvances.length !== 1 ? 's' : ''}
+            </span>
+            <span style={{ fontWeight: '800', fontSize: '1rem', color: '#f59e0b' }}>
+              -{fmt(totalAvancesMois)} FCFA
+            </span>
+          </div>
+        </div>
+
+        {monthAvances.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+            <Users size={32} style={{ opacity: 0.3, marginBottom: '10px' }} />
+            <p>Aucune avance sur salaire ce mois-ci.</p>
+          </div>
+        ) : (() => {
+          const byEmp = {};
+          monthAvances.forEach(a => {
+            const key = a.employeId || a.employeNom || 'Inconnu';
+            if (!byEmp[key]) byEmp[key] = { nom: a.employeNom || 'Inconnu', avances: [], total: 0 };
+            byEmp[key].avances.push(a);
+            byEmp[key].total += Number(a.montant || 0);
+          });
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {Object.values(byEmp).sort((a, b) => b.total - a.total).map((emp, idx) => (
+                <div key={idx} style={{ backgroundColor: 'var(--bg-input)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: emp.avances.length > 0 ? '1px solid var(--border-color)' : 'none', backgroundColor: 'rgba(245,158,11,0.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <User size={15} color="#f59e0b" />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)' }}>{emp.nom}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{emp.avances.length} avance{emp.avances.length > 1 ? 's' : ''} ce mois</div>
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#f59e0b' }}>
+                      -{fmt(emp.total)} FCFA
+                    </div>
+                  </div>
+
+                  <div>
+                    {emp.avances
+                      .sort((a, b) => new Date(b.date) - new Date(a.date))
+                      .map((a, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 16px 9px 58px', borderBottom: i < emp.avances.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minWidth: '80px' }}>
+                              {new Date(a.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </span>
+                            {a.motif && (
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{a.motif}</span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {a.modePaiement && (
+                              <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                                {a.modePaiement}
+                              </span>
+                            )}
+                            <span style={{ fontWeight: '700', color: '#f59e0b', fontSize: '0.9rem' }}>
+                              -{fmt(Number(a.montant || 0))} F
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+              ))}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 0 4px' }}>
+                <div style={{ fontWeight: '800', fontSize: '1rem', color: '#f59e0b' }}>
+                  Total avances du mois : -{fmt(totalAvancesMois)} FCFA
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
       {/* ── HISTORIQUE DES RÉDUCTIONS ET SOINS OFFERTS ─────────────────────── */}
+
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)' }}>
           <Percent size={20} color="var(--warning)" />
@@ -2212,11 +2417,12 @@ const Bilan = () => {
         
         let totalGlobalRestant = 0;
         const employeeLines = activeEmployes.map(emp => {
-          const verse = monthAvances.filter(a => a.employeId === emp.id).reduce((s, a) => s + Number(a.montant), 0);
+          // Seules les avances du mois comptent comme déjà versé
+          const avancesEmp = monthAvances.filter(a => a.employeId === emp.id).reduce((s, a) => s + Number(a.montant), 0);
           const base = Number(emp.salaireFixe) || 0;
-          const reste = Math.max(0, base - verse);
+          const reste = Math.max(0, base - avancesEmp);
           totalGlobalRestant += reste;
-          return { ...emp, verse, base, reste };
+          return { ...emp, avancesEmp, base, reste };
         });
 
         let totalToPay = 0;
@@ -2229,9 +2435,9 @@ const Bilan = () => {
         return (
           <div className="modal-overlay" onClick={() => setShowSalariesClosureModal(false)}>
             <div className="modal-content" style={{ maxWidth: '600px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-              <h2 style={{ marginBottom: '6px', fontSize: '1.15rem' }}>Cloture des salaires — {MOIS_FR[viewMonth]} {viewYear}</h2>
+              <h2 style={{ marginBottom: '6px', fontSize: '1.15rem' }}>Clôture des salaires — {MOIS_FR[viewMonth]} {viewYear}</h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '18px' }}>
-                Cette operation regularise le paiement des salaires. Les montants verses seront enregistres dans le journal des operations.
+                Choisissez le mode de clôture puis cliquez sur Confirmer. Les montants versés seront enregistrés dans le journal des opérations.
               </p>
 
               <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
@@ -2240,76 +2446,70 @@ const Bilan = () => {
                   className={`btn ${salaryClosureMode === 'global' ? 'btn-primary' : ''}`}
                   style={{ flex: 1, backgroundColor: salaryClosureMode !== 'global' ? 'var(--bg-input)' : undefined, color: salaryClosureMode !== 'global' ? 'var(--text-main)' : undefined }}
                 >
-                  Globale
+                  Globale (auto)
                 </button>
                 <button 
                   onClick={() => setSalaryClosureMode('individuel')}
                   className={`btn ${salaryClosureMode === 'individuel' ? 'btn-primary' : ''}`}
                   style={{ flex: 1, backgroundColor: salaryClosureMode !== 'individuel' ? 'var(--bg-input)' : undefined, color: salaryClosureMode !== 'individuel' ? 'var(--text-main)' : undefined }}
                 >
-                  Individuelle par agent
+                  Par agent
                 </button>
               </div>
 
-              {totalGlobalRestant === 0 ? (
-                <div style={{ padding: '14px', backgroundColor: 'var(--bg-input)', borderRadius: '8px', textAlign: 'center', color: 'var(--success)', fontWeight: '600', marginBottom: '16px' }}>
-                  Tous les salaires de ce mois ont deja ete verses integralement via les avances.
-                </div>
-              ) : (
-                <div style={{ marginBottom: '16px', backgroundColor: 'var(--bg-primary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  {employeeLines.map(emp => (
-                    <div key={emp.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{emp.nom}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                          Base : {emp.base.toLocaleString('fr-FR')} F | Avances : {emp.verse.toLocaleString('fr-FR')} F
-                        </div>
-                      </div>
-                      
-                      <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                        <div style={{ fontSize: '0.8rem', color: emp.reste > 0 ? '#F59E0B' : 'var(--success)' }}>
-                          Reste du : {emp.reste.toLocaleString('fr-FR')} F
-                        </div>
-                        {salaryClosureMode === 'individuel' && emp.reste > 0 && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>A verser :</label>
-                            <input 
-                              type="number"
-                              min="0"
-                              max={emp.reste}
-                              value={individualSalariesForm[emp.id] !== undefined ? individualSalariesForm[emp.id] : ''}
-                              onChange={(e) => setIndividualSalariesForm({ ...individualSalariesForm, [emp.id]: e.target.value })}
-                              style={{ width: '90px', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', textAlign: 'right' }}
-                            />
-                          </div>
-                        )}
-                        {salaryClosureMode === 'global' && emp.reste > 0 && (
-                          <div style={{ fontWeight: '600', color: 'var(--accent-color)' }}>
-                            Paiement : {emp.reste.toLocaleString('fr-FR')} F
-                          </div>
-                        )}
+              <div style={{ marginBottom: '16px', backgroundColor: 'var(--bg-primary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                {employeeLines.map(emp => (
+                  <div key={emp.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{emp.nom}</div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        Salaire de base : {emp.base.toLocaleString('fr-FR')} F | Avances : {emp.avancesEmp.toLocaleString('fr-FR')} F
                       </div>
                     </div>
-                  ))}
-
-                  <div style={{ marginTop: '14px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>
-                    <span>Total a verser (Trésorerie)</span>
-                    <span style={{ color: 'var(--danger)' }}>- {totalToPay.toLocaleString('fr-FR')} F</span>
+                    
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                      <div style={{ fontSize: '0.8rem', color: emp.reste > 0 ? '#F59E0B' : 'var(--success)', fontWeight: '600' }}>
+                        {emp.reste > 0 ? `Reste : ${emp.reste.toLocaleString('fr-FR')} F` : 'Soldé'}
+                      </div>
+                      {salaryClosureMode === 'individuel' && emp.reste > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>À verser :</label>
+                          <input 
+                            type="number"
+                            min="0"
+                            max={emp.reste}
+                            value={individualSalariesForm[emp.id] !== undefined ? individualSalariesForm[emp.id] : emp.reste}
+                            onChange={(e) => setIndividualSalariesForm({ ...individualSalariesForm, [emp.id]: e.target.value })}
+                            style={{ width: '90px', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', textAlign: 'right' }}
+                          />
+                        </div>
+                      )}
+                      {salaryClosureMode === 'global' && emp.reste > 0 && (
+                        <div style={{ fontWeight: '700', color: 'var(--danger)', fontSize: '0.9rem' }}>
+                          {emp.reste.toLocaleString('fr-FR')} F
+                        </div>
+                      )}
+                    </div>
                   </div>
+                ))}
+
+                <div style={{ marginTop: '14px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)', borderTop: '2px solid var(--border-color)' }}>
+                  <span>Total à verser</span>
+                  <span style={{ color: totalToPay > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                    {totalToPay > 0 ? `- ${totalToPay.toLocaleString('fr-FR')} F` : 'Tout soldé'}
+                  </span>
                 </div>
-              )}
+              </div>
 
               <div style={{ display: 'flex', gap: '10px' }}>
-                {totalGlobalRestant > 0 && (
-                  <button
-                    onClick={handleClosureSalaries}
-                    className="btn btn-primary"
-                    style={{ flex: 1 }}
-                    disabled={isClosingSalaries || totalToPay <= 0}
-                  >
-                    {isClosingSalaries ? 'Validation en cours...' : 'Valider la cloture'}
-                  </button>
-                )}
+                <button
+                  onClick={handleClosureSalaries}
+                  className="btn btn-primary"
+                  style={{ flex: 1, padding: '12px', fontSize: '0.95rem', fontWeight: '700' }}
+                  disabled={isClosingSalaries || totalToPay <= 0}
+                >
+                  {isClosingSalaries ? 'Validation en cours...' : totalToPay > 0 ? `Confirmer la clôture (${totalToPay.toLocaleString('fr-FR')} F)` : 'Salaires déjà tous versés'}
+                </button>
                 <button
                   onClick={() => setShowSalariesClosureModal(false)}
                   className="btn"
