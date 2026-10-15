@@ -150,10 +150,10 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
                   <img
-                    src="/gestion.svg"
+                    src="/logos/blanc.png"
                     alt="Le Cercle"
                     crossOrigin="anonymous"
-                    style={{ height: '36px', objectFit: 'contain', display: 'block' }}
+                    style={{ height: '38px', width: '38px', borderRadius: '50%', objectFit: 'contain', display: 'block' }}
                   />
                   <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', letterSpacing: '2px', color: '#fff', textTransform: 'uppercase' }}>
                     LE CERCLE

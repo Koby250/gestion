@@ -51,6 +51,12 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
+
+    // Mettre à jour dynamiquement l'icône de l'onglet du navigateur
+    const favicon = document.querySelector("link[rel='icon']:not([sizes])");
+    if (favicon) {
+      favicon.href = theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png';
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -143,25 +149,26 @@ function App() {
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (authLoading) {
-    const logoSrc = '/gestion.svg';
+    const logoSrc = theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png';
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
         justifyContent: 'center', backgroundColor: 'var(--bg-primary)', flexDirection: 'column', gap: '20px' }}>
         <div style={{ position: 'relative', display: 'inline-flex' }}>
           <div style={{
-            width: '72px', height: '72px', borderRadius: '18px',
-            background: 'linear-gradient(135deg, var(--accent-subtle), transparent)',
-            border: '1px solid var(--border-gold)',
+            width: '80px', height: '80px', borderRadius: '50%',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 30px var(--accent-glow)'
+            boxShadow: 'var(--shadow-deep)',
+            padding: '3px'
           }}>
-            <img src={logoSrc} alt="Le Cercle" style={{ height: '44px', objectFit: 'contain' }} />
+            <img src={logoSrc} alt="Le Cercle" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'contain' }} />
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '36px', height: '3px', borderRadius: '99px',
-            background: 'linear-gradient(90deg, var(--accent-dark), var(--accent), var(--accent-light))',
+            background: 'var(--btn-primary-bg)',
             animation: 'shimmer 1.5s infinite',
             backgroundSize: '200% 100%'
           }} />
@@ -244,11 +251,12 @@ function App() {
       {/* ── SIDEBAR ─────────────────────────────────────────────────────── */}
       <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <img
-              src="/gestion.svg"
+              src={theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png'}
               alt="Logo Le Cercle"
               className="sidebar-brand-logo"
+              style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'contain', flexShrink: 0 }}
             />
             <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.01em' }}>Le Cercle</h1>
           </div>

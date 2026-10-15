@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
 import { Mail, Lock, LogIn, AlertCircle, Eye, EyeOff, Sun, Moon } from 'lucide-react';
@@ -10,6 +10,13 @@ const Login = ({ theme: initialTheme = 'dark' }) => {
   const [showPassword,setShowPassword]= useState(false);
   const [error,       setError]       = useState('');
   const [loading,     setLoading]     = useState(false);
+
+  useEffect(() => {
+    const favicon = document.querySelector("link[rel='icon']:not([sizes])");
+    if (favicon) {
+      favicon.href = currentTheme === 'light' ? '/logos/noir.png' : '/logos/blanc.png';
+    }
+  }, [currentTheme]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -39,7 +46,7 @@ const Login = ({ theme: initialTheme = 'dark' }) => {
     }
   };
 
-  const logoSrc = '/gestion.svg';
+  const logoSrc = currentTheme === 'light' ? '/logos/noir.png' : '/logos/blanc.png';
 
   return (
     <div style={{
@@ -100,19 +107,19 @@ const Login = ({ theme: initialTheme = 'dark' }) => {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'linear-gradient(135deg, var(--accent-subtle), transparent)',
+            background: 'var(--bg-card)',
             border: '1px solid var(--border-color)',
-            borderRadius: '22px',
-            padding: '18px',
+            borderRadius: '50%',
+            padding: '4px',
             marginBottom: '20px',
-            width: '76px',
-            height: '76px',
-            boxShadow: '0 0 30px var(--accent-glow), 0 8px 32px rgba(0,0,0,0.4)',
+            width: '88px',
+            height: '88px',
+            boxShadow: 'var(--shadow-deep)',
           }}>
             <img
               src={logoSrc}
               alt="Logo Le Cercle"
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
             />
           </div>
 
