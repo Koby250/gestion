@@ -84,7 +84,7 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
       ? totalFacture - (data.acomptePaye || 0)
       : totalFacture;
 
-  const numFacture = `BCF-${(data.id || '').slice(0, 8).toUpperCase()}`;
+  const numFacture = `LC-${(data.id || '').slice(0, 8).toUpperCase()}`;
 
   return (
     <div className="modal-overlay hide-on-print">
@@ -135,12 +135,12 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
               margin: '0 auto',
             }}
           >
-            {/* Bande dorée top */}
-            <div style={{ height: '5px', background: 'linear-gradient(90deg, #f0a500, #e05c00)' }} />
+            {/* Bande supérieure */}
+            <div style={{ height: '5px', background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)' }} />
 
             {/* EN-TÊTE */}
             <div style={{
-              background: 'linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%)',
+              background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
               color: '#fff',
               padding: '20px 28px 16px',
               display: 'flex',
@@ -148,43 +148,48 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
               alignItems: 'flex-start',
             }}>
               <div>
-                <img
-                  src="/gestion.svg"
-                  alt="Gestion"
-                  crossOrigin="anonymous"
-                  style={{ height: '44px', objectFit: 'contain', display: 'block', marginBottom: '6px' }}
-                />
-                <p style={{ margin: 0, fontSize: '10px', letterSpacing: '1.5px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>
-                  Salon de Coiffure &amp; Esthétique
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <img
+                    src="/gestion.svg"
+                    alt="Le Cercle"
+                    crossOrigin="anonymous"
+                    style={{ height: '36px', objectFit: 'contain', display: 'block' }}
+                  />
+                  <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', letterSpacing: '2px', color: '#fff', textTransform: 'uppercase' }}>
+                    LE CERCLE
+                  </h2>
+                </div>
+                <p style={{ margin: 0, fontSize: '10px', letterSpacing: '1.5px', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>
+                  Espace &amp; Services de Prestige
                 </p>
-                <p style={{ margin: '4px 0 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.55)', lineHeight: '1.6' }}>
-                  Tél : +227 88 13 10 58 · Niamey, Niger
+                <p style={{ margin: '4px 0 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.65)', lineHeight: '1.6' }}>
+                  Tél : +227 87 37 73 70 · Niamey, Niger
                 </p>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <p style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#f0a500', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                <p style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#38bdf8', letterSpacing: '2px', textTransform: 'uppercase' }}>
                   {type === 'reservation' ? 'FACTURE' : 'REÇU'}
                 </p>
-                <p style={{ margin: '4px 0 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.55)' }}>N° {numFacture}</p>
-                <p style={{ margin: '3px 0 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.75)' }}>
+                <p style={{ margin: '4px 0 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>N° {numFacture}</p>
+                <p style={{ margin: '3px 0 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.8)' }}>
                   {new Date(data.datePrevue || data.date || data.createdAt).toLocaleDateString('fr-FR', {
                     day: 'numeric', month: 'long', year: 'numeric'
                   })}
                 </p>
-                <p style={{ margin: '2px 0 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.75)' }}>à {heureFormatee}</p>
+                <p style={{ margin: '2px 0 0 0', fontSize: '10px', color: 'rgba(255,255,255,0.8)' }}>à {heureFormatee}</p>
               </div>
             </div>
 
             {/* INFOS CLIENT */}
             <div style={{ padding: '14px 28px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', backgroundColor: '#fafafa' }}>
               <div>
-                <p style={{ margin: '0 0 2px 0', fontSize: '9px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase', color: '#f0a500' }}>CLIENT</p>
+                <p style={{ margin: '0 0 2px 0', fontSize: '9px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase', color: '#2563eb' }}>CLIENT</p>
                 <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#1a1a2e' }}>{data.clientNom || 'Client Anonyme'}</p>
                 {data.clientTel && <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#666' }}>Tél : {data.clientTel}</p>}
               </div>
               {type === 'reservation' && data.datePrevue && (
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ margin: '0 0 2px 0', fontSize: '9px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase', color: '#f0a500' }}>RDV</p>
+                  <p style={{ margin: '0 0 2px 0', fontSize: '9px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase', color: '#2563eb' }}>RDV</p>
                   <p style={{ margin: 0, fontSize: '12px', fontWeight: '600', color: '#1a1a2e' }}>
                     {new Date(data.datePrevue).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
                   </p>
@@ -197,47 +202,57 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
             <div style={{ padding: '14px 28px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#1a1a2e' }}>
-                    <th style={{ padding: '8px 10px', color: '#f0a500', fontSize: '9px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'left' }}>Prestation</th>
-                    <th style={{ padding: '8px 10px', color: '#f0a500', fontSize: '9px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'center' }}>Agent</th>
-                    <th style={{ padding: '8px 10px', color: '#f0a500', fontSize: '9px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'right' }}>Base</th>
-                    <th style={{ padding: '8px 10px', color: '#f0a500', fontSize: '9px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'right' }}>Montant</th>
+                  <tr style={{ backgroundColor: '#0f172a' }}>
+                    <th style={{ padding: '8px 10px', color: '#38bdf8', fontSize: '9px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'left' }}>Prestation</th>
+                    <th style={{ padding: '8px 10px', color: '#38bdf8', fontSize: '9px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'center' }}>Agent</th>
+                    <th style={{ padding: '8px 10px', color: '#38bdf8', fontSize: '9px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'right' }}>Base</th>
+                    <th style={{ padding: '8px 10px', color: '#38bdf8', fontSize: '9px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', textAlign: 'right' }}>Montant</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.lignes && data.lignes.length > 0 ? (
-                    data.lignes.map((ligne, index) => (
-                      <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#fff' : '#f8f8f8', borderBottom: '1px solid #f0f0f0' }}>
-                        <td style={{ padding: '9px 10px', fontSize: '12px' }}>
-                          <strong>{ligne.serviceNom}</strong>
-                          {ligne.remiseType && ligne.remiseType !== 'aucune' && (
-                            <div style={{ fontSize: '10px', color: '#f0a500', marginTop: '2px' }}>Remise : {ligne.remiseMotif}</div>
-                          )}
-                        </td>
-                        <td style={{ padding: '9px 10px', textAlign: 'center', fontSize: '11px', color: '#555' }}>
-                          {ligne.agents && ligne.agents.map(a => a.nom).join(', ')}
-                        </td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: '11px', color: '#999' }}>
-                          {ligne.remiseType && ligne.remiseType !== 'aucune' ? (
-                            <span style={{ textDecoration: 'line-through' }}>{Number(ligne.prixBase).toLocaleString('fr-FR')} F</span>
-                          ) : `${Number(ligne.prixBase).toLocaleString('fr-FR')} F`}
-                        </td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: '13px', fontWeight: '700', color: '#1a1a2e' }}>
-                          {Number(ligne.prixFinal).toLocaleString('fr-FR')} FCFA
-                        </td>
-                      </tr>
-                    ))
+                    data.lignes.map((ligne, index) => {
+                      const isBillard = ligne.isBillard || (ligne.serviceNom || '').toLowerCase().includes('billard');
+                      const nomAffiche = isBillard && (ligne.nombreParties || 1) > 1
+                        ? `${ligne.serviceNom || 'Billard'} (${ligne.nombreParties} parties)`
+                        : (ligne.serviceNom || 'Prestation');
+                      const agentAffiche = (ligne.agents && ligne.agents.length > 0)
+                        ? ligne.agents.map(a => a.nom).join(', ')
+                        : (isBillard ? '—' : (ligne.employeNom || '—'));
+
+                      return (
+                        <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#fff' : '#f8f8f8', borderBottom: '1px solid #f0f0f0' }}>
+                          <td style={{ padding: '9px 10px', fontSize: '12px' }}>
+                            <strong style={{ color: '#0f172a' }}>{nomAffiche}</strong>
+                            {ligne.remiseType && ligne.remiseType !== 'aucune' && (
+                              <div style={{ fontSize: '10px', color: '#2563eb', marginTop: '2px' }}>Remise : {ligne.remiseMotif}</div>
+                            )}
+                          </td>
+                          <td style={{ padding: '9px 10px', textAlign: 'center', fontSize: '11px', color: '#555' }}>
+                            {agentAffiche}
+                          </td>
+                          <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: '11px', color: '#999' }}>
+                            {ligne.remiseType && ligne.remiseType !== 'aucune' ? (
+                              <span style={{ textDecoration: 'line-through' }}>{Number(ligne.prixBase).toLocaleString('fr-FR')} F</span>
+                            ) : `${Number(ligne.prixBase).toLocaleString('fr-FR')} F`}
+                          </td>
+                          <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
+                            {Number(ligne.prixFinal).toLocaleString('fr-FR')} FCFA
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
                       <td style={{ padding: '9px 10px', fontSize: '12px' }}>
-                        <strong>{data.serviceNom || data.motif || 'Vente'}</strong>
-                        {data.reductionActive && <div style={{ fontSize: '10px', color: '#f0a500', marginTop: '2px' }}>Remise : {data.reductionMotif}</div>}
+                        <strong style={{ color: '#0f172a' }}>{data.serviceNom || data.motif || 'Vente'}</strong>
+                        {data.reductionActive && <div style={{ fontSize: '10px', color: '#2563eb', marginTop: '2px' }}>Remise : {data.reductionMotif}</div>}
                       </td>
                       <td style={{ padding: '9px 10px', textAlign: 'center', fontSize: '11px', color: '#555' }}>{data.employeNom || '—'}</td>
                       <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: '11px', color: '#999' }}>
                         {data.reductionActive ? <span style={{ textDecoration: 'line-through' }}>{data.prixOriginal} F</span> : `${data.prixTotal || data.montant || 0} F`}
                       </td>
-                      <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: '13px', fontWeight: '700', color: '#1a1a2e' }}>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
                         {(data.prixTotal || data.montant || 0).toLocaleString('fr-FR')} FCFA
                       </td>
                     </tr>
@@ -282,8 +297,8 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a1a2e', padding: '10px 12px', borderRadius: '6px', marginTop: '6px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: '700', color: '#f0a500', letterSpacing: '1px' }}>TOTAL DÛ</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f172a', padding: '10px 12px', borderRadius: '6px', marginTop: '6px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: '#38bdf8', letterSpacing: '1px' }}>TOTAL DÛ</span>
                   <span style={{ fontSize: '17px', fontWeight: '900', color: '#fff' }}>{resteAPayer.toLocaleString('fr-FR')} FCFA</span>
                 </div>
                 <div style={{ textAlign: 'right', marginTop: '6px' }}>
@@ -294,8 +309,8 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
 
             {/* NOTES (si activées) */}
             {showNotes && type === 'reservation' && data.historiqueNotes && data.historiqueNotes.length > 0 && (
-              <div style={{ margin: '0 28px 14px', padding: '12px 14px', border: '1px solid #e8e8e8', borderLeft: '4px solid #f0a500', borderRadius: '4px', backgroundColor: '#fffdf5' }}>
-                <p style={{ margin: '0 0 8px 0', fontSize: '9px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase', color: '#f0a500' }}>
+              <div style={{ margin: '0 28px 14px', padding: '12px 14px', border: '1px solid #e8e8e8', borderLeft: '4px solid #2563eb', borderRadius: '4px', backgroundColor: '#f8fafc' }}>
+                <p style={{ margin: '0 0 8px 0', fontSize: '9px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase', color: '#2563eb' }}>
                   Notes &amp; Instructions
                 </p>
                 {data.historiqueNotes.map((note, index) => (
@@ -310,15 +325,15 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
             )}
 
             {/* PIED DE PAGE */}
-            <div style={{ backgroundColor: '#f8f8f8', borderTop: '3px solid #f0a500', padding: '12px 28px', textAlign: 'center' }}>
-              <p style={{ margin: 0, fontSize: '10px', color: '#888', lineHeight: '1.6' }}>
-                Merci de votre confiance et à bientôt sur Gestion !<br />
-                <strong>+227 88 13 10 58</strong> · Niamey, Niger
+            <div style={{ backgroundColor: '#f8fafc', borderTop: '3px solid #2563eb', padding: '12px 28px', textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: '10px', color: '#64748b', lineHeight: '1.6' }}>
+                Merci de votre confiance et à bientôt chez Le Cercle !<br />
+                <strong style={{ color: '#0f172a' }}>+227 87 37 73 70</strong> · Niamey, Niger
               </p>
             </div>
 
-            {/* Bande dorée bas */}
-            <div style={{ height: '5px', background: 'linear-gradient(90deg, #f0a500, #e05c00)' }} />
+            {/* Bande moderne bas */}
+            <div style={{ height: '5px', background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)' }} />
 
           </div>
           {/* fin facture-print-area */}

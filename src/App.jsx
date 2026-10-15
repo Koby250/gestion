@@ -44,8 +44,9 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [prefilledReservationClient, setPrefilledReservationClient] = useState(null);
 
-  // Dark Mode
+  // Dark Mode & Accent Theme
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+  const [accentTheme, setAccentTheme] = useState(localStorage.getItem('accentTheme') || 'blue');
 
   useEffect(() => {
     // dark is the base design — light mode overrides via [data-theme="light"]
@@ -56,6 +57,11 @@ function App() {
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-accent', accentTheme);
+    localStorage.setItem('accentTheme', accentTheme);
+  }, [accentTheme]);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -149,18 +155,18 @@ function App() {
         <div style={{ position: 'relative', display: 'inline-flex' }}>
           <div style={{
             width: '72px', height: '72px', borderRadius: '18px',
-            background: 'linear-gradient(135deg, rgba(212,168,83,0.15), rgba(212,168,83,0.05))',
-            border: '1px solid rgba(212,168,83,0.25)',
+            background: 'linear-gradient(135deg, var(--accent-subtle), transparent)',
+            border: '1px solid var(--border-gold)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 30px rgba(212,168,83,0.15)'
+            boxShadow: '0 0 30px var(--accent-glow)'
           }}>
-            <img src={logoSrc} alt="Gestion Logo" style={{ height: '44px', objectFit: 'contain' }} />
+            <img src={logoSrc} alt="Le Cercle" style={{ height: '44px', objectFit: 'contain' }} />
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '36px', height: '3px', borderRadius: '99px',
-            background: 'linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-light))',
+            background: 'linear-gradient(90deg, var(--accent-dark), var(--accent), var(--accent-light))',
             animation: 'shimmer 1.5s infinite',
             backgroundSize: '200% 100%'
           }} />
@@ -193,7 +199,7 @@ function App() {
       case 'tresorerie':   return (userRole === 'admin' || userPerms.accesTresorerie) ? <Tresorerie activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'rh':           return userRole === 'admin' ? <RH activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'tracabilite':  return userRole === 'admin' ? <Tracabilite activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'parametres':   return (userRole === 'admin' || userPerms.accesParametres) ? <Parametres activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'parametres':   return (userRole === 'admin' || userPerms.accesParametres) ? <Parametres activeDate={activeDate} accentTheme={accentTheme} onAccentChange={setAccentTheme} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       default:             return <Accueil activeDate={activeDate} userRole={userRole} />;
     }
   };
@@ -246,10 +252,10 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <img
               src="/gestion.svg"
-              alt="Logo"
+              alt="Logo Le Cercle"
               className="sidebar-brand-logo"
             />
-            <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Gestion</h1>
+            <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.01em' }}>Le Cercle</h1>
           </div>
           <button className="close-sidebar-btn" onClick={() => setIsSidebarOpen(false)}>
             <X size={20} />

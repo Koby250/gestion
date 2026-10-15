@@ -1,66 +1,122 @@
 /* =====================================================
-   GESTION — Design System Premium Dark Gold
+   LE CERCLE — Design System Premium
    ===================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  /* Gold Palette */
-  --gold:          #D4A853;
-  --gold-light:    #E8C47A;
-  --gold-dark:     #A07830;
-  --gold-glow:     rgba(212, 168, 83, 0.25);
-  --gold-subtle:   rgba(212, 168, 83, 0.08);
-  --gold-border:   rgba(212, 168, 83, 0.2);
+  /* Modern Accent Palette (Bleu Saphir / Royal par défaut — aucun ton doré) */
+  --accent:        #3B82F6;
+  --accent-light:  #60A5FA;
+  --accent-dark:   #2563EB;
+  --accent-glow:   rgba(59, 130, 246, 0.25);
+  --accent-subtle: rgba(59, 130, 246, 0.08);
+  --accent-border: rgba(59, 130, 246, 0.22);
+  --border-accent: rgba(59, 130, 246, 0.2);
+  --shadow-accent: 0 0 24px rgba(59, 130, 246, 0.15);
 
-  /* Dark Backgrounds */
-  --bg-primary:    #0A0A0A;
-  --bg-card:       #141414;
-  --bg-card-hover: #1A1A1A;
-  --bg-input:      #1C1C1C;
-  --bg-elevated:   #1F1F1F;
-  --bg-sidebar:    #0E0E0E;
+  /* Aliases de compatibilité */
+  --gold:          var(--accent);
+  --gold-light:    var(--accent-light);
+  --gold-dark:     var(--accent-dark);
+  --gold-glow:     var(--accent-glow);
+  --gold-subtle:   var(--accent-subtle);
+  --gold-border:   var(--accent-border);
+  --border-gold:   var(--border-accent);
+  --shadow-gold:   var(--shadow-accent);
+  --accent-color:  var(--accent);
 
-  /* Text */
-  --text-main:     #F5F0E8;
-  --text-muted:    #7A7066;
-  --text-soft:     #A09080;
+  /* Dark Backgrounds — Épuré & Haute Fidélité */
+  --bg-primary:    #0B0F19;
+  --bg-card:       #111827;
+  --bg-card-hover: #1A2234;
+  --bg-input:      #172033;
+  --bg-elevated:   #1E293B;
+  --bg-sidebar:    #0D1322;
+
+  /* Text — Blanc net & Ardoise */
+  --text-main:     #F8FAFC;
+  --text-muted:    #8B9BB4;
+  --text-soft:     #CBD5E1;
 
   /* Semantic */
-  --danger:        #E05555;
-  --danger-subtle: rgba(224, 85, 85, 0.1);
-  --success:       #3EB887;
-  --success-subtle:rgba(62, 184, 135, 0.1);
-  --warning:       #F0A030;
+  --danger:        #EF4444;
+  --danger-subtle: rgba(239, 68, 68, 0.1);
+  --success:       #10B981;
+  --success-subtle:rgba(16, 185, 129, 0.1);
+  --warning:       #F59E0B;
 
   /* Borders */
-  --border-color:  rgba(255, 255, 255, 0.06);
-  --border-gold:   rgba(212, 168, 83, 0.18);
+  --border-color:  rgba(255, 255, 255, 0.08);
 
   /* Sidebar */
   --sidebar-width: 260px;
 
   /* Shadows */
   --shadow-card:   0 4px 24px rgba(0,0,0,0.4);
-  --shadow-gold:   0 0 24px rgba(212,168,83,0.15);
   --shadow-deep:   0 8px 40px rgba(0,0,0,0.6);
 }
 
+/* Thèmes d'accents sélectionnables */
+[data-accent="emerald"] {
+  --accent:        #10B981;
+  --accent-light:  #34D399;
+  --accent-dark:   #059669;
+  --accent-glow:   rgba(16, 185, 129, 0.25);
+  --accent-subtle: rgba(16, 185, 129, 0.08);
+  --accent-border: rgba(16, 185, 129, 0.22);
+  --border-accent: rgba(16, 185, 129, 0.2);
+  --shadow-accent: 0 0 24px rgba(16, 185, 129, 0.15);
+}
+
+[data-accent="violet"] {
+  --accent:        #8B5CF6;
+  --accent-light:  #A78BFA;
+  --accent-dark:   #7C3AED;
+  --accent-glow:   rgba(139, 92, 246, 0.25);
+  --accent-subtle: rgba(139, 92, 246, 0.08);
+  --accent-border: rgba(139, 92, 246, 0.22);
+  --border-accent: rgba(139, 92, 246, 0.2);
+  --shadow-accent: 0 0 24px rgba(139, 92, 246, 0.15);
+}
+
+[data-accent="cyan"] {
+  --accent:        #06B6D4;
+  --accent-light:  #22D3EE;
+  --accent-dark:   #0891B2;
+  --accent-glow:   rgba(6, 182, 212, 0.25);
+  --accent-subtle: rgba(6, 182, 212, 0.08);
+  --accent-border: rgba(6, 182, 212, 0.22);
+  --border-accent: rgba(6, 182, 212, 0.2);
+  --shadow-accent: 0 0 24px rgba(6, 182, 212, 0.15);
+}
+
+[data-accent="slate"] {
+  --accent:        #64748B;
+  --accent-light:  #94A3B8;
+  --accent-dark:   #475569;
+  --accent-glow:   rgba(100, 116, 139, 0.25);
+  --accent-subtle: rgba(100, 116, 139, 0.08);
+  --accent-border: rgba(100, 116, 139, 0.22);
+  --border-accent: rgba(100, 116, 139, 0.2);
+  --shadow-accent: 0 0 24px rgba(100, 116, 139, 0.15);
+}
+
 [data-theme="light"] {
-  --bg-primary:    #FAF7F2;
+  --bg-primary:    #F8FAFC;
   --bg-card:       #FFFFFF;
-  --bg-card-hover: #F5F0E8;
-  --bg-input:      #F0EBE0;
+  --bg-card-hover: #F1F5F9;
+  --bg-input:      #F1F5F9;
   --bg-elevated:   #FFFFFF;
   --bg-sidebar:    #FFFFFF;
-  --text-main:     #1A1208;
-  --text-muted:    #8A7060;
-  --text-soft:     #A09080;
-  --border-color:  rgba(0,0,0,0.07);
-  --border-gold:   rgba(212,168,83,0.3);
-  --shadow-card:   0 4px 20px rgba(0,0,0,0.08);
-  --shadow-gold:   0 0 20px rgba(212,168,83,0.12);
-  --shadow-deep:   0 8px 32px rgba(0,0,0,0.12);
+  --text-main:     #0F172A;
+  --text-muted:    #64748B;
+  --text-soft:     #475569;
+  --border-color:  rgba(0,0,0,0.08);
+  --border-gold:   rgba(59, 130, 246, 0.25);
+  --shadow-card:   0 4px 20px rgba(0,0,0,0.06);
+  --shadow-gold:   0 0 20px rgba(59, 130, 246, 0.12);
+  --shadow-deep:   0 8px 32px rgba(0,0,0,0.1);
 }
 
 /* ── Base ─────────────────────────────────────────── */
@@ -86,8 +142,8 @@ body {
 /* Scrollbar premium */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(212,168,83,0.25); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(212,168,83,0.45); }
+::-webkit-scrollbar-thumb { background: var(--accent-border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 /* ── Layout Dashboard ─────────────────────────────── */
 .app-container {
@@ -540,15 +596,15 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--gold), var(--gold-dark));
-  color: #0A0A0A;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: #FFFFFF;
   font-weight: 700;
-  box-shadow: 0 4px 14px rgba(212,168,83,0.3);
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, var(--gold-light), var(--gold));
-  box-shadow: 0 6px 20px rgba(212,168,83,0.45);
+  background: linear-gradient(135deg, var(--accent-light), var(--accent));
+  box-shadow: 0 6px 20px var(--accent-glow);
   transform: translateY(-1px);
 }
 
@@ -592,20 +648,20 @@ body {
 }
 
 .agent-badge:hover {
-  border-color: var(--gold);
-  background-color: rgba(212,168,83,0.1);
-  color: var(--gold-light);
+  border-color: var(--accent);
+  background-color: var(--accent-subtle);
+  color: var(--accent-light);
   transform: translateY(-1px);
 }
 
 .agent-badge.selected {
-  background: linear-gradient(135deg, #D4A853, #B8872E);
-  border-color: #D4A853;
-  color: #0A0800;
-  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  border-color: var(--accent);
+  color: #FFFFFF;
+  font-weight: 700;
   box-shadow:
-    0 0 0 3px rgba(212,168,83,0.25),
-    0 4px 14px rgba(212,168,83,0.45),
+    0 0 0 3px var(--accent-border),
+    0 4px 14px var(--accent-glow),
     0 1px 3px rgba(0,0,0,0.4);
   transform: translateY(-2px);
   padding-left: 12px;
@@ -623,8 +679,8 @@ body {
   width: 100%;
   padding: 13px;
   border: 2px dashed var(--border-gold);
-  background-color: var(--gold-subtle);
-  color: var(--gold);
+  background-color: var(--accent-subtle);
+  color: var(--accent);
   font-family: 'Inter', sans-serif;
   font-weight: 600;
   font-size: 0.9rem;
@@ -639,9 +695,9 @@ body {
 }
 
 .btn-add-prestation:hover {
-  background-color: rgba(212,168,83,0.14);
-  border-color: var(--gold);
-  box-shadow: 0 0 16px var(--gold-glow);
+  background-color: var(--accent-border);
+  border-color: var(--accent);
+  box-shadow: 0 0 16px var(--accent-glow);
 }
 
 /* ── Responsive Utilities ─────────────────────────── */

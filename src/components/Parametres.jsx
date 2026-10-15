@@ -3,12 +3,12 @@ import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, setDoc } fro
 import { db, auth, app } from '../firebase';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck, Eye, EyeOff, Palette } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import BulkActionBar from './BulkActionBar';
 import { computeGlobalPoints } from '../utils/points';
 
-const Parametres = () => {
+const Parametres = ({ accentTheme = 'blue', onAccentChange }) => {
   // Collection States
   const [services, setServices] = useState([]);
   const [servicesDomicile, setServicesDomicile] = useState([]);
@@ -345,6 +345,57 @@ const Parametres = () => {
   return (
     <div className="view-container">
       
+      {/* ── COULEUR D'ACCENT & APPARENCE ───────────────────────────────── */}
+      <div className="card">
+        <h2 className="card-title" style={{ margin: 0, paddingBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Palette size={20} color="var(--accent-color)" />
+          Apparence &amp; Accent de Couleur
+        </h2>
+        <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: '10px 0 16px' }}>
+          Personnalisez la couleur principale de l'application (remplace l'ancien style doré par une teinte moderne et épurée).
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+          {[
+            { key: 'blue', label: 'Bleu Royal / Saphir', color: '#3B82F6', badge: 'Recommandé' },
+            { key: 'emerald', label: 'Émeraude Moderne', color: '#10B981' },
+            { key: 'violet', label: 'Violet Impérial', color: '#8B5CF6' },
+            { key: 'cyan', label: 'Cyan Électrique', color: '#06B6D4' },
+            { key: 'slate', label: 'Titane / Ardoise', color: '#64748B' },
+          ].map(palette => {
+            const isSelected = (accentTheme || 'blue') === palette.key;
+            return (
+              <button
+                key={palette.key}
+                type="button"
+                onClick={() => onAccentChange && onAccentChange(palette.key)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '10px 16px',
+                  borderRadius: '12px',
+                  border: isSelected ? `2px solid ${palette.color}` : '1px solid var(--border-color)',
+                  backgroundColor: isSelected ? 'var(--bg-elevated)' : 'var(--bg-input)',
+                  color: isSelected ? 'var(--text-main)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: isSelected ? '700' : '500',
+                  boxShadow: isSelected ? `0 0 16px ${palette.color}40` : 'none',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <span style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: palette.color, display: 'inline-block', boxShadow: `0 0 8px ${palette.color}` }} />
+                <span>{palette.label}</span>
+                {palette.badge && (
+                  <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '6px', backgroundColor: `${palette.color}25`, color: palette.color, fontWeight: '700' }}>
+                    {palette.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* OBJECTIFS & CALCULATEUR */}
       <div className="card">
         <h2 className="card-title">Objectifs & Réréajustement</h2>

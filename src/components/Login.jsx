@@ -60,7 +60,7 @@ const Login = ({ theme }) => {
         transform: 'translateX(-50%)',
         width: '500px',
         height: '500px',
-        background: 'radial-gradient(circle, rgba(212,168,83,0.06) 0%, transparent 70%)',
+        background: 'radial-gradient(circle, var(--accent-glow) 0%, transparent 70%)',
         pointerEvents: 'none',
         borderRadius: '50%',
       }} />
@@ -73,31 +73,31 @@ const Login = ({ theme }) => {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'linear-gradient(135deg, rgba(212,168,83,0.15), rgba(212,168,83,0.04))',
-            border: '1px solid rgba(212,168,83,0.25)',
+            background: 'linear-gradient(135deg, var(--accent-subtle), transparent)',
+            border: '1px solid var(--border-gold)',
             borderRadius: '22px',
             padding: '18px',
             marginBottom: '20px',
             width: '76px',
             height: '76px',
-            boxShadow: '0 0 40px rgba(212,168,83,0.12), 0 8px 32px rgba(0,0,0,0.3)',
+            boxShadow: '0 0 40px var(--accent-glow), 0 8px 32px rgba(0,0,0,0.3)',
           }}>
             <img
               src={logoSrc}
-              alt="Logo Gestion"
+              alt="Logo Le Cercle"
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
           </div>
 
           <h1 style={{
-            fontSize: '1.7rem',
+            fontSize: '1.75rem',
             fontWeight: '800',
             color: 'var(--text-main)',
             marginBottom: '6px',
-            letterSpacing: '-0.03em',
+            letterSpacing: '-0.02em',
             fontFamily: 'Inter, sans-serif',
           }}>
-            Gestion
+            Le Cercle
           </h1>
           <p style={{
             color: 'var(--text-muted)',
@@ -105,7 +105,7 @@ const Login = ({ theme }) => {
             fontWeight: 400,
             letterSpacing: '0.01em',
           }}>
-            Connectez-vous à votre espace de gestion
+            Connectez-vous à votre espace Le Cercle
           </p>
         </div>
 
@@ -114,8 +114,8 @@ const Login = ({ theme }) => {
           backgroundColor: 'var(--bg-card)',
           borderRadius: '22px',
           padding: '32px 28px',
-          border: '1px solid var(--border-gold)',
-          boxShadow: '0 24px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(212,168,83,0.05)',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.5), 0 0 0 1px var(--border-color)',
         }}>
           <form onSubmit={handleLogin}>
 
@@ -147,7 +147,7 @@ const Login = ({ theme }) => {
               <input
                 type="email"
                 className="input-control"
-                placeholder="admin@gestion.com"
+                placeholder="contact@lecercle.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
@@ -219,7 +219,7 @@ const Login = ({ theme }) => {
           color: 'var(--text-muted)',
           letterSpacing: '0.03em',
         }}>
-          Gestion &mdash; Accès réservé aux membres autorisés
+          Le Cercle &mdash; Accès réservé aux membres autorisés
         </p>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase';
-import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, ShieldAlert, CheckCircle, Search, Edit2, X } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, Save, ChevronDown, ChevronUp, FileText, ShieldAlert, CheckCircle, Search, Edit2, X, Calendar, Clock } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import FactureModal from './FactureModal';
 import SuccessModal from './SuccessModal';
@@ -9,6 +9,11 @@ import BulkActionBar from './BulkActionBar';
 import PanierPrestations from './PanierPrestations';
 
 const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const getCurrentTimeStr = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
 const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   // State for reference data
   const [services, setServices] = useState([]);
@@ -23,6 +28,14 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   const [typeTransaction, setTypeTransaction] = useState('prestation');
   const [modePaiement, setModePaiement] = useState('Cash');
   const [selectedEmployeId, setSelectedEmployeId] = useState('');
+  // Date & Heure saisie personnalisée
+  const [dateOperation, setDateOperation] = useState(activeDate);
+  const [heureOperation, setHeureOperation] = useState(getCurrentTimeStr);
+
+  useEffect(() => {
+    setDateOperation(activeDate);
+  }, [activeDate]);
+
   // Depense fields
   const [montant, setMontant] = useState('');
   const [motifDepense, setMotifDepense] = useState('');
@@ -43,6 +56,8 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   const [editTxLignes, setEditTxLignes] = useState([]);
   const [editTxClientNom, setEditTxClientNom] = useState('');
   const [editTxModePaiement, setEditTxModePaiement] = useState('Cash');
+  const [editTxDate, setEditTxDate] = useState('');
+  const [editTxHeure, setEditTxHeure] = useState('');
 
   const [selectedTransactions, setSelectedTransactions] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +67,8 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   // Edit depense modal state
   const [editDepenseModal, setEditDepenseModal] = useState(null);
   const [editDepenseForm, setEditDepenseForm] = useState({ montant: '', motif: '', categorie: '', modePaiement: 'Cash', employeId: '' });
+  const [editDepenseDate, setEditDepenseDate] = useState('');
+  const [editDepenseHeure, setEditDepenseHeure] = useState('');
 
   // New Filters
   const [searchTxTerm, setSearchTxTerm] = useState('');
@@ -115,15 +132,11 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   };
 
   const getTransactionDate = () => {
-    const todayStr = localDateStr();
-    if (activeDate === todayStr) {
-      return new Date().toISOString();
-    } else {
-      const now = new Date();
-      const retroDate = new Date(activeDate);
-      retroDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
-      return retroDate.toISOString();
-    }
+    const timeStr = heureOperation || getCurrentTimeStr();
+    const [h, m] = timeStr.split(':');
+    const d = new Date(dateOperation || activeDate);
+    d.setHours(parseInt(h, 10) || 0, parseInt(m, 10) || 0, 0, 0);
+    return d.toISOString();
   };
 
   const handleSave = async (e) => {
@@ -133,39 +146,68 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
 
     try {
       if (typeTransaction === 'prestation') {
-        if (lignesPanier.length === 0 || lignesPanier.some(l => !l.serviceId || !l.prixFinal || l.agents.length === 0)) {
-          alert("Veuillez remplir correctement toutes les prestations (service, prix et agent(s)).");
+        const isLineInvalid = (l) => {
+          if (!l.serviceId && !l.serviceNom) return true;
+          // Le prix = 0 est parfaitement valide (ex: soin offert / remise 100%)
+          if (l.prixFinal === '' || l.prixFinal === undefined || l.prixFinal === null || isNaN(Number(l.prixFinal)) || Number(l.prixFinal) < 0) return true;
+          const isBillard = l.isBillard || (l.serviceNom || '').toLowerCase().includes('billard');
+          // Le billard ne requiert PAS d'agent obligatoire
+          if (!isBillard && (!l.agents || l.agents.length === 0)) return true;
+          return false;
+        };
+
+        if (lignesPanier.length === 0 || lignesPanier.some(isLineInvalid)) {
+          alert("Veuillez remplir correctement toutes les prestations (service, prix et agent(s) pour les services non-billard).");
+          setIsSubmitting(false);
           return;
         }
 
         const totalMontant = lignesPanier.reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
-        const allAgentNoms = [...new Set(lignesPanier.flatMap(l => l.agents.map(a => a.nom)))];
+        const allAgentNoms = [...new Set(lignesPanier.flatMap(l => (l.agents || []).map(a => a.nom)))];
+
+        let motifDescription = '';
+        if (lignesPanier.length === 1) {
+          const l0 = lignesPanier[0];
+          const isB = l0.isBillard || (l0.serviceNom || '').toLowerCase().includes('billard');
+          if (isB && (l0.nombreParties || 1) > 1) {
+            motifDescription = `Billard (${l0.nombreParties} parties)`;
+          } else {
+            motifDescription = l0.serviceNom || 'Prestation';
+          }
+        } else {
+          motifDescription = `Forfait (${lignesPanier.length} prestations)`;
+        }
+
+        const firstAgent = lignesPanier.find(l => l.agents && l.agents.length > 0)?.agents?.[0];
 
         const newTransaction = {
           type: 'prestation',
           montant: totalMontant,
-          motif: lignesPanier.length === 1 ? lignesPanier[0].serviceNom : `Forfait (${lignesPanier.length} prestations)`,
+          motif: motifDescription,
           clientNom: clientNomCaisse.trim() || 'Client anonyme',
-          employeNom: allAgentNoms.join(', '),
-          employeId: lignesPanier[0].agents[0]?.id || '',
+          employeNom: allAgentNoms.length > 0 ? allAgentNoms.join(', ') : 'Aucun (Billard)',
+          employeId: firstAgent?.id || '',
           modePaiement,
           date: getTransactionDate(),
           saisieParNom: currentUserNom,
           lignes: lignesPanier.map(l => ({
-            serviceId: l.serviceId,
+            serviceId: l.serviceId || 'billard',
             serviceNom: l.serviceNom,
+            isBillard: !!(l.isBillard || (l.serviceNom || '').toLowerCase().includes('billard')),
+            nombreParties: l.nombreParties || 1,
+            prixUnitaire: Number(l.prixUnitaire) || Number(l.prixFinal) || 0,
             prixBase: Number(l.prixBase) || 0,
             prixFinal: Number(l.prixFinal) || 0,
-            remiseType: l.remiseType,
-            remiseValeur: l.remiseValeur,
-            remiseMotif: l.remiseMotif,
-            agents: l.agents,
+            remiseType: l.remiseType || 'aucune',
+            remiseValeur: l.remiseValeur || '',
+            remiseMotif: l.remiseMotif || '',
+            agents: l.agents || [],
             isDomicile: !!l.isDomicile
           }))
         };
 
         await addDoc(collection(db, 'transactions'), newTransaction);
-        await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA. Agents: ${allAgentNoms.join(', ')}. Mode: ${modePaiement}`);
+        await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA. Agents: ${allAgentNoms.join(', ') || 'Aucun'}. Mode: ${modePaiement}`);
 
         if (clientIdCaisse) {
           try {
@@ -179,12 +221,11 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
           }
         }
 
-        // Note: L'attribution des points est désormais calculée dynamiquement dans Bilan/Parametres
-
         // Reset
         setLignesPanier([{ serviceId: '', serviceNom: '', prixBase: '', prixFinal: '', agents: [], remiseType: 'aucune', remiseValeur: '', remiseMotif: '' }]);
         setClientNomCaisse('');
         setClientIdCaisse('');
+        setHeureOperation(getCurrentTimeStr());
         setShowSuccess(true);
 
       } else {
@@ -194,7 +235,6 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         if (!selectedEmployeId) { alert("Veuillez assigner un membre de l'équipe."); return; }
 
         const employe = employes.find(e => e.id === selectedEmployeId);
-        const cat = categories.find(c => c.id === selectedCategoryId);
 
         const newTransaction = {
           type: 'depense',
@@ -215,6 +255,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         setMontant('');
         setMotifDepense('');
         setSelectedCategoryId('');
+        setHeureOperation(getCurrentTimeStr());
       }
     } catch (err) {
       console.error("Erreur lors de la sauvegarde :", err);
@@ -226,6 +267,10 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
 
   const handleOpenEditModal = (t) => {
     setEditTxModal(t);
+    const d = t.date ? new Date(t.date) : new Date();
+    setEditTxDate(localDateStr(d));
+    setEditTxHeure(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+
     if (t.type === 'prestation') {
       setEditTxLignes(t.lignes || []);
       setEditTxClientNom(t.clientNom || '');
@@ -242,31 +287,70 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
     setIsEditing(true);
     try {
       if (editTxModal.type === 'prestation') {
+        const isLineInvalid = (l) => {
+          if (!l.serviceId && !l.serviceNom) return true;
+          if (l.prixFinal === '' || l.prixFinal === undefined || l.prixFinal === null || isNaN(Number(l.prixFinal)) || Number(l.prixFinal) < 0) return true;
+          const isBillard = l.isBillard || (l.serviceNom || '').toLowerCase().includes('billard');
+          if (!isBillard && (!l.agents || l.agents.length === 0)) return true;
+          return false;
+        };
+
+        if (editTxLignes.length === 0 || editTxLignes.some(isLineInvalid)) {
+          alert("Veuillez vérifier les prestations modifiées (service, prix et agents si requis).");
+          setIsEditing(false);
+          return;
+        }
+
         const total = editTxLignes.reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
         
         let employeId = editTxModal.employeId || null;
         let employeNom = editTxModal.employeNom || 'Inconnu';
         
-        if (editTxLignes.length === 1 && editTxLignes[0].agents && editTxLignes[0].agents.length === 1) {
-          employeId = editTxLignes[0].agents[0].id;
-          employeNom = editTxLignes[0].agents[0].nom;
-        } else if (editTxLignes.length > 1) {
-          employeNom = 'Divers';
-          employeId = 'divers';
+        const allAgents = [...new Set(editTxLignes.flatMap(l => (l.agents || []).map(a => a.nom)))];
+        if (allAgents.length === 1) {
+          const a = editTxLignes.find(l => l.agents && l.agents.length > 0)?.agents?.[0];
+          employeId = a?.id || null;
+          employeNom = a?.nom || 'Inconnu';
+        } else if (allAgents.length > 1) {
+          employeNom = allAgents.join(', ');
+          employeId = 'multi';
+        } else {
+          employeNom = 'Aucun (Billard)';
+          employeId = '';
+        }
+
+        // Reconstruire la date et heure choisies
+        const [h, m] = (editTxHeure || '12:00').split(':');
+        const d = new Date(editTxDate || localDateStr());
+        d.setHours(parseInt(h, 10) || 0, parseInt(m, 10) || 0, 0, 0);
+        const newDateISO = d.toISOString();
+
+        let motifDesc = '';
+        if (editTxLignes.length === 1) {
+          const l0 = editTxLignes[0];
+          const isB = l0.isBillard || (l0.serviceNom || '').toLowerCase().includes('billard');
+          if (isB && (l0.nombreParties || 1) > 1) {
+            motifDesc = `Billard (${l0.nombreParties} parties)`;
+          } else {
+            motifDesc = l0.serviceNom || 'Prestation';
+          }
+        } else {
+          motifDesc = `Forfait (${editTxLignes.length} prestations)`;
         }
 
         await updateDoc(doc(db, 'transactions', editTxModal.id), {
           montant: total,
-          motif: editTxLignes.length === 1 ? editTxLignes[0].serviceNom : `Forfait (${editTxLignes.length} prestations)`,
+          motif: motifDesc,
           clientNom: editTxClientNom,
           modePaiement: editTxModePaiement,
           lignes: editTxLignes,
           employeId: employeId,
           employeNom: employeNom,
+          date: newDateISO,
           modifieParNom: currentUserNom,
           dateModification: new Date().toISOString()
         });
-        await logEvent('TRANSACTION_UPDATE', `Modification de la prestation (${total} FCFA) par ${currentUserNom}`);
+        await logEvent('TRANSACTION_UPDATE', `Modification de la prestation (${total} FCFA) au ${editTxDate} à ${editTxHeure} par ${currentUserNom}`);
       }
       setEditTxModal(null);
     } catch (err) {
@@ -279,6 +363,10 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
 
   const handleOpenEditDepense = (t) => {
     setEditDepenseModal(t);
+    const d = t.date ? new Date(t.date) : new Date();
+    setEditDepenseDate(localDateStr(d));
+    setEditDepenseHeure(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+
     setEditDepenseForm({
       montant: t.montant || '',
       motif: t.motif || '',
@@ -292,10 +380,17 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
     if (!editDepenseModal) return;
     const { montant, motif, categorie, modePaiement, employeId } = editDepenseForm;
     if (!montant || isNaN(Number(montant))) { alert('Montant invalide.'); return; }
-    if (!categorie) { alert('Veuillez s\u00e9lectionner une cat\u00e9gorie.'); return; }
+    if (!categorie) { alert('Veuillez sélectionner une catégorie.'); return; }
     setIsEditing(true);
     try {
       const employe = employes.find(e => e.id === employeId);
+
+      // Reconstruire la date et heure choisies
+      const [h, m] = (editDepenseHeure || '12:00').split(':');
+      const d = new Date(editDepenseDate || localDateStr());
+      d.setHours(parseInt(h, 10) || 0, parseInt(m, 10) || 0, 0, 0);
+      const newDateISO = d.toISOString();
+
       await updateDoc(doc(db, 'transactions', editDepenseModal.id), {
         montant: Number(montant),
         motif,
@@ -303,10 +398,11 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         modePaiement,
         employeId: employeId || null,
         employeNom: employe ? employe.nom : (editDepenseModal.employeNom || 'Inconnu'),
+        date: newDateISO,
         modifieParNom: currentUserNom,
         dateModification: new Date().toISOString()
       });
-      await logEvent('TRANSACTION_UPDATE', `Modification d\u00e9pense (${montant} FCFA, cat\u00e9gorie: ${categorie}) par ${currentUserNom}`);
+      await logEvent('TRANSACTION_UPDATE', `Modification dépense (${montant} FCFA, catégorie: ${categorie}) au ${editDepenseDate} à ${editDepenseHeure} par ${currentUserNom}`);
       setEditDepenseModal(null);
     } catch (err) {
       console.error(err);
@@ -637,6 +733,34 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         </div>
 
         <form onSubmit={handleSave}>
+          {/* Horodatage réglable de la prestation / dépense */}
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', padding: '12px 16px', backgroundColor: 'var(--bg-input)', borderRadius: '12px', border: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '160px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                <Calendar size={14} color="var(--accent)" /> Date de l'opération
+              </label>
+              <input 
+                type="date" 
+                className="input-control" 
+                style={{ margin: 0 }} 
+                value={dateOperation} 
+                onChange={e => setDateOperation(e.target.value)} 
+              />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '140px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                <Clock size={14} color="var(--accent)" /> Heure de l'opération
+              </label>
+              <input 
+                type="time" 
+                className="input-control" 
+                style={{ margin: 0 }} 
+                value={heureOperation} 
+                onChange={e => setHeureOperation(e.target.value)} 
+              />
+            </div>
+          </div>
+
           {typeTransaction === 'prestation' ? (
             <PanierPrestations
               lignes={lignesPanier}
@@ -836,9 +960,38 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         <div className="modal-overlay" onClick={() => setEditTxModal(null)}>
           <div className="modal-content" style={{ maxWidth: '800px', width: '95%' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Modifier la transaction</h2>
+              <h2>Modifier la prestation</h2>
               <button className="btn-icon" onClick={() => setEditTxModal(null)}><X size={20} /></button>
             </div>
+
+            {/* Date & Heure modifiable pour la prestation */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', padding: '12px 14px', backgroundColor: 'var(--bg-input)', borderRadius: '12px', border: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  <Calendar size={13} color="var(--accent)" /> Date de la prestation
+                </label>
+                <input 
+                  type="date" 
+                  className="input-control" 
+                  style={{ margin: 0 }}
+                  value={editTxDate} 
+                  onChange={e => setEditTxDate(e.target.value)} 
+                />
+              </div>
+              <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '130px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  <Clock size={13} color="var(--accent)" /> Heure de la prestation
+                </label>
+                <input 
+                  type="time" 
+                  className="input-control" 
+                  style={{ margin: 0 }}
+                  value={editTxHeure} 
+                  onChange={e => setEditTxHeure(e.target.value)} 
+                />
+              </div>
+            </div>
+
             <PanierPrestations 
               lignes={editTxLignes}
               setLignes={setEditTxLignes}
@@ -876,6 +1029,16 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
               <button className="btn-icon" onClick={() => setEditDepenseModal(null)}><X size={20} /></button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '140px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}><Calendar size={13} color="var(--accent)" /> Date</label>
+                  <input type="date" className="input-control" value={editDepenseDate} onChange={e => setEditDepenseDate(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '120px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}><Clock size={13} color="var(--accent)" /> Heure</label>
+                  <input type="time" className="input-control" value={editDepenseHeure} onChange={e => setEditDepenseHeure(e.target.value)} />
+                </div>
+              </div>
               <div className="form-group" style={{ margin: 0 }}>
                 <label>Motif</label>
                 <input
