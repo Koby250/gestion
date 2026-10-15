@@ -3,12 +3,12 @@ import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, setDoc } fro
 import { db, auth, app } from '../firebase';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
-import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck, Eye, EyeOff, Palette } from 'lucide-react';
+import { Archive, CheckCircle, Plus, Edit2, Trash2, Save, X, UserPlus, ShieldCheck, Eye, EyeOff, Palette, Sun, Moon } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import BulkActionBar from './BulkActionBar';
 import { computeGlobalPoints } from '../utils/points';
 
-const Parametres = ({ accentTheme = 'blue', onAccentChange }) => {
+const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark', onThemeChange }) => {
   // Collection States
   const [services, setServices] = useState([]);
   const [servicesDomicile, setServicesDomicile] = useState([]);
@@ -349,50 +349,131 @@ const Parametres = ({ accentTheme = 'blue', onAccentChange }) => {
       <div className="card">
         <h2 className="card-title" style={{ margin: 0, paddingBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Palette size={20} color="var(--accent-color)" />
-          Apparence &amp; Accent de Couleur
+          Thème &amp; Apparence
         </h2>
-        <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', margin: '10px 0 16px' }}>
-          Personnalisez la couleur principale de l'application (remplace l'ancien style doré par une teinte moderne et épurée).
-        </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-          {[
-            { key: 'blue', label: 'Bleu Royal / Saphir', color: '#3B82F6', badge: 'Recommandé' },
-            { key: 'emerald', label: 'Émeraude Moderne', color: '#10B981' },
-            { key: 'violet', label: 'Violet Impérial', color: '#8B5CF6' },
-            { key: 'cyan', label: 'Cyan Électrique', color: '#06B6D4' },
-            { key: 'slate', label: 'Titane / Ardoise', color: '#64748B' },
-          ].map(palette => {
-            const isSelected = (accentTheme || 'blue') === palette.key;
-            return (
-              <button
-                key={palette.key}
-                type="button"
-                onClick={() => onAccentChange && onAccentChange(palette.key)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '10px 16px',
-                  borderRadius: '12px',
-                  border: isSelected ? `2px solid ${palette.color}` : '1px solid var(--border-color)',
-                  backgroundColor: isSelected ? 'var(--bg-elevated)' : 'var(--bg-input)',
-                  color: isSelected ? 'var(--text-main)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  fontWeight: isSelected ? '700' : '500',
-                  boxShadow: isSelected ? `0 0 16px ${palette.color}40` : 'none',
-                  transition: 'all 0.2s',
-                }}
-              >
-                <span style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: palette.color, display: 'inline-block', boxShadow: `0 0 8px ${palette.color}` }} />
-                <span>{palette.label}</span>
-                {palette.badge && (
-                  <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '6px', backgroundColor: `${palette.color}25`, color: palette.color, fontWeight: '700' }}>
-                    {palette.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+
+        {/* Sélecteur de Mode Sombre / Clair */}
+        <div style={{ margin: '16px 0 24px' }}>
+          <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            Mode d'affichage
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+            <button
+              type="button"
+              onClick={() => onThemeChange && onThemeChange('dark')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                padding: '16px 18px',
+                borderRadius: '14px',
+                border: theme === 'dark' ? '2px solid #FFFFFF' : '1px solid var(--border-color)',
+                backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'var(--bg-input)',
+                color: 'var(--text-main)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                boxShadow: theme === 'dark' ? '0 0 20px rgba(255,255,255,0.15)' : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <div style={{
+                width: '40px', height: '40px', borderRadius: '10px',
+                backgroundColor: '#000000', border: '1.5px solid #FFFFFF',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#FFFFFF', flexShrink: 0
+              }}>
+                <Moon size={20} />
+              </div>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>Mode Sombre</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Fond noir profond, boutons blancs &amp; textes éclatants
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onThemeChange && onThemeChange('light')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                padding: '16px 18px',
+                borderRadius: '14px',
+                border: theme === 'light' ? '2px solid #000000' : '1px solid var(--border-color)',
+                backgroundColor: theme === 'light' ? 'rgba(0,0,0,0.06)' : 'var(--bg-input)',
+                color: 'var(--text-main)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                boxShadow: theme === 'light' ? '0 0 20px rgba(0,0,0,0.1)' : 'none',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <div style={{
+                width: '40px', height: '40px', borderRadius: '10px',
+                backgroundColor: '#FFFFFF', border: '1.5px solid #000000',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#000000', flexShrink: 0
+              }}>
+                <Sun size={20} />
+              </div>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>Mode Clair</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Version blanche, boutons noirs &amp; contrastes nets
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Nuances d'accent optionnelles */}
+        <div>
+          <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            Palette &amp; Accent
+          </label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+            {[
+              { key: 'monochrome', label: 'Noir & Blanc Pur (Le Cercle)', color: theme === 'light' ? '#000000' : '#FFFFFF', badge: 'Officiel' },
+              { key: 'blue', label: 'Bleu Royal / Saphir', color: '#3B82F6' },
+              { key: 'emerald', label: 'Émeraude Moderne', color: '#10B981' },
+              { key: 'violet', label: 'Violet Impérial', color: '#8B5CF6' },
+              { key: 'cyan', label: 'Cyan Électrique', color: '#06B6D4' },
+              { key: 'slate', label: 'Titane / Ardoise', color: '#64748B' },
+            ].map(palette => {
+              const isSelected = (accentTheme || 'monochrome') === palette.key;
+              return (
+                <button
+                  key={palette.key}
+                  type="button"
+                  onClick={() => onAccentChange && onAccentChange(palette.key)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 16px',
+                    borderRadius: '12px',
+                    border: isSelected ? `2px solid ${palette.color}` : '1px solid var(--border-color)',
+                    backgroundColor: isSelected ? 'var(--bg-elevated)' : 'var(--bg-input)',
+                    color: isSelected ? 'var(--text-main)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontWeight: isSelected ? '700' : '500',
+                    boxShadow: isSelected ? `0 0 16px ${palette.color}40` : 'none',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <span style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: palette.color, display: 'inline-block', border: '1px solid var(--border-color)', boxShadow: `0 0 8px ${palette.color}80` }} />
+                  <span>{palette.label}</span>
+                  {palette.badge && (
+                    <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '6px', backgroundColor: 'var(--accent-subtle)', color: 'var(--text-main)', fontWeight: '700', border: '1px solid var(--border-color)' }}>
+                      {palette.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

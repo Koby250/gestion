@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
-import { Mail, Lock, LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle, Eye, EyeOff, Sun, Moon } from 'lucide-react';
 
-const Login = ({ theme }) => {
+const Login = ({ theme: initialTheme = 'dark' }) => {
+  const [currentTheme, setCurrentTheme] = useState(() => document.documentElement.getAttribute('data-theme') || initialTheme || 'dark');
   const [email,       setEmail]       = useState('');
   const [password,    setPassword]    = useState('');
   const [showPassword,setShowPassword]= useState(false);
@@ -52,6 +53,32 @@ const Login = ({ theme }) => {
       overflow: 'hidden',
     }}>
 
+      {/* Top right theme toggle */}
+      <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}>
+        <button
+          type="button"
+          onClick={() => {
+            const next = currentTheme === 'light' ? 'dark' : 'light';
+            setCurrentTheme(next);
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+          }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '8px 14px', borderRadius: '10px',
+            background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+            color: 'var(--text-main)', cursor: 'pointer',
+            fontSize: '0.82rem', fontWeight: '600',
+            boxShadow: 'var(--shadow-card)',
+            transition: 'all 0.2s ease',
+          }}
+          title={currentTheme === 'light' ? 'Activer le mode sombre' : 'Activer le mode clair'}
+        >
+          {currentTheme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
+          <span>{currentTheme === 'light' ? 'Clair' : 'Sombre'}</span>
+        </button>
+      </div>
+
       {/* Ambient glow background */}
       <div style={{
         position: 'absolute',
@@ -74,13 +101,13 @@ const Login = ({ theme }) => {
             alignItems: 'center',
             justifyContent: 'center',
             background: 'linear-gradient(135deg, var(--accent-subtle), transparent)',
-            border: '1px solid var(--border-gold)',
+            border: '1px solid var(--border-color)',
             borderRadius: '22px',
             padding: '18px',
             marginBottom: '20px',
             width: '76px',
             height: '76px',
-            boxShadow: '0 0 40px var(--accent-glow), 0 8px 32px rgba(0,0,0,0.3)',
+            boxShadow: '0 0 30px var(--accent-glow), 0 8px 32px rgba(0,0,0,0.4)',
           }}>
             <img
               src={logoSrc}

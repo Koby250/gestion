@@ -2259,9 +2259,9 @@ const Bilan = () => {
             </h2>
           </div>
           <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-             <button className="btn btn-small" style={{ backgroundColor: trendGranularity === 'journalier' ? 'var(--accent-color)' : 'var(--bg-input)', color: trendGranularity === 'journalier' ? '#fff' : 'var(--text-main)', border: 'none' }} onClick={() => setTrendGranularity('journalier')}>Journalier</button>
-             <button className="btn btn-small" style={{ backgroundColor: trendGranularity === 'hebdomadaire' ? 'var(--accent-color)' : 'var(--bg-input)', color: trendGranularity === 'hebdomadaire' ? '#fff' : 'var(--text-main)', border: 'none' }} onClick={() => setTrendGranularity('hebdomadaire')}>Hebdomadaire</button>
-             <button className="btn btn-small" style={{ backgroundColor: trendGranularity === 'mensuel' ? 'var(--accent-color)' : 'var(--bg-input)', color: trendGranularity === 'mensuel' ? '#fff' : 'var(--text-main)', border: 'none' }} onClick={() => setTrendGranularity('mensuel')}>Mensuel (Global)</button>
+             <button className="btn btn-small" style={{ backgroundColor: trendGranularity === 'journalier' ? 'var(--btn-primary-bg)' : 'var(--bg-input)', color: trendGranularity === 'journalier' ? 'var(--btn-primary-text)' : 'var(--text-main)', border: trendGranularity === 'journalier' ? '1px solid var(--btn-primary-border)' : '1px solid var(--border-color)' }} onClick={() => setTrendGranularity('journalier')}>Journalier</button>
+             <button className="btn btn-small" style={{ backgroundColor: trendGranularity === 'hebdomadaire' ? 'var(--btn-primary-bg)' : 'var(--bg-input)', color: trendGranularity === 'hebdomadaire' ? 'var(--btn-primary-text)' : 'var(--text-main)', border: trendGranularity === 'hebdomadaire' ? '1px solid var(--btn-primary-border)' : '1px solid var(--border-color)' }} onClick={() => setTrendGranularity('hebdomadaire')}>Hebdomadaire</button>
+             <button className="btn btn-small" style={{ backgroundColor: trendGranularity === 'mensuel' ? 'var(--btn-primary-bg)' : 'var(--bg-input)', color: trendGranularity === 'mensuel' ? 'var(--btn-primary-text)' : 'var(--text-main)', border: trendGranularity === 'mensuel' ? '1px solid var(--btn-primary-border)' : '1px solid var(--border-color)' }} onClick={() => setTrendGranularity('mensuel')}>Mensuel (Global)</button>
           </div>
         </div>
 

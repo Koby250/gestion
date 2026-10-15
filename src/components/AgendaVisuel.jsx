@@ -87,7 +87,7 @@ const AgendaVisuel = ({ reservations, onTimeSlotClick, onEventClick, onEventUpda
   const [currentDate, setCurrentDate] = useState(new Date());
   
   // Theme check to adjust text color in MS teams mode
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   
   const hours = Array.from({ length: 16 }, (_, i) => i + 9); 
   const gridRef = useRef(null);
@@ -318,8 +318,9 @@ const AgendaVisuel = ({ reservations, onTimeSlotClick, onEventClick, onEventUpda
                     alignItems: 'center', 
                     justifyContent: 'center',
                     marginTop: '4px',
-                    backgroundColor: isActive ? 'var(--accent-color)' : (isToday ? 'rgba(37,99,235,0.1)' : 'transparent'),
-                    color: isActive ? '#fff' : (isToday ? 'var(--accent-color)' : 'var(--text-main)'),
+                    backgroundColor: isActive ? 'var(--btn-primary-bg)' : (isToday ? 'var(--accent-subtle)' : 'transparent'),
+                    color: isActive ? 'var(--btn-primary-text)' : 'var(--text-main)',
+                    border: isToday && !isActive ? '1px solid var(--border-color)' : 'none',
                     fontWeight: (isActive || isToday) ? 'bold' : 'normal',
                     fontSize: '1.1rem'
                   }}>
@@ -486,8 +487,8 @@ const AgendaVisuel = ({ reservations, onTimeSlotClick, onEventClick, onEventUpda
                 <div style={{ 
                   width: '36px', height: '36px', borderRadius: '50%', 
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: isToday ? 'var(--accent-color)' : 'transparent',
-                  color: isToday ? '#fff' : 'var(--text-main)',
+                  backgroundColor: isToday ? 'var(--btn-primary-bg)' : 'transparent',
+                  color: isToday ? 'var(--btn-primary-text)' : 'var(--text-main)',
                   fontWeight: isToday ? 'bold' : 'normal',
                   fontSize: '1.1rem'
                 }}>

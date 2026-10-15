@@ -677,8 +677,12 @@ const Clients = ({ onNavigateToReservation }) => {
               style={{
                 padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap',
                 border: statusFilter === f ? 'none' : '1px solid var(--border-color)',
-                backgroundColor: statusFilter === f ? (f === 'À relancer' ? '#ef4444' : f === 'VIP' ? '#f59e0b' : f === 'Fidèle' ? '#8b5cf6' : f === 'Régulier' ? 'var(--accent-color)' : 'var(--text-main)') : 'transparent',
-                color: statusFilter === f ? '#fff' : 'var(--text-main)',
+                backgroundColor: statusFilter === f 
+                  ? (f === 'À relancer' ? '#ef4444' : f === 'VIP' ? '#f59e0b' : f === 'Fidèle' ? '#8b5cf6' : 'var(--btn-primary-bg)') 
+                  : 'transparent',
+                color: statusFilter === f 
+                  ? (f === 'À relancer' || f === 'VIP' || f === 'Fidèle' ? '#fff' : 'var(--btn-primary-text)') 
+                  : 'var(--text-main)',
                 transition: 'all 0.2s ease'
               }}
             >
@@ -701,8 +705,8 @@ const Clients = ({ onNavigateToReservation }) => {
                 minWidth: '36px', height: '32px', padding: '0 8px',
                 borderRadius: '8px', border: 'none', cursor: 'pointer',
                 fontWeight: '700', fontSize: '0.78rem',
-                backgroundColor: letterFilter === '' ? 'var(--accent-color)' : 'transparent',
-                color: letterFilter === '' ? '#fff' : 'var(--text-muted)',
+                backgroundColor: letterFilter === '' ? 'var(--btn-primary-bg)' : 'transparent',
+                color: letterFilter === '' ? 'var(--btn-primary-text)' : 'var(--text-muted)',
                 transition: 'all 0.15s ease',
                 display: 'flex', alignItems: 'center', gap: '4px'
               }}
@@ -730,8 +734,8 @@ const Clients = ({ onNavigateToReservation }) => {
                     borderRadius: '7px', border: 'none',
                     cursor: hasClients ? 'pointer' : 'default',
                     fontWeight: '700', fontSize: '0.8rem',
-                    backgroundColor: isActive ? 'var(--accent-color)' : (hasClients ? 'var(--bg-card)' : 'transparent'),
-                    color: isActive ? '#fff' : (hasClients ? 'var(--text-main)' : 'var(--text-muted)'),
+                    backgroundColor: isActive ? 'var(--btn-primary-bg)' : (hasClients ? 'var(--bg-card)' : 'transparent'),
+                    color: isActive ? 'var(--btn-primary-text)' : (hasClients ? 'var(--text-main)' : 'var(--text-muted)'),
                     opacity: hasClients ? 1 : 0.3,
                     transition: 'all 0.15s ease',
                     border: isActive ? 'none' : (hasClients ? '1px solid var(--border-color)' : 'none'),
@@ -742,7 +746,7 @@ const Clients = ({ onNavigateToReservation }) => {
                   {hasClients && (
                     <span style={{
                       fontSize: '0.52rem', fontWeight: '800', lineHeight: 1,
-                      color: isActive ? 'rgba(255,255,255,0.8)' : 'var(--text-muted)',
+                      color: isActive ? 'var(--btn-primary-text)' : 'var(--text-muted)',
                       marginTop: '1px'
                     }}>{count}</span>
                   )}
@@ -807,7 +811,7 @@ const Clients = ({ onNavigateToReservation }) => {
                   }}>
                     {(client.prenom ? client.prenom[0] : (client.nom || '?')[0]).toUpperCase()}
                     {client.isBirthdayMonth && (
-                      <div style={{ position: 'absolute', top: '-5px', right: '-8px', fontSize: '0.7rem', fontWeight: '700', backgroundColor: 'var(--accent-color)', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.2))' }} title="C'est son mois d'anniversaire !"><Cake size={11} /></div>
+                      <div style={{ position: 'absolute', top: '-5px', right: '-8px', fontSize: '0.7rem', fontWeight: '700', backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.2))' }} title="C'est son mois d'anniversaire !"><Cake size={11} /></div>
                     )}
                   </div>
 
@@ -925,8 +929,8 @@ const Clients = ({ onNavigateToReservation }) => {
                           onClick={() => setCurrentPage(p)}
                           style={{
                             width: '36px', height: '36px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem',
-                            backgroundColor: currentPage === p ? 'var(--accent-color)' : 'var(--bg-input)',
-                            color: currentPage === p ? '#fff' : 'var(--text-main)',
+                            backgroundColor: currentPage === p ? 'var(--btn-primary-bg)' : 'var(--bg-input)',
+                            color: currentPage === p ? 'var(--btn-primary-text)' : 'var(--text-main)',
                             transition: 'all 0.15s ease'
                           }}
                         >
@@ -1177,9 +1181,9 @@ const Clients = ({ onNavigateToReservation }) => {
                             onClick={() => setLocalClientData(prev => ({ ...prev, tags: isActive ? prev.tags.filter(t => t !== tag) : [...prev.tags, tag] }))}
                             style={{
                               padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600',
-                              border: `1px solid ${isActive ? 'var(--accent-color)' : 'var(--border-color)'}`,
-                              backgroundColor: isActive ? 'var(--accent-color)' : 'var(--bg-card)',
-                              color: isActive ? '#fff' : 'var(--text-main)',
+                              border: `1px solid ${isActive ? 'var(--btn-primary-border)' : 'var(--border-color)'}`,
+                              backgroundColor: isActive ? 'var(--btn-primary-bg)' : 'var(--bg-card)',
+                              color: isActive ? 'var(--btn-primary-text)' : 'var(--text-main)',
                               cursor: 'pointer', transition: 'all 0.2s ease'
                             }}
                           >

@@ -46,15 +46,10 @@ function App() {
 
   // Dark Mode & Accent Theme
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
-  const [accentTheme, setAccentTheme] = useState(localStorage.getItem('accentTheme') || 'blue');
+  const [accentTheme, setAccentTheme] = useState(localStorage.getItem('accentTheme') || 'monochrome');
 
   useEffect(() => {
-    // dark is the base design — light mode overrides via [data-theme="light"]
-    if (theme === 'light') {
-      document.documentElement.setAttribute('data-theme', 'light');
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-    }
+    document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
 
@@ -199,7 +194,7 @@ function App() {
       case 'tresorerie':   return (userRole === 'admin' || userPerms.accesTresorerie) ? <Tresorerie activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'rh':           return userRole === 'admin' ? <RH activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'tracabilite':  return userRole === 'admin' ? <Tracabilite activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'parametres':   return (userRole === 'admin' || userPerms.accesParametres) ? <Parametres activeDate={activeDate} accentTheme={accentTheme} onAccentChange={setAccentTheme} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'parametres':   return (userRole === 'admin' || userPerms.accesParametres) ? <Parametres activeDate={activeDate} accentTheme={accentTheme} onAccentChange={setAccentTheme} theme={theme} onThemeChange={setTheme} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       default:             return <Accueil activeDate={activeDate} userRole={userRole} />;
     }
   };
@@ -315,17 +310,21 @@ function App() {
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '8px', borderRadius: '10px',
+                padding: '8px 12px', borderRadius: '10px',
                 background: 'var(--bg-input)',
                 border: '1px solid var(--border-color)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
-                color: 'var(--text-muted)',
+                color: 'var(--text-main)',
                 flexShrink: 0,
+                gap: '6px',
+                fontSize: '0.8rem',
+                fontWeight: '600'
               }}
-              title="Basculer le thème"
+              title={theme === 'light' ? 'Activer le mode sombre (Noir profond & boutons blancs)' : 'Activer le mode clair (Blanc pur & boutons noirs)'}
             >
-              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} color="var(--gold)" />}
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+              <span className="desktop-table">{theme === 'light' ? 'Clair' : 'Sombre'}</span>
             </button>
           </div>
 

@@ -190,9 +190,10 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
           className={`btn ${activeTab === 'balances' ? 'btn-primary' : ''}`}
           style={{ 
             flex: 1, minWidth: '120px', minHeight: '48px', borderRadius: '12px',
-            backgroundColor: activeTab === 'balances' ? 'var(--accent-color)' : 'var(--bg-input)',
-            color: activeTab === 'balances' ? '#fff' : 'var(--text-main)',
-            border: 'none', fontWeight: 'bold'
+            backgroundColor: activeTab === 'balances' ? 'var(--btn-primary-bg)' : 'var(--bg-input)',
+            color: activeTab === 'balances' ? 'var(--btn-primary-text)' : 'var(--text-main)',
+            border: activeTab === 'balances' ? '1px solid var(--btn-primary-border)' : '1px solid var(--border-color)',
+            fontWeight: 'bold'
           }}
         >
           <Wallet size={18} style={{ marginRight: '8px' }} /> Soldes
@@ -202,9 +203,10 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
           className={`btn ${activeTab === 'transfer' ? 'btn-primary' : ''}`}
           style={{ 
             flex: 1, minWidth: '150px', minHeight: '48px', borderRadius: '12px',
-            backgroundColor: activeTab === 'transfer' ? 'var(--accent-color)' : 'var(--bg-input)',
-            color: activeTab === 'transfer' ? '#fff' : 'var(--text-main)',
-            border: 'none', fontWeight: 'bold'
+            backgroundColor: activeTab === 'transfer' ? 'var(--btn-primary-bg)' : 'var(--bg-input)',
+            color: activeTab === 'transfer' ? 'var(--btn-primary-text)' : 'var(--text-main)',
+            border: activeTab === 'transfer' ? '1px solid var(--btn-primary-border)' : '1px solid var(--border-color)',
+            fontWeight: 'bold'
           }}
         >
           <ArrowRightLeft size={18} style={{ marginRight: '8px' }} /> Effectuer transfert
@@ -214,9 +216,10 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
           className={`btn ${activeTab === 'history' ? 'btn-primary' : ''}`}
           style={{ 
             flex: 1, minWidth: '150px', minHeight: '48px', borderRadius: '12px',
-            backgroundColor: activeTab === 'history' ? 'var(--accent-color)' : 'var(--bg-input)',
-            color: activeTab === 'history' ? '#fff' : 'var(--text-main)',
-            border: 'none', fontWeight: 'bold'
+            backgroundColor: activeTab === 'history' ? 'var(--btn-primary-bg)' : 'var(--bg-input)',
+            color: activeTab === 'history' ? 'var(--btn-primary-text)' : 'var(--text-main)',
+            border: activeTab === 'history' ? '1px solid var(--btn-primary-border)' : '1px solid var(--border-color)',
+            fontWeight: 'bold'
           }}
         >
           <CheckCircle size={18} style={{ marginRight: '8px' }} /> Historique
@@ -226,9 +229,10 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
           className={`btn ${activeTab === 'journalier' ? 'btn-primary' : ''}`}
           style={{ 
             flex: 1, minWidth: '150px', minHeight: '48px', borderRadius: '12px',
-            backgroundColor: activeTab === 'journalier' ? 'var(--accent-color)' : 'var(--bg-input)',
-            color: activeTab === 'journalier' ? '#fff' : 'var(--text-main)',
-            border: 'none', fontWeight: 'bold'
+            backgroundColor: activeTab === 'journalier' ? 'var(--btn-primary-bg)' : 'var(--bg-input)',
+            color: activeTab === 'journalier' ? 'var(--btn-primary-text)' : 'var(--text-main)',
+            border: activeTab === 'journalier' ? '1px solid var(--btn-primary-border)' : '1px solid var(--border-color)',
+            fontWeight: 'bold'
           }}
         >
           <Calendar size={18} style={{ marginRight: '8px' }} /> Journalier

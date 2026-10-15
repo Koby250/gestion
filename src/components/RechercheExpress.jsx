@@ -145,7 +145,7 @@ const RechercheExpress = ({ reservations = [] }) => {
 
                 <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
                   {res.statut !== 'en_cours' && isNonEncaisse(res.statut) && (
-                    <button onClick={() => handleDemarrer(res)} className="btn btn-small" style={{ backgroundColor: 'var(--accent-color)', color: '#fff' }}>
+                    <button onClick={() => handleDemarrer(res)} className="btn btn-small btn-primary">
                       <Play size={14} style={{ marginRight: '4px' }} /> Démarrer la prestation
                     </button>
                   )}

@@ -367,7 +367,7 @@ const PanierPrestations = ({
                       onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-input)'}
                       onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                     >
-                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold', flexShrink: 0 }}>
+                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--btn-primary-bg)', color: 'var(--btn-primary-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold', flexShrink: 0 }}>
                         {(c.prenom ? c.prenom[0] : (c.nom || '?')[0]).toUpperCase()}
                       </div>
                       <div style={{ flex: 1 }}>
