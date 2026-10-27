@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc as firestoreDeleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import {
   TrendingUp, TrendingDown, Scissors, DollarSign,
-  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, Tag, User, Users, Percent, Receipt, Gift, Award, Star, Activity, ChevronDown, ChevronUp,
-  PlusCircle, Edit2, X, Search, Filter
+  ChevronLeft, ChevronRight, BarChart2, Package, LineChart, Save, Trash2, User, Users, Percent, Receipt, Award, Star, ChevronDown, ChevronUp,
+  PlusCircle, Edit2, X, Search, RotateCcw
 } from 'lucide-react';
-import { computeGlobalPoints, computeDetailedGlobalStats, getPointsForService } from '../utils/points';
+import { computeDetailedGlobalStats, getPointsForService } from '../utils/points';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { logEvent } from '../utils/audit';
 
@@ -28,10 +28,69 @@ const MOIS_FR = [
   'Juillet','Août','Septembre','Octobre','Novembre','Décembre'
 ];
 
-const Bilan = () => {
+
+// Normalisation et correspondance intelligente des catégories de charges fixes
+const matchCharge = (tCat, chargeNom) => {
+  if (!tCat || !chargeNom) return false;
+  const c1 = tCat.trim().toLowerCase();
+  const c2 = chargeNom.trim().toLowerCase();
+  if (c1 === c2) return true;
+  const isConsumable1 = c1.includes('consommable') || c1.includes('ravitaillement') || c1.includes('soin');
+  const isConsumable2 = c2.includes('consommable') || c2.includes('ravitaillement') || c2.includes('soin');
+  if (isConsumable1 && isConsumable2) return true;
+  if ((c1 === 'autre' || c1 === 'autres') && (c2 === 'autre' || c2 === 'autres')) return true;
+  return false;
+};
+
+const parseActiveYM = (dateStr) => {
+  if (!dateStr) return { year: new Date().getFullYear(), month: new Date().getMonth() };
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return { year: parts[0], month: parts[1] - 1 };
+  }
+  const d = new Date(dateStr);
+  return isNaN(d.getTime())
+    ? { year: new Date().getFullYear(), month: new Date().getMonth() }
+    : { year: d.getFullYear(), month: d.getMonth() };
+};
+
+const getDefaultDepenseDate = (year, month) => {
   const now = new Date();
-  const [viewYear,  setViewYear]  = useState(now.getFullYear());
-  const [viewMonth, setViewMonth] = useState(now.getMonth()); // 0-based
+  if (year === now.getFullYear() && month === now.getMonth()) {
+    return localDateStr();
+  }
+  const lastDay = new Date(year, month + 1, 0);
+  return localDateStr(lastDay);
+};
+
+const Bilan = ({ activeDate = localDateStr() }) => {
+  const now = new Date();
+  const [manualYM, setManualYM] = useState(null);
+
+  const activeYM = useMemo(() => {
+    if (manualYM) return manualYM;
+    return parseActiveYM(activeDate);
+  }, [manualYM, activeDate]);
+
+  const viewYear = activeYM.year;
+  const viewMonth = activeYM.month;
+
+  const goToPrevMonth = () => {
+    if (viewMonth === 0) setManualYM({ year: viewYear - 1, month: 11 });
+    else setManualYM({ year: viewYear, month: viewMonth - 1 });
+  };
+  const goToNextMonth = () => {
+    if (viewMonth === 11) setManualYM({ year: viewYear + 1, month: 0 });
+    else setManualYM({ year: viewYear, month: viewMonth + 1 });
+  };
+  const goToCurrentMonth = () => {
+    const n = new Date();
+    setManualYM({ year: n.getFullYear(), month: n.getMonth() });
+  };
+  const isCurrentMonthViewed = () => {
+    const n = new Date();
+    return viewYear === n.getFullYear() && viewMonth === n.getMonth();
+  };
   const [transactions, setTransactions] = useState([]);
   const [history, setHistory] = useState([]);
   const [historyForm, setHistoryForm] = useState({ month: '', year: now.getFullYear().toString(), ca: '', depenses: '' });
@@ -79,7 +138,8 @@ const Bilan = () => {
     setIsClosing(true);
     try {
       const moisLabel = `${MOIS_FR[viewMonth]} ${viewYear}`;
-      const now = new Date().toISOString();
+      const { end } = getMonthBounds(viewYear, viewMonth);
+      const closureDate = end.toISOString();
       const activeCharges = chargesFixes.filter(c => c.actif);
 
       // On enregistre uniquement les charges qui n'ont pas du tout été payées ce mois
@@ -87,7 +147,7 @@ const Bilan = () => {
       // PAS recréées pour éviter tout doublon.
       for (const c of activeCharges) {
         const realise = depenses
-          .filter(t => t.categorie === c.nom)
+          .filter(t => matchCharge(t.categorie, c.nom))
           .reduce((s, t) => s + Number(t.montant), 0);
         const budget = Number(c.montant) || 0;
 
@@ -101,7 +161,7 @@ const Bilan = () => {
           categorie: c.nom,
           employeNom: 'Cloture Bilan',
           modePaiement: 'Interne',
-          date: now,
+          date: closureDate,
           saisieParNom: 'Systeme — Bilan'
         });
       }
@@ -120,7 +180,8 @@ const Bilan = () => {
     setIsClosingSalaries(true);
     try {
       const moisLabel = `${MOIS_FR[viewMonth]} ${viewYear}`;
-      const now = new Date().toISOString();
+      const { end } = getMonthBounds(viewYear, viewMonth);
+      const closureDate = end.toISOString();
       const activeEmployes = employes.filter(e => e.actif);
 
       for (const emp of activeEmployes) {
@@ -146,7 +207,7 @@ const Bilan = () => {
             employeNom: 'Cloture Bilan',
             employeId: emp.id,
             modePaiement: 'Interne',
-            date: now,
+            date: closureDate,
             saisieParNom: 'Systeme — Bilan'
           });
         }
@@ -220,7 +281,7 @@ const Bilan = () => {
         'DEPENSE_CREATE',
         `Ajout dépense depuis Bilan — ${depenseForm.categorie} : ${Number(depenseForm.montant).toLocaleString('fr-FR')} FCFA (${depenseForm.description || 'sans description'}) le ${depenseForm.date}`
       );
-      setDepenseForm({ date: localDateStr(), categorie: '', montant: '', description: '', modePaiement: 'Cash' });
+      setDepenseForm({ date: getDefaultDepenseDate(viewYear, viewMonth), categorie: '', montant: '', description: '', modePaiement: 'Cash' });
       setShowDepenseForm(false);
     } catch (err) {
       console.error('[Bilan] Erreur ajout dépense:', err);
@@ -284,15 +345,7 @@ const Bilan = () => {
     }
   };
 
-  // ── Navigation mois ──────────────────────────────────────────────────────
-  const goToPrevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
-  };
-  const goToNextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
-  };
+// Navigation mois gérée avec activeDate et manualYM
 
   // ── Filtrage par mois ────────────────────────────────────────────────────
   const { start, end } = getMonthBounds(viewYear, viewMonth);
@@ -331,9 +384,7 @@ const Bilan = () => {
 
   const pctSalaires     = totalCA > 0 ? Math.min((totalSalaires     / totalCA) * 100, 100) : 0;
   const pctChargesFixes = totalCA > 0 ? Math.min((totalChargesFixes / totalCA) * 100, 100) : 0;
-  const pctDepenses     = totalCA > 0 ? Math.min((totalDepenses     / totalCA) * 100, 100) : 0;
   const margeRestante   = Math.max(0, totalCA - totalSalaires - totalChargesFixes);
-  const pctMarge        = totalCA > 0 ? (margeRestante / totalCA) * 100 : 0;
 
   // ── Top 3 Agents du Mois ─────────────────────────────────────────────────
   const agentStats = {};
@@ -358,7 +409,6 @@ const Bilan = () => {
     }
   });
   
-  const globalPoints = computeGlobalPoints(transactions);
   const detailedStats = computeDetailedGlobalStats(transactions);
   
   let agentsToRank = employes.filter(e => e.actif !== false && e.categorie === 'Prestataire');
@@ -405,31 +455,7 @@ const Bilan = () => {
     ];
   }
 
-  const allAgentsRanked = agentsToRank.map(e => {
-      const stat = agentStats[e.id] || { count: 0, ca: 0 };
-      const dStat = detailedStats[e.id] || { points: 0, services: {} };
-      
-      const numUniqueServices = Object.keys(dStat.services).length;
-      
-      let polyName = '';
-      let polyColor = '';
-      if (numUniqueServices >= 3) {
-        polyName = 'Polyvalent';
-        polyColor = '#8b5cf6'; // purple
-      }
 
-      return {
-        id: e.id,
-        nom: e.nom,
-        count: stat.count,
-        ca: stat.ca,
-        points: dStat.points || 0,
-        servicesCount: dStat.services,
-        polyName,
-        polyColor
-      };
-    })
-    .sort((a, b) => b.points - a.points);
 
   // ── Périodes pour le classement (Journalier, Hebdomadaire, Mensuel) ────────
   const getDailyBounds = () => {
@@ -465,7 +491,6 @@ const Bilan = () => {
     return monthTx;
   })();
 
-  const rankDetailedStats = computeDetailedGlobalStats(rankTxSource);
 
   // Points filtrés par service pour le classement
   // Utilise getPointsForService (même logique que l'Accueil) avec prise en compte de la date
@@ -795,6 +820,9 @@ const Bilan = () => {
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
               {monthTx.length} opération{monthTx.length !== 1 ? 's' : ''} enregistrée{monthTx.length !== 1 ? 's' : ''}
             </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--accent-color)', marginTop: '2px', fontWeight: '600' }}>
+              Mois indépendant — budgets & surplus isolés
+            </div>
           </div>
 
           <button
@@ -804,6 +832,25 @@ const Bilan = () => {
           >
             <ChevronRight size={18} />
           </button>
+
+          {!isCurrentMonthViewed() && (
+            <button
+              onClick={goToCurrentMonth}
+              className="btn"
+              style={{
+                backgroundColor: 'var(--bg-input)',
+                color: 'var(--text-main)',
+                fontSize: '0.82rem',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <RotateCcw size={14} /> Mois actuel
+            </button>
+          )}
         </div>
       </div>
 
@@ -2362,7 +2409,7 @@ const Bilan = () => {
       {showClosureModal && (() => {
         const activeCharges = chargesFixes.filter(c => c.actif);
         const lines = activeCharges.map(c => {
-          const realise = depenses.filter(t => t.categorie === c.nom).reduce((s, t) => s + Number(t.montant), 0);
+          const realise = depenses.filter(t => matchCharge(t.categorie, c.nom)).reduce((s, t) => s + Number(t.montant), 0);
           const budget = Number(c.montant) || 0;
           const ecart = budget - realise;
           return { ...c, realise, budget, ecart };
@@ -2372,9 +2419,9 @@ const Bilan = () => {
         return (
           <div className="modal-overlay" onClick={() => setShowClosureModal(false)}>
             <div className="modal-content" style={{ maxWidth: '500px', width: '95%' }} onClick={e => e.stopPropagation()}>
-              <h2 style={{ marginBottom: '6px', fontSize: '1.15rem' }}>Cloture des charges — {MOIS_FR[viewMonth]} {viewYear}</h2>
+              <h2 style={{ marginBottom: '6px', fontSize: '1.15rem' }}>Clôture des charges — {MOIS_FR[viewMonth]} {viewYear}</h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                Cette action va generer les transactions d'ajustement dans la tresorerie pour combler les deficits ou reverser les reliquats du mois.
+                Clôture exclusive des charges du mois de {MOIS_FR[viewMonth]} {viewYear}. Tout surplus reste dans ce mois et n'est pas répercuté sur le mois suivant.
               </p>
 
               {lines.length === 0 ? (
@@ -2384,19 +2431,19 @@ const Bilan = () => {
                   {lines.map(l => (
                     <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
                       <div>
-                        <div style={{ fontWeight: '600' }}>{l.nom}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Budget: {l.budget.toLocaleString('fr-FR')} | Depense: {l.realise.toLocaleString('fr-FR')}</div>
+                        <div style={{ fontWeight: '600' }}>{l.nom.trim()}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Budget: {l.budget.toLocaleString('fr-FR')} | Dépensé: {l.realise.toLocaleString('fr-FR')}</div>
                       </div>
                       <div style={{ textAlign: 'right', fontWeight: '700', color: l.ecart > 0 ? 'var(--success)' : l.ecart < 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
-                        {l.ecart === 0 ? 'Equilibre' : l.ecart > 0 ? `+ ${l.ecart.toLocaleString('fr-FR')} F` : `- ${Math.abs(l.ecart).toLocaleString('fr-FR')} F`}
+                        {l.ecart === 0 ? 'Équilibré' : l.ecart > 0 ? `+ ${l.ecart.toLocaleString('fr-FR')} F` : `- ${Math.abs(l.ecart).toLocaleString('fr-FR')} F`}
                         <div style={{ fontSize: '0.7rem', fontWeight: 'normal' }}>
-                          {l.ecart > 0 ? 'Reversement' : l.ecart < 0 ? 'A combler' : ''}
+                          {l.ecart > 0 ? `Surplus (${MOIS_FR[viewMonth]})` : l.ecart < 0 ? 'À régulariser' : ''}
                         </div>
                       </div>
                     </div>
                   ))}
                   <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: 'var(--bg-input)', display: 'flex', justifyContent: 'space-between', fontWeight: '700' }}>
-                    <span>Ecart net global</span>
+                    <span>{ecartGlobal >= 0 ? `Surplus net global (${MOIS_FR[viewMonth]})` : `Déficit net global (${MOIS_FR[viewMonth]})`}</span>
                     <span style={{ color: ecartGlobal >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                       {ecartGlobal >= 0 ? `+${ecartGlobal.toLocaleString('fr-FR')}` : ecartGlobal.toLocaleString('fr-FR')} F
                     </span>
@@ -2412,7 +2459,7 @@ const Bilan = () => {
                     style={{ flex: 1 }}
                     disabled={isClosing}
                   >
-                    {isClosing ? 'Regularisation en cours...' : 'Confirmer la cloture'}
+                    {isClosing ? 'Régularisation en cours...' : 'Confirmer la clôture'}
                   </button>
                 )}
                 <button
@@ -2442,12 +2489,9 @@ const Bilan = () => {
           return { ...emp, avancesEmp, base, reste };
         });
 
-        let totalToPay = 0;
-        if (salaryClosureMode === 'global') {
-          totalToPay = totalGlobalRestant;
-        } else {
-          totalToPay = Object.values(individualSalariesForm).reduce((s, v) => s + (Number(v) || 0), 0);
-        }
+        const totalToPay = salaryClosureMode === 'global'
+          ? totalGlobalRestant
+          : Object.values(individualSalariesForm).reduce((s, v) => s + (Number(v) || 0), 0);
 
         return (
           <div className="modal-overlay" onClick={() => setShowSalariesClosureModal(false)}>
