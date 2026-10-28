@@ -5,7 +5,7 @@ import {
   Wallet, ArrowRightLeft, Edit2, CheckCircle, Search, Calendar,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Globe,
   CalendarDays, TrendingUp, TrendingDown, Layers, RotateCcw,
-  Banknote, Smartphone, CreditCard, Coins, Check
+  Banknote, Smartphone, CreditCard, Check
 } from 'lucide-react';
 import { logEvent } from '../utils/audit';
 import SuccessModal from './SuccessModal';
@@ -14,8 +14,7 @@ const accountsList = [
   { id: 'cash', label: 'Cash (Espèces)', sub: 'Caisse salon' },
   { id: 'nita', label: 'Nita', sub: 'Compte Nita' },
   { id: 'amana', label: 'Amana', sub: 'Compte Amana' },
-  { id: 'visa', label: 'Carte VISA / Banque', sub: 'Compte bancaire' },
-  { id: 'autre', label: 'Autre', sub: 'Autres comptes' }
+  { id: 'visa', label: 'Carte VISA / Banque', sub: 'Compte bancaire' }
 ];
 
 const getAccountIcon = (id, size = 18) => {
@@ -27,9 +26,8 @@ const getAccountIcon = (id, size = 18) => {
     case 'amana':
       return <Smartphone size={size} color="#3B82F6" />;
     case 'visa':
-      return <CreditCard size={size} color="#8B5CF6" />;
     default:
-      return <Coins size={size} color="#6B7280" />;
+      return <CreditCard size={size} color="#8B5CF6" />;
   }
 };
 
@@ -47,8 +45,7 @@ const getModeKey = (m) => {
   if (lower.includes('visa') || lower.includes('banque')) return 'visa';
   if (lower.includes('nita')) return 'nita';
   if (lower.includes('amana')) return 'amana';
-  if (lower.includes('cash') || lower.includes('espèce') || lower.includes('espece')) return 'cash';
-  return 'autre';
+  return 'cash';
 };
 
 const getMonthBounds = (year, month) => {
@@ -154,6 +151,23 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
     });
   }, [allTransactions, allAvances, activeDate]);
 
+  // Liste des mois sélectionnables (incluant TOUJOURS le mois actuellement affiché pour ne jamais bloquer)
+  const selectableMonths = useMemo(() => {
+    const currentKey = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+    const set = new Set(availableMonths.map(m => m.key));
+    set.add(currentKey);
+    const sorted = Array.from(set).sort().reverse();
+    return sorted.map(ym => {
+      const [y, m] = ym.split('-').map(Number);
+      return {
+        key: ym,
+        year: y,
+        month: m - 1,
+        label: `${MOIS_FR[m - 1]} ${y}`
+      };
+    });
+  }, [availableMonths, viewYear, viewMonth]);
+
   // Date d'imputation intelligente pour les ajustements et transferts
   const getTransactionDate = () => {
     if (modeTresorerie === 'mensuel') {
@@ -180,9 +194,9 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   // CALCULS : TRÉSORERIE GLOBALE (Tous les mois cumulés)
   // ───────────────────────────────────────────────────────────────────────────
   const { globalSoldes, globalEntrees, globalSorties, totalGlobalReel, totalGlobalEntrees, totalGlobalSorties } = useMemo(() => {
-    const soldes = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
-    const entrees = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
-    const sorties = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
+    const soldes = { cash: 0, nita: 0, amana: 0, visa: 0 };
+    const entrees = { cash: 0, nita: 0, amana: 0, visa: 0 };
+    const sorties = { cash: 0, nita: 0, amana: 0, visa: 0 };
     let totEntrees = 0;
     let totSorties = 0;
 
@@ -269,9 +283,9 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
       return d >= start && d <= end;
     });
 
-    const soldes = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
-    const entrees = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
-    const sorties = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
+    const soldes = { cash: 0, nita: 0, amana: 0, visa: 0 };
+    const entrees = { cash: 0, nita: 0, amana: 0, visa: 0 };
+    const sorties = { cash: 0, nita: 0, amana: 0, visa: 0 };
     let totEntrees = 0;
     let totSorties = 0;
 
@@ -563,8 +577,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
       cash: { in: 0, out: 0 },
       nita: { in: 0, out: 0 },
       amana: { in: 0, out: 0 },
-      visa: { in: 0, out: 0 },
-      autre: { in: 0, out: 0 }
+      visa: { in: 0, out: 0 }
     };
 
     relevantTx.forEach(t => {
@@ -616,8 +629,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
             cash: { entrees: 0, sorties: 0 },
             nita: { entrees: 0, sorties: 0 },
             amana: { entrees: 0, sorties: 0 },
-            visa: { entrees: 0, sorties: 0 },
-            autre: { entrees: 0, sorties: 0 }
+            visa: { entrees: 0, sorties: 0 }
           }
         };
       }
@@ -669,7 +681,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
     // En mode mensuel : début du mois à 0 F (trésorerie indépendante du mois, pas de report antérieur)
     // En mode global : cumul progressif continu depuis le 1er jour
     let runningBalanceTotal = 0;
-    const runningBalancesModes = { cash: 0, nita: 0, amana: 0, visa: 0, autre: 0 };
+    const runningBalancesModes = { cash: 0, nita: 0, amana: 0, visa: 0 };
     const historyList = [];
 
     sortedDates.forEach(dStr => {
@@ -773,24 +785,74 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
 
       {/* ── BARRE DE SÉLECTION DU MOIS (Si mode Mensuel) ────────────────────── */}
       {modeTresorerie === 'mensuel' && (
-        <div className="card" style={{ marginBottom: '20px', padding: '16px' }}>
+        <div className="card" style={{ marginBottom: '20px', padding: '18px 20px' }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: '12px'
+            gap: '14px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Navigation temporelle infinie (avant/arrière) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <button
                 onClick={goToPrevMonth}
                 className="btn"
-                style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', padding: '10px 14px', borderRadius: '10px' }}
+                style={{
+                  backgroundColor: 'var(--bg-input)',
+                  color: 'var(--text-main)',
+                  padding: '10px 16px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '46px'
+                }}
                 title="Mois précédent"
               >
-                <ChevronLeft size={20} />
+                <ChevronLeft size={22} />
               </button>
 
+              <div style={{ textAlign: 'center', minWidth: '220px' }}>
+                <div style={{
+                  fontSize: '1.45rem',
+                  fontWeight: '800',
+                  color: 'var(--text-main)',
+                  letterSpacing: '-0.3px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}>
+                  <CalendarDays size={22} color="var(--accent-color)" />
+                  {MOIS_FR[viewMonth]} {viewYear}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {monthTransactions.length + monthAvances.length} opération{(monthTransactions.length + monthAvances.length) !== 1 ? 's' : ''} ce mois
+                </div>
+              </div>
+
+              <button
+                onClick={goToNextMonth}
+                className="btn"
+                style={{
+                  backgroundColor: 'var(--bg-input)',
+                  color: 'var(--text-main)',
+                  padding: '10px 16px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '46px'
+                }}
+                title="Mois suivant"
+              >
+                <ChevronRight size={22} />
+              </button>
+
+              {/* Accès rapide direct par menu déroulant */}
               <div style={{ position: 'relative' }}>
                 <select
                   value={`${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`}
@@ -800,62 +862,60 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
                   }}
                   className="input-control"
                   style={{
-                    fontSize: '1.2rem',
-                    fontWeight: '800',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
                     margin: 0,
-                    minHeight: '46px',
-                    paddingRight: '36px',
-                    cursor: 'pointer'
+                    minHeight: '42px',
+                    padding: '6px 12px',
+                    cursor: 'pointer',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--bg-input)'
                   }}
+                  title="Accès rapide à un mois enregistré"
                 >
-                  {availableMonths.map(m => (
+                  {selectableMonths.map(m => (
                     <option key={m.key} value={m.key}>{m.label}</option>
                   ))}
                 </select>
               </div>
-
-              <button
-                onClick={goToNextMonth}
-                className="btn"
-                style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', padding: '10px 14px', borderRadius: '10px' }}
-                title="Mois suivant"
-              >
-                <ChevronRight size={20} />
-              </button>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               {!isCurrentMonthViewed() && (
                 <button
                   onClick={goToCurrentMonth}
                   className="btn"
                   style={{
                     backgroundColor: 'var(--bg-input)',
-                    color: 'var(--text-main)',
+                    color: 'var(--accent-color)',
+                    border: '1px solid var(--border-color)',
                     fontSize: '0.85rem',
-                    padding: '8px 14px',
-                    borderRadius: '8px',
+                    fontWeight: '700',
+                    padding: '9px 15px',
+                    borderRadius: '9px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px'
+                    gap: '6px',
+                    minHeight: '44px'
                   }}
+                  title="Revenir immédiatement au mois actuel"
                 >
-                  <RotateCcw size={15} /> Mois actuel
+                  <RotateCcw size={16} /> Mois actuel ({MOIS_FR[new Date().getMonth()]} {new Date().getFullYear()})
                 </button>
               )}
 
               <span style={{
-                fontSize: '0.8rem',
+                fontSize: '0.82rem',
                 backgroundColor: 'rgba(59,130,246,0.12)',
                 color: 'var(--accent-color)',
-                padding: '6px 12px',
+                padding: '8px 14px',
                 borderRadius: '20px',
                 fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px'
               }}>
-                <CheckCircle size={14} /> Mois indépendant
+                <CheckCircle size={15} /> Mois indépendant
               </span>
             </div>
           </div>
@@ -981,7 +1041,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
                 </span>
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Liquidités réelles immédiatement disponibles (CASH, NITA, AMANA, VISA, AUTRE)
+                Liquidités réelles immédiatement disponibles (CASH, NITA, AMANA, VISA)
               </div>
             </div>
           </div>
@@ -1199,7 +1259,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
                     Solde Actuel Réel — Caisse & Tous les Comptes
                   </h2>
                   <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                    Vue en temps réel sur les liquidités réellement disponibles dans chaque compte (CASH, NITA, AMANA, VISA, AUTRE).
+                    Vue en temps réel sur les liquidités réellement disponibles dans chaque compte (CASH, NITA, AMANA, VISA).
                   </div>
                 </div>
               </div>
