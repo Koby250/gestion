@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
-import { PlusCircle, Trash2, Users, Search, UserPlus, X, CheckCircle, Disc } from 'lucide-react';
-import { collection, addDoc } from 'firebase/firestore';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { PlusCircle, Trash2, Users, Search, UserPlus, X, CheckCircle, Tag, Sparkles, ShoppingBag } from 'lucide-react';
+import { collection, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
 /**
  * PanierPrestations — Panier multi-services avec gestion du Billard sans agent,
- * création de client sans conflit de formulaires, et prise en charge des soins offerts (prix = 0).
+ * création de client, et prise en charge native des Promotions et Packs.
  */
 const PanierPrestations = ({
   lignes,
@@ -20,14 +20,131 @@ const PanierPrestations = ({
   showClientField = true,
   hidePayment = false,
   clients = [],
-  clientId = '',
   setClientId,
+  prefilledPromotion = null,
+  onClearPrefilledPromotion = null,
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showAddClientModal, setShowAddClientModal] = useState(false);
   const [newClientForm, setNewClientForm] = useState({ nom: '', prenom: '', telephone: '' });
   const [isSavingClient, setIsSavingClient] = useState(false);
   const dropdownRef = useRef(null);
+
+  // Promotions disponibles
+  const [promotions, setPromotions] = useState([]);
+  const [showPromoModal, setShowPromoModal] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'promotions'), (snap) => {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const data = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => {
+          if (!p.actif) return false;
+          if (!p.isPermanente && p.dateFin && p.dateFin < today) return false;
+          return true;
+        });
+      setPromotions(data);
+    });
+    return () => unsub();
+  }, []);
+
+  // Détection de promotion active dans le panier
+  const promoActiveInfo = useMemo(() => {
+    const promoLine = (lignes || []).find(l => l.promotionNom || l.promotionId);
+    if (!promoLine) return null;
+    const promoNom = promoLine.promotionNom;
+    const promoId = promoLine.promotionId;
+    const fullPromo = promotions.find(p => p.id === promoId || p.nom === promoNom);
+    const totalEconomie = (lignes || []).reduce((sum, l) => {
+      if (l.promotionNom === promoNom && l.prixBase && l.prixFinal) {
+        return sum + Math.max(0, Number(l.prixBase) - Number(l.prixFinal));
+      }
+      return sum;
+    }, 0);
+
+    return {
+      id: promoId,
+      nom: promoNom,
+      economie: totalEconomie || (fullPromo ? fullPromo.economie : 0),
+      fullPromo
+    };
+  }, [lignes, promotions]);
+
+  // Appliquer une promotion au panier
+  const applyPromotion = useCallback((promo) => {
+    if (!promo || !promo.servicesInclus || promo.servicesInclus.length === 0) {
+      alert("Cette promotion ne contient aucun soin.");
+      return;
+    }
+
+    const promoLines = promo.servicesInclus.map(s => {
+      const base = Number(s.prixStandard) || Number(s.prixPromo);
+      const promoP = Number(s.prixPromo);
+      const diff = Math.max(0, base - promoP);
+
+      return {
+        serviceId: s.serviceId,
+        serviceNom: s.serviceNom,
+        isBillard: false,
+        prixBase: base,
+        prixFinal: promoP,
+        agents: [],
+        remiseType: diff > 0 ? 'fixe' : 'aucune',
+        remiseValeur: diff > 0 ? diff : '',
+        remiseMotif: `Promo : ${promo.nom}`,
+        promotionId: promo.id,
+        promotionNom: promo.nom,
+        isPromo: true,
+        isDomicile: !!s.isDomicile
+      };
+    });
+
+    setLignes(prev => {
+      if (prev.length === 1 && !prev[0].serviceId) {
+        return promoLines;
+      }
+      const withoutSamePromo = prev.filter(l => l.promotionId !== promo.id);
+      return [...withoutSamePromo, ...promoLines];
+    });
+
+    setShowPromoModal(false);
+  }, [setLignes]);
+
+  // Retirer une promotion du panier
+  const removePromotion = useCallback((promoId) => {
+    setLignes(prev => {
+      const filtered = prev.filter(l => l.promotionId !== promoId && (!l.promotionNom || l.promotionId));
+      if (filtered.length === 0) {
+        return [{
+          serviceId: '',
+          serviceNom: '',
+          isBillard: false,
+          prixBase: '',
+          prixFinal: '',
+          agents: [],
+          remiseType: 'aucune',
+          remiseValeur: '',
+          remiseMotif: '',
+        }];
+      }
+      return filtered;
+    });
+  }, [setLignes]);
+
+  // Application automatique de la promotion pré-remplie
+  const appliedPromoRef = useRef(null);
+  useEffect(() => {
+    if (prefilledPromotion && appliedPromoRef.current !== prefilledPromotion) {
+      appliedPromoRef.current = prefilledPromotion;
+      const timer = setTimeout(() => {
+        applyPromotion(prefilledPromotion);
+        if (onClearPrefilledPromotion) onClearPrefilledPromotion();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [prefilledPromotion, applyPromotion, onClearPrefilledPromotion]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -174,7 +291,23 @@ const PanierPrestations = ({
 
   const removeLigne = (index) => {
     try {
-      setLignes(prev => prev.filter((_, i) => i !== index));
+      setLignes(prev => {
+        const next = prev.filter((_, i) => i !== index);
+        if (next.length === 0) {
+          return [{
+            serviceId: '',
+            serviceNom: '',
+            isBillard: false,
+            prixBase: '',
+            prixFinal: '',
+            agents: [],
+            remiseType: 'aucune',
+            remiseValeur: '',
+            remiseMotif: '',
+          }];
+        }
+        return next;
+      });
     } catch (e) {
       console.error(e);
       alert('Erreur lors de la suppression de la prestation.');
@@ -200,6 +333,9 @@ const PanierPrestations = ({
             current.remiseType = 'aucune';
             current.remiseValeur = '';
             current.agents = current.agents || [];
+            current.isPromo = false;
+            current.promotionId = null;
+            current.promotionNom = null;
             updated[index] = current;
             return updated;
           }
@@ -224,6 +360,9 @@ const PanierPrestations = ({
             current.remiseType = 'aucune';
             current.remiseValeur = '';
             current.isDomicile = isDomicile;
+            current.isPromo = false;
+            current.promotionId = null;
+            current.promotionNom = null;
           }
           updated[index] = current;
           return updated;
@@ -376,7 +515,6 @@ const PanierPrestations = ({
                       </div>
                     </div>
                   ))}
-                  {/* Option pour enregistrer comme nouveau client si nom n'est pas un match exact */}
                   {!filteredClients.some(c => [c.prenom, c.nom].filter(Boolean).join(' ').toLowerCase() === clientNom.toLowerCase().trim()) && (
                     <div style={{ padding: '8px 12px', backgroundColor: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Créer « {clientNom} » dans le répertoire ?</span>
@@ -409,7 +547,7 @@ const PanierPrestations = ({
         </div>
       )}
 
-      {/* Modal Add Client — AUCUN élément <form> imbriqué pour éviter les soumissions parasites */}
+      {/* Modal Add Client */}
       {showAddClientModal && (
         <div 
           style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}
@@ -463,7 +601,7 @@ const PanierPrestations = ({
         </div>
       )}
 
-      {/* Barre d'action rapide pour prestations et Billard */}
+      {/* Barre d'action rapide pour prestations, Billard et PROMOTIONS */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
         <button
           type="button"
@@ -473,6 +611,7 @@ const PanierPrestations = ({
         >
           <PlusCircle size={15} /> + Prestation classique
         </button>
+
         <button
           type="button"
           onClick={addBillardLigne}
@@ -481,29 +620,143 @@ const PanierPrestations = ({
         >
           🎱 + Ajouter Billard (Sans agent)
         </button>
+
+        {promotions.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowPromoModal(true)}
+            className="btn btn-small"
+            style={{
+              backgroundColor: 'rgba(245, 158, 11, 0.14)',
+              color: '#F59E0B',
+              border: '1.5px solid rgba(245, 158, 11, 0.45)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 800
+            }}
+          >
+            <Tag size={15} /> 🎁 Appliquer une Promotion ({promotions.length})
+          </button>
+        )}
       </div>
+
+      {/* BANDEAU PROMOTION ACTIVE (Si une promotion est appliquée dans le panier) */}
+      {promoActiveInfo && (
+        <div style={{
+          backgroundColor: 'rgba(245, 158, 11, 0.1)',
+          border: '1.5px solid rgba(245, 158, 11, 0.35)',
+          borderRadius: '12px',
+          padding: '12px 16px',
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '10px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '32px', height: '32px', borderRadius: '8px',
+              backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#F59E0B',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Sparkles size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                Promotion active : {promoActiveInfo.nom}
+                <span style={{ fontSize: '0.7rem', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)', padding: '2px 8px', borderRadius: '10px' }}>
+                  Pack Appliqué
+                </span>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Tarif promotionnel spécial inclus • Économie client : <strong style={{ color: '#F59E0B' }}>-{Number(promoActiveInfo.economie || 0).toLocaleString('fr-FR')} FCFA</strong>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowPromoModal(true)}
+              className="btn btn-small"
+              style={{
+                backgroundColor: 'var(--bg-input)',
+                color: 'var(--text-main)',
+                border: '1px solid var(--border-color)',
+                fontSize: '0.78rem',
+                padding: '5px 10px'
+              }}
+            >
+              Changer de pack
+            </button>
+            <button
+              type="button"
+              onClick={() => removePromotion(promoActiveInfo.id)}
+              className="btn btn-small"
+              style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                color: 'var(--danger)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                fontSize: '0.78rem',
+                padding: '5px 10px'
+              }}
+            >
+              Retirer
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Lignes de prestations */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '16px' }}>
         {lignes.map((ligne, index) => {
           const isBillard = ligne.isBillard || (ligne.serviceNom || '').toLowerCase().includes('billard');
+          const isPromoItem = !!(ligne.isPromo || ligne.promotionNom);
 
           return (
             <div
               key={index}
               style={{
-                border: isBillard ? '1.5px solid var(--accent)' : '1px solid var(--border-color)',
+                border: isBillard
+                  ? '1.5px solid var(--accent)'
+                  : isPromoItem
+                    ? '1.5px solid rgba(245, 158, 11, 0.4)'
+                    : '1px solid var(--border-color)',
                 borderRadius: '14px',
                 padding: '16px',
                 backgroundColor: 'var(--bg-card)',
-                boxShadow: isBillard ? '0 0 16px var(--accent-glow)' : 'none',
+                boxShadow: isBillard
+                  ? '0 0 16px var(--accent-glow)'
+                  : isPromoItem
+                    ? '0 0 12px rgba(245, 158, 11, 0.1)'
+                    : 'none',
                 position: 'relative'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ fontWeight: '700', color: 'var(--accent)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {isBillard ? '🎱 Billard' : `Prestation ${index + 1}`}
-                </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: '700', color: isPromoItem ? '#F59E0B' : 'var(--accent)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {isBillard ? '🎱 Billard' : `Prestation ${index + 1}`}
+                  </span>
+                  {isPromoItem && (
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                      color: '#F59E0B',
+                      padding: '2px 8px',
+                      borderRadius: '8px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <Tag size={11} /> Promo: {ligne.promotionNom}
+                    </span>
+                  )}
+                </div>
+
                 {lignes.length > 1 && (
                   <button
                     type="button"
@@ -556,7 +809,7 @@ const PanierPrestations = ({
                   </div>
                 </div>
               ) : (
-                /* Prestation classique */
+                /* Prestation classique ou issue d'une promo */
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
                   {/* Service */}
                   <div className="form-group" style={{ margin: 0 }}>
@@ -641,7 +894,7 @@ const PanierPrestations = ({
                     className="input-control"
                     value={ligne.remiseMotif || ''}
                     onChange={e => updateLigne(index, 'remiseMotif', e.target.value)}
-                    placeholder="Ex: Soin offert, fidélité client..."
+                    placeholder="Ex: Soin offert, fidélité client, pack promotionnel..."
                     required
                   />
                 </div>
@@ -686,7 +939,9 @@ const PanierPrestations = ({
                 <div style={{ marginTop: '10px', textAlign: 'right', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                   Prix base : <span style={{ textDecoration: 'line-through' }}>{ligne.prixBase} FCFA</span>
                   {' → '}
-                  <span style={{ fontWeight: 'bold', color: 'var(--accent)' }}>{Number(ligne.prixFinal || 0).toLocaleString('fr-FR')} FCFA</span>
+                  <span style={{ fontWeight: 'bold', color: isPromoItem ? '#F59E0B' : 'var(--accent)' }}>
+                    {Number(ligne.prixFinal || 0).toLocaleString('fr-FR')} FCFA
+                  </span>
                 </div>
               )}
             </div>
@@ -737,6 +992,157 @@ const PanierPrestations = ({
           </div>
         </div>
       </div>
+
+      {/* ── MODAL SÉLECTEUR DE PROMOTIONS ─────────────────────────────────── */}
+      {showPromoModal && (
+        <div
+          className="modal-overlay"
+          onClick={() => setShowPromoModal(false)}
+          style={{ zIndex: 1200 }}
+        >
+          <div
+            className="modal-content"
+            style={{ maxWidth: '640px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '38px', height: '38px', borderRadius: '10px',
+                  backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <Tag size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+                    Promotions & Packs Disponibles
+                  </h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Sélectionnez une offre pour charger automatiquement tous ses soins au tarif promotionnel
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPromoModal(false)}
+                className="btn-icon"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {promotions.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                <Tag size={36} style={{ opacity: 0.3, marginBottom: '10px' }} />
+                <p>Aucune promotion active actuellement.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {promotions.map(promo => {
+                  const soins = promo.servicesInclus || [];
+                  return (
+                    <div
+                      key={promo.id}
+                      style={{
+                        backgroundColor: 'var(--bg-input)',
+                        borderRadius: '14px',
+                        padding: '16px',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                              {promo.nom}
+                            </h4>
+                            {promo.economiePourcentage > 0 && (
+                              <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                                color: '#F59E0B',
+                                padding: '2px 8px',
+                                borderRadius: '10px'
+                              }}>
+                                -{promo.economiePourcentage}%
+                              </span>
+                            )}
+                          </div>
+                          {promo.description && (
+                            <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                              {promo.description}
+                            </p>
+                          )}
+                        </div>
+
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--success)' }}>
+                            {Number(promo.prixTotalPromo || 0).toLocaleString('fr-FR')} F
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textDecoration: 'line-through' }}>
+                            {Number(promo.prixTotalStandard || 0).toLocaleString('fr-FR')} F
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Liste des soins inclus */}
+                      <div style={{
+                        backgroundColor: 'var(--bg-main)',
+                        borderRadius: '10px',
+                        padding: '10px 12px',
+                        fontSize: '0.82rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px'
+                      }}>
+                        {soins.map((s, idx) => (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>• {s.serviceNom}</span>
+                            <span>
+                              <span style={{ color: 'var(--text-muted)', textDecoration: 'line-through', marginRight: '6px', fontSize: '0.75rem' }}>
+                                {Number(s.prixStandard).toLocaleString('fr-FR')} F
+                              </span>
+                              <strong style={{ color: 'var(--success)' }}>{Number(s.prixPromo).toLocaleString('fr-FR')} F</strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#F59E0B' }}>
+                          Économie totale : -{Number(promo.economie || 0).toLocaleString('fr-FR')} FCFA
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => applyPromotion(promo)}
+                          className="btn btn-primary"
+                          style={{
+                            padding: '8px 16px',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <ShoppingBag size={14} /> Appliquer ce pack
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

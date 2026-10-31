@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, increment } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   Calendar, Clock, User, Phone,
@@ -14,7 +14,7 @@ import AgendaVisuel from './AgendaVisuel';
 import PanierPrestations from './PanierPrestations';
 
 const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPrefill }) => {
+const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPrefill, prefilledPromotion = null, onClearPrefilledPromotion = null }) => {
   // Collections state
   const [reservations, setReservations] = useState([]);
   const [services, setServices]         = useState([]);
@@ -96,12 +96,26 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
   // ── Pré-remplissage depuis la Fiche Client ─────────────────────────────────
   useEffect(() => {
     if (prefilledClient) {
-      setClientNom([prefilledClient.prenom, prefilledClient.nom].filter(Boolean).join(' '));
-      setClientTel(prefilledClient.telephone || '');
-      setIsFormModalOpen(true);
-      if (onClearPrefill) onClearPrefill();
+      const timer = setTimeout(() => {
+        setClientNom([prefilledClient.prenom, prefilledClient.nom].filter(Boolean).join(' '));
+        setClientTel(prefilledClient.telephone || '');
+        setIsFormModalOpen(true);
+        if (onClearPrefill) onClearPrefill();
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [prefilledClient, onClearPrefill]);
+
+  // ── Pré-remplissage depuis Promotions & Packs ──────────────────────────────
+  useEffect(() => {
+    if (prefilledPromotion) {
+      const timer = setTimeout(() => {
+        setIsFormModalOpen(true);
+        if (onClearPrefilledPromotion) onClearPrefilledPromotion();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [prefilledPromotion, onClearPrefilledPromotion]);
 
   // ── Créer une réservation ─────────────────────────────────────────────────
   const handleSave = async (e) => {
@@ -122,6 +136,10 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
     // For legacy compat in tx, pick the first agent if any
     const firstAgent = lignesPanier[0]?.agents?.[0] || null;
 
+    const promoLine = lignesPanier.find(l => l.isPromo || l.promotionId);
+    const promotionId = promoLine?.promotionId || null;
+    const promotionNom = promoLine?.promotionNom || null;
+
     try {
       if (optionPaiement === 'avance') {
         statut      = 'encaisse';
@@ -129,10 +147,12 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
         await addDoc(collection(db, 'transactions'), {
           type: 'prestation',
           montant: prixTotal,
-          motif: `Réservation d'avance - ${clientNom} (${motifTx})`,
+          motif: `Réservation d'avance - ${clientNom} (${motifTx})${promotionNom ? ` [Promo: ${promotionNom}]` : ''}`,
           employeId: firstAgent ? firstAgent.id : '',
           employeNom: firstAgent ? firstAgent.nom : '',
           modePaiement,
+          promotionId,
+          promotionNom,
           lignes: lignesPanier,
           date: nowISO
         });
@@ -154,10 +174,12 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
         await addDoc(collection(db, 'transactions'), {
           type: 'prestation',
           montant: acomptePaye,
-          motif: `Acompte réservation - ${clientNom} (${motifTx})`,
+          motif: `Acompte réservation - ${clientNom} (${motifTx})${promotionNom ? ` [Promo: ${promotionNom}]` : ''}`,
           employeId: firstAgent ? firstAgent.id : '',
           employeNom: firstAgent ? firstAgent.nom : '',
           modePaiement,
+          promotionId,
+          promotionNom,
           lignes: lignesPanier,
           date: nowISO
         });
@@ -169,6 +191,8 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
         serviceNom: serviceNoms, 
         prixBase: prixBaseTotal,
         prixTotal,
+        promotionId,
+        promotionNom,
         lignes: lignesPanier,
         datePrevue, heurePrevue,
         statut, acomptePaye,
@@ -176,8 +200,18 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
         createdAt: nowISO
       });
       console.log('[Reservations] Réservation créée avec statut:', statut);
+
+      if (promotionId && (optionPaiement === 'avance' || optionPaiement === 'acompte')) {
+        try {
+          await updateDoc(doc(db, 'promotions', promotionId), {
+            countUtilisations: increment(1)
+          });
+        } catch (err) {
+          console.warn("Erreur comptage promo:", err);
+        }
+      }
       
-      await logEvent('RESERVATION_CREATE', `Réservation pour ${clientNom} (${motifTx}). Statut: ${statut}`);
+      await logEvent('RESERVATION_CREATE', `Réservation pour ${clientNom} (${motifTx})${promotionNom ? ` [Promo: ${promotionNom}]` : ''}. Statut: ${statut}`);
 
     } catch (err) {
       console.error('[Reservations] Erreur lors de la création:', err);
@@ -191,6 +225,7 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
     setDatePrevue(''); setHeurePrevue(''); 
     setOptionPaiement('a_payer'); setMontantAcompte(''); setModePaiement('Cash');
     setNotes('');
+    if (onClearPrefilledPromotion) onClearPrefilledPromotion();
     setIsFormModalOpen(false);
   };
 
@@ -234,14 +269,18 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
     setEncaissementLoading(true);
     try {
       const firstAgent = res.lignes?.[0]?.agents?.[0] || null;
+      const promoId = res.promotionId || res.lignes?.find(l => l.isPromo || l.promotionId)?.promotionId || null;
+      const promoNom = res.promotionNom || res.lignes?.find(l => l.isPromo || l.promotionId)?.promotionNom || null;
 
       const txData = {
         type: 'prestation',
         montant: resteAPayer,
-        motif: `Solde réservation - ${res.clientNom || 'Inconnu'} (${res.serviceNom || 'Autre'})`,
+        motif: `Solde réservation - ${res.clientNom || 'Inconnu'} (${res.serviceNom || 'Autre'})${promoNom ? ` [Promo: ${promoNom}]` : ''}`,
         employeId: firstAgent ? firstAgent.id : (res.employeId || ''),
         employeNom: firstAgent ? firstAgent.nom : (res.employeNom || ''),
         modePaiement: modeEncaissement,
+        promotionId: promoId,
+        promotionNom: promoNom,
         lignes: res.lignes || [],
         date: getTransactionDate()
       };
@@ -256,6 +295,16 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
       // 1. Créer la transaction de solde dans la Caisse
       await addDoc(collection(db, 'transactions'), txData);
       console.log('[Reservations] Transaction solde créée:', resteAPayer, 'FCFA via', modeEncaissement);
+
+      if (promoId && (!res.acomptePaye || res.acomptePaye === 0)) {
+        try {
+          await updateDoc(doc(db, 'promotions', promoId), {
+            countUtilisations: increment(1)
+          });
+        } catch (err) {
+          console.warn("Erreur comptage promo:", err);
+        }
+      }
 
       await updateDoc(doc(db, 'reservations', res.id), {
         statut:      'encaisse',
@@ -504,6 +553,7 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
             services={services}
             employes={employes}
             showClientField={false}
+            prefilledPromotion={prefilledPromotion}
           />
         </div>
 
@@ -682,7 +732,8 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
               </div>
             )}
 
-            <div className="table-responsive">
+            {/* ── DESKTOP TABLE ─────────────────────────────────────────── */}
+            <div className="table-responsive desktop-table">
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
                 <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
@@ -705,7 +756,7 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
               <tbody>
                 {filteredReservations.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan="7" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
                       Aucune réservation pour cette période.
                     </td>
                   </tr>
@@ -740,7 +791,24 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
                           </button>
                         )}
                       </td>
-                      <td style={{ padding: '10px' }}>{res.serviceNom}</td>
+                      <td style={{ padding: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 600 }}>{res.serviceNom}</span>
+                          {(res.promotionNom || res.promotionId) && (
+                            <span style={{
+                              fontSize: '0.72rem',
+                              padding: '2px 7px',
+                              borderRadius: '6px',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              color: '#d97706',
+                              border: '1px solid rgba(245, 158, 11, 0.3)',
+                              fontWeight: 700
+                            }}>
+                              🎁 {res.promotionNom || 'Promo'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td style={{ padding: '10px', color: 'var(--text-muted)' }}>{res.employeNom}</td>
                       <td style={{ padding: '10px' }}>{renderBadge(res)}</td>
                       <td style={{ padding: '10px', textAlign: 'center' }}>
@@ -792,6 +860,147 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* ── MOBILE CARDS ───────────────────────────────────────────── */}
+          <div className="mobile-cards">
+            {filteredReservations.length === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                Aucune réservation pour cette période.
+              </div>
+            ) : (
+              filteredReservations.map(res => {
+                const reste = Number(res.prixTotal || 0) - Number(res.acomptePaye || 0);
+                return (
+                  <div key={res.id} className="card" style={{
+                    padding: '12px 14px',
+                    marginBottom: '10px',
+                    border: selectedIds.includes(res.id) ? '1.5px solid var(--accent-color)' : '1px solid var(--border-color)',
+                    borderRadius: '12px',
+                    background: 'var(--card-bg)'
+                  }}>
+                    {/* Header: Checkbox + Date & Heure + Statut badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input 
+                          type="checkbox"
+                          checked={selectedIds.includes(res.id)}
+                          onChange={() => handleToggleSelect(res.id)}
+                          style={{ cursor: 'pointer', width: '18px', height: '18px' }}
+                        />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                          {res.datePrevue} à {res.heurePrevue}
+                        </span>
+                      </div>
+                      <div>{renderBadge(res)}</div>
+                    </div>
+
+                    {/* Client info & price */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--text-main)' }}>{res.clientNom}</div>
+                        {res.clientTel && (
+                          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            📞 {res.clientTel}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                          {Number(res.prixTotal || 0).toLocaleString('fr-FR')} F
+                        </div>
+                        {isNonEncaisse(res.statut) && (res.acomptePaye > 0) && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>
+                            Reste : {reste.toLocaleString('fr-FR')} F
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Prestation & Promo */}
+                    <div style={{ marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.88rem', color: 'var(--text-main)', fontWeight: 600 }}>{res.serviceNom}</span>
+                        {(res.promotionNom || res.promotionId) && (
+                          <span style={{
+                            fontSize: '0.7rem',
+                            padding: '2px 6px',
+                            borderRadius: '6px',
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            color: '#d97706',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            fontWeight: 700
+                          }}>
+                            🎁 {res.promotionNom || 'Promo'}
+                          </span>
+                        )}
+                      </div>
+                      {res.employeNom && (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          💇 Agent : {res.employeNom}
+                        </div>
+                      )}
+                      {(res.historiqueNotes && res.historiqueNotes.length > 0) && (
+                        <button onClick={() => setNotesModal(res)} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '6px', fontSize: '0.75rem',
+                          color: 'var(--accent-color)', backgroundColor: 'rgba(37,99,235,0.06)',
+                          padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(37,99,235,0.12)', cursor: 'pointer'
+                        }}>
+                          <MessageSquare size={10} />
+                          {res.historiqueNotes.length} note(s)
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Footer actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+                      <button
+                        onClick={() => setFactureModal(res)}
+                        className="btn btn-small"
+                        style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', padding: '6px 10px' }}
+                        title="Générer Facture"
+                      >
+                        <FileText size={15} />
+                      </button>
+                      <button
+                        onClick={() => setNotesModal(res)}
+                        className="btn btn-small"
+                        style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', padding: '6px 10px' }}
+                        title="Notes"
+                      >
+                        <MessageSquare size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleOpenEditModal(res)}
+                        className="btn btn-small"
+                        style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', padding: '6px 10px' }}
+                        title="Modifier"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      {isNonEncaisse(res.statut) && (
+                        <button
+                          onClick={() => handleEncaisserSolde(res)}
+                          className="btn btn-success btn-small"
+                          style={{ padding: '6px 10px' }}
+                          title="Encaisser le solde"
+                        >
+                          <CreditCard size={15} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(res.id)}
+                        className="btn btn-danger btn-small"
+                        style={{ padding: '6px 10px' }}
+                        title="Supprimer"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
         )}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  Calculator, BarChart3, Settings, Scissors, Calendar,
-  LogOut, User, Wallet, Users, History, Menu, X, Sun, Moon, LayoutDashboard, Package, UserCheck
+  Calculator, BarChart3, Settings, Calendar,
+  LogOut, User, Wallet, Users, History, Menu, X, Sun, Moon, LayoutDashboard, Package, UserCheck, Tag
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -18,6 +18,7 @@ import RH           from './components/RH';
 import Tracabilite  from './components/Tracabilite';
 import Inventaire   from './components/Inventaire';
 import Clients      from './components/Clients';
+import Promotions   from './components/Promotions';
 import BirthdayWidget from './components/BirthdayWidget';
 
 // Retourne la date locale du navigateur en format YYYY-MM-DD
@@ -37,12 +38,12 @@ function App() {
   const [monthRevenue,  setMonthRevenue]  = useState(0);
   const [user,          setUser]          = useState(null);
   const [userRole,      setUserRole]      = useState('agent');
-  const [userPerms,     setUserPerms]     = useState({ accesCaisse: false, accesReservations: false, accesInventaire: false, accesBilan: false, accesTresorerie: false, accesParametres: false, accesClients: false });
-  const [userAccesInventaire, setUserAccesInventaire] = useState(false); // legacy compat
+  const [userPerms,     setUserPerms]     = useState({ accesCaisse: false, accesReservations: false, accesInventaire: false, accesBilan: false, accesTresorerie: false, accesParametres: false, accesClients: false, accesPromotions: true });
   const [currentUserNom, setCurrentUserNom] = useState('');
   const [authLoading,   setAuthLoading]   = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [prefilledReservationClient, setPrefilledReservationClient] = useState(null);
+  const [prefilledPromotion, setPrefilledPromotion] = useState(null);
 
   // Dark Mode & Accent Theme
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
@@ -87,13 +88,12 @@ function App() {
               accesTresorerie:   !!data.accesTresorerie,
               accesParametres:   !!data.accesParametres,
               accesClients:      !!data.accesClients,
+              accesPromotions:   data.accesPromotions !== undefined ? !!data.accesPromotions : true,
             };
             setUserPerms(perms);
-            setUserAccesInventaire(perms.accesInventaire); // legacy compat
             setCurrentUserNom(data.nom || u.email || 'Inconnu');
           } else {
             setUserRole('admin');
-            setUserAccesInventaire(true);
             setCurrentUserNom(u.email || 'Admin');
           }
           setUser(u);
@@ -193,8 +193,36 @@ function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'accueil':      return <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'caisse':       return (userRole === 'admin' || userPerms.accesCaisse) ? <Caisse activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'reservations': return (userRole === 'admin' || userPerms.accesReservations) ? <Reservations activeDate={activeDate} prefilledClient={prefilledReservationClient} onClearPrefill={() => setPrefilledReservationClient(null)} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'caisse':       return (userRole === 'admin' || userPerms.accesCaisse) ? (
+        <Caisse
+          activeDate={activeDate}
+          currentUserNom={currentUserNom}
+          prefilledPromotion={prefilledPromotion}
+          onClearPrefilledPromotion={() => setPrefilledPromotion(null)}
+        />
+      ) : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'reservations': return (userRole === 'admin' || userPerms.accesReservations) ? (
+        <Reservations
+          activeDate={activeDate}
+          prefilledClient={prefilledReservationClient}
+          onClearPrefill={() => setPrefilledReservationClient(null)}
+          prefilledPromotion={prefilledPromotion}
+          onClearPrefilledPromotion={() => setPrefilledPromotion(null)}
+        />
+      ) : <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'promotions':   return (userRole === 'admin' || userPerms.accesPromotions !== false) ? (
+        <Promotions
+          activeDate={activeDate}
+          onNavigateToCaisse={(promo) => {
+            setPrefilledPromotion(promo);
+            setActiveTab('caisse');
+          }}
+          onNavigateToReservation={(promo) => {
+            setPrefilledPromotion(promo);
+            setActiveTab('reservations');
+          }}
+        />
+      ) : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'clients':      return (userRole === 'admin' || userPerms.accesClients) ? <Clients onNavigateToReservation={(c) => { setPrefilledReservationClient(c); setActiveTab('reservations'); }} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'inventaire':   return (userRole === 'admin' || userPerms.accesInventaire) ? <Inventaire activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
       case 'bilan':        return (userRole === 'admin' || userPerms.accesBilan) ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
@@ -215,6 +243,9 @@ function App() {
     ] : []),
     ...(userRole === 'admin' || userPerms.accesReservations ? [
       { key: 'reservations', label: 'Reservations',    icon: <Calendar size={20} /> }
+    ] : []),
+    ...((userRole === 'admin' || userPerms.accesPromotions !== false) ? [
+      { key: 'promotions',   label: 'Promotions',      icon: <Tag size={20} /> }
     ] : []),
     ...((userRole === 'admin' || userPerms.accesClients) ? [
       { key: 'clients',    label: 'Clients',            icon: <UserCheck size={20} /> }

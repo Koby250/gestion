@@ -121,7 +121,7 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
         </div>
 
         {/* ── Zone scrollable ──────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: 'auto', backgroundColor: '#e5e5e5', padding: '24px 16px', minHeight: 0 }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', backgroundColor: '#e5e5e5', padding: '16px 12px', minHeight: 0 }}>
 
           {/* ══ FACTURE (100% NOIR & BLANC PRO) ══════════════════ */}
           <div
@@ -131,7 +131,8 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
               fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
               backgroundColor: '#ffffff',
               color: '#000000',
-              width: '620px',
+              width: '100%',
+              maxWidth: '620px',
               margin: '0 auto',
               boxSizing: 'border-box',
               border: '1px solid #d4d4d4',
@@ -252,6 +253,24 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
                       Tél : {data.clientTel}
                     </p>
                   )}
+                  {data.promotionNom && (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      marginTop: '6px',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      backgroundColor: '#f3f4f6',
+                      border: '1px solid #d1d5db',
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      color: '#111827'
+                    }}>
+                      <span>🏷️ Offre Promo :</span>
+                      <span>{data.promotionNom}</span>
+                    </div>
+                  )}
                 </div>
 
                 {type === 'reservation' && data.datePrevue && (
@@ -310,6 +329,11 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
                           <tr key={index} style={{ borderBottom: '1px solid #eaeaea' }}>
                             <td style={{ padding: '12px 8px 12px 0', fontSize: '12.5px' }}>
                               <strong style={{ color: '#000000', fontWeight: '700' }}>{nomAffiche}</strong>
+                              {(ligne.promotionNom || (data.promotionNom && ligne.isPromo)) && (
+                                <div style={{ fontSize: '10px', color: '#111827', fontWeight: '600', marginTop: '2px' }}>
+                                  🎁 Offre : {ligne.promotionNom || data.promotionNom}
+                                </div>
+                              )}
                               {ligne.remiseType && ligne.remiseType !== 'aucune' && (
                                 <div style={{ fontSize: '10.5px', color: '#555555', fontStyle: 'italic', marginTop: '2px' }}>
                                   Remise : {ligne.remiseMotif}

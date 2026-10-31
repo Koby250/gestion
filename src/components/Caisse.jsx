@@ -14,7 +14,7 @@ const getCurrentTimeStr = () => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
+const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPromotion = null, onClearPrefilledPromotion = null }) => {
   // State for reference data
   const [services, setServices] = useState([]);
   const [servicesDomicile, setServicesDomicile] = useState([]);
@@ -31,10 +31,12 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
   // Date & Heure saisie personnalisée
   const [dateOperation, setDateOperation] = useState(activeDate);
   const [heureOperation, setHeureOperation] = useState(getCurrentTimeStr);
+  const [prevActiveDate, setPrevActiveDate] = useState(activeDate);
 
-  useEffect(() => {
+  if (prevActiveDate !== activeDate) {
+    setPrevActiveDate(activeDate);
     setDateOperation(activeDate);
-  }, [activeDate]);
+  }
 
   // Depense fields
   const [montant, setMontant] = useState('');
@@ -179,6 +181,9 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         }
 
         const firstAgent = lignesPanier.find(l => l.agents && l.agents.length > 0)?.agents?.[0];
+        const promoLine = lignesPanier.find(l => l.isPromo || l.promotionId);
+        const promotionId = promoLine?.promotionId || null;
+        const promotionNom = promoLine?.promotionNom || null;
 
         const newTransaction = {
           type: 'prestation',
@@ -190,6 +195,8 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
           modePaiement,
           date: getTransactionDate(),
           saisieParNom: currentUserNom,
+          promotionId: promotionId,
+          promotionNom: promotionNom,
           lignes: lignesPanier.map(l => ({
             serviceId: l.serviceId || 'billard',
             serviceNom: l.serviceNom,
@@ -201,13 +208,26 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
             remiseType: l.remiseType || 'aucune',
             remiseValeur: l.remiseValeur || '',
             remiseMotif: l.remiseMotif || '',
+            isPromo: !!l.isPromo,
+            promotionId: l.promotionId || null,
+            promotionNom: l.promotionNom || null,
             agents: l.agents || [],
             isDomicile: !!l.isDomicile
           }))
         };
 
         await addDoc(collection(db, 'transactions'), newTransaction);
-        await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA. Agents: ${allAgentNoms.join(', ') || 'Aucun'}. Mode: ${modePaiement}`);
+        await logEvent('TRANSACTION_CREATE', `Vente multi-services (${lignesPanier.length} prestations) de ${totalMontant} FCFA${promotionNom ? ` [Promo: ${promotionNom}]` : ''}. Agents: ${allAgentNoms.join(', ') || 'Aucun'}. Mode: ${modePaiement}`);
+
+        if (promotionId) {
+          try {
+            await updateDoc(doc(db, 'promotions', promotionId), {
+              countUtilisations: increment(1)
+            });
+          } catch (err) {
+            console.warn("Erreur mise à jour usage promo:", err);
+          }
+        }
 
         if (clientIdCaisse) {
           try {
@@ -226,6 +246,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
         setClientNomCaisse('');
         setClientIdCaisse('');
         setHeureOperation(getCurrentTimeStr());
+        if (onClearPrefilledPromotion) onClearPrefilledPromotion();
         setShowSuccess(true);
 
       } else {
@@ -338,6 +359,10 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
           motifDesc = `Forfait (${editTxLignes.length} prestations)`;
         }
 
+        const promoLine = editTxLignes.find(l => l.isPromo || l.promotionId);
+        const promoId = promoLine?.promotionId || editTxModal.promotionId || null;
+        const promoNom = promoLine?.promotionNom || editTxModal.promotionNom || null;
+
         await updateDoc(doc(db, 'transactions', editTxModal.id), {
           montant: total,
           motif: motifDesc,
@@ -347,6 +372,8 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
           employeId: employeId,
           employeNom: employeNom,
           date: newDateISO,
+          promotionId: promoId,
+          promotionNom: promoNom,
           modifieParNom: currentUserNom,
           dateModification: new Date().toISOString()
         });
@@ -565,142 +592,295 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
 
   // Reusable component for Transaction Table
   const renderTransactionTable = (txList) => (
-    <div className="table-responsive">
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
-            <th style={{ padding: '10px', width: '40px' }}>
-              <input 
-                type="checkbox" 
-                onChange={(e) => toggleAll(e, txList)}
-                checked={txList.length > 0 && txList.every(t => selectedTransactions.includes(t.id))}
-                style={{ cursor: 'pointer' }}
-              />
-            </th>
-            <th style={{ padding: '10px' }}>Heure</th>
-            <th style={{ padding: '10px' }}>Type</th>
-            <th style={{ padding: '10px' }}>Motif</th>
-            <th style={{ padding: '10px' }}>Employé</th>
-            <th style={{ padding: '10px' }}>Mode</th>
-            <th style={{ padding: '10px', textAlign: 'right' }}>Montant</th>
-            <th style={{ padding: '10px', textAlign: 'center' }}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {txList.length === 0 ? (
-            <tr>
-              <td colSpan="7" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                Aucune opération.
-              </td>
+    <>
+      {/* ── DESKTOP TABLE ─────────────────────────────────────────── */}
+      <div className="table-responsive desktop-table">
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+              <th style={{ padding: '10px', width: '40px' }}>
+                <input 
+                  type="checkbox" 
+                  onChange={(e) => toggleAll(e, txList)}
+                  checked={txList.length > 0 && txList.every(t => selectedTransactions.includes(t.id))}
+                  style={{ cursor: 'pointer' }}
+                />
+              </th>
+              <th style={{ padding: '10px' }}>Heure</th>
+              <th style={{ padding: '10px' }}>Type</th>
+              <th style={{ padding: '10px' }}>Motif</th>
+              <th style={{ padding: '10px' }}>Employé</th>
+              <th style={{ padding: '10px' }}>Mode</th>
+              <th style={{ padding: '10px', textAlign: 'right' }}>Montant</th>
+              <th style={{ padding: '10px', textAlign: 'center' }}>Actions</th>
             </tr>
-          ) : (
-            txList.map(t => (
-              <tr key={t.id} style={{ 
-                borderBottom: '1px solid var(--border-color)',
-                backgroundColor: selectedTransactions.includes(t.id) ? 'rgba(37,99,235,0.05)' : 'transparent'
-              }}>
-                <td style={{ padding: '10px' }}>
+          </thead>
+          <tbody>
+            {txList.length === 0 ? (
+              <tr>
+                <td colSpan="8" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Aucune opération.
+                </td>
+              </tr>
+            ) : (
+              txList.map(t => (
+                <tr key={t.id} style={{ 
+                  borderBottom: '1px solid var(--border-color)',
+                  backgroundColor: selectedTransactions.includes(t.id) ? 'rgba(37,99,235,0.05)' : 'transparent'
+                }}>
+                  <td style={{ padding: '10px' }}>
+                    <input 
+                      type="checkbox"
+                      checked={selectedTransactions.includes(t.id)}
+                      onChange={() => toggleSelection(t.id)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </td>
+                  <td style={{ padding: '10px', fontSize: '0.9rem' }}>{formatTime(t.date)}</td>
+                  <td style={{ padding: '10px' }}>
+                    <span style={{ 
+                      padding: '4px 8px', 
+                      borderRadius: '12px', 
+                      fontSize: '0.8rem', 
+                      backgroundColor: t.type === 'prestation' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      color: t.type === 'prestation' ? 'var(--success)' : 'var(--danger)',
+                      fontWeight: '600'
+                    }}>
+                      {t.type === 'prestation' ? 'Vente' : 'Dépense'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px', fontWeight: '500' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span>{t.motif}</span>
+                      {(t.promotionNom || t.promotionId) && (
+                        <span style={{
+                          fontSize: '0.72rem',
+                          padding: '2px 7px',
+                          borderRadius: '6px',
+                          background: 'rgba(245, 158, 11, 0.15)',
+                          color: '#d97706',
+                          border: '1px solid rgba(245, 158, 11, 0.3)',
+                          fontWeight: 700
+                        }}>
+                          🎁 {t.promotionNom || 'Promotion'}
+                        </span>
+                      )}
+                    </div>
+                    {t.clientNom && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Client : {t.clientNom}</span>}
+                    {t.type === 'depense' && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.categorie}</span>}
+                    {t.lignes && t.lignes.length > 1 && (
+                      <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {t.lignes.map((l, i) => (
+                          <span key={i} style={{ fontSize: '0.75rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', display: 'inline-block' }}>
+                            {l.serviceNom} — {(l.agents || []).map(a => a.nom).join(', ')} — {Number(l.prixFinal).toLocaleString('fr-FR')} FCFA
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: '10px' }}>
+                    <div>{t.employeNom}</div>
+                    {t.saisieParNom && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Saisi par : {t.saisieParNom}
+                      </div>
+                    )}
+                    {t.modifieParNom && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', fontStyle: 'italic' }}>
+                        Modifié par : {t.modifieParNom}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: '10px' }}>
+                    <span style={{ 
+                      padding: '4px 8px', borderRadius: '8px', fontSize: '0.8rem',
+                      backgroundColor: 'var(--bg-input)', fontWeight: '600', color: 'var(--text-main)'
+                    }}>
+                      {t.modePaiement}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: t.type === 'prestation' ? 'var(--success)' : 'var(--text-main)' }}>
+                    {t.type === 'depense' ? '-' : ''}{t.montant} FCFA
+                  </td>
+                  <td style={{ padding: '10px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                      {t.type === 'prestation' ? (
+                        <>
+                          <button 
+                            onClick={() => handleOpenEditModal(t)}
+                            style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer' }}
+                            title="Modifier"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button 
+                            onClick={() => setFactureModal(t)}
+                            style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer' }}
+                            title="Reçu"
+                          >
+                            <FileText size={18} />
+                          </button>
+                        </>
+                      ) : (
+                        <button 
+                          onClick={() => handleOpenEditDepense(t)}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer' }}
+                          title="Modifier cette dépense"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => handleDelete(t.id, t.type, t.montant, t.motif)}
+                        style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}
+                        title="Supprimer"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── MOBILE CARDS ───────────────────────────────────────────── */}
+      <div className="mobile-cards">
+        {txList.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+            Aucune opération.
+          </div>
+        ) : (
+          txList.map(t => (
+            <div key={t.id} className="card" style={{
+              padding: '12px 14px',
+              marginBottom: '10px',
+              border: selectedTransactions.includes(t.id) ? '1.5px solid var(--accent-color)' : '1px solid var(--border-color)',
+              borderRadius: '12px',
+              background: 'var(--card-bg)'
+            }}>
+              {/* Header: Checkbox + Time + Type badge + Mode badge + Amount */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input 
                     type="checkbox"
                     checked={selectedTransactions.includes(t.id)}
                     onChange={() => toggleSelection(t.id)}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: 'pointer', width: '18px', height: '18px' }}
                   />
-                </td>
-                <td style={{ padding: '10px', fontSize: '0.9rem' }}>{formatTime(t.date)}</td>
-                <td style={{ padding: '10px' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {formatTime(t.date)}
+                  </span>
                   <span style={{ 
-                    padding: '4px 8px', 
-                    borderRadius: '12px', 
-                    fontSize: '0.8rem', 
-                    backgroundColor: t.type === 'prestation' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                    padding: '2px 8px', 
+                    borderRadius: '8px', 
+                    fontSize: '0.72rem', 
+                    backgroundColor: t.type === 'prestation' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
                     color: t.type === 'prestation' ? 'var(--success)' : 'var(--danger)',
-                    fontWeight: '600'
+                    fontWeight: 700
                   }}>
                     {t.type === 'prestation' ? 'Vente' : 'Dépense'}
                   </span>
-                </td>
-                <td style={{ padding: '10px', fontWeight: '500' }}>
-                  {t.motif}
-                  {t.clientNom && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Client : {t.clientNom}</span>}
-                  {t.type === 'depense' && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.categorie}</span>}
-                  {t.lignes && t.lignes.length > 1 && (
-                    <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      {t.lignes.map((l, i) => (
-                        <span key={i} style={{ fontSize: '0.75rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-input)', padding: '2px 6px', borderRadius: '4px', display: 'inline-block' }}>
-                          {l.serviceNom} — {l.agents.map(a => a.nom).join(', ')} — {Number(l.prixFinal).toLocaleString('fr-FR')} FCFA
-                        </span>
-                      ))}
-                    </div>
+                </div>
+                <span style={{
+                  fontSize: '1.05rem',
+                  fontWeight: 800,
+                  color: t.type === 'prestation' ? 'var(--success)' : 'var(--danger)'
+                }}>
+                  {t.type === 'depense' ? '-' : '+'}{Number(t.montant).toLocaleString('fr-FR')} F
+                </span>
+              </div>
+
+              {/* Content: Motif / Services / Promo */}
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span>{t.motif}</span>
+                  {(t.promotionNom || t.promotionId) && (
+                    <span style={{
+                      fontSize: '0.7rem',
+                      padding: '2px 6px',
+                      borderRadius: '6px',
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      color: '#d97706',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      fontWeight: 700
+                    }}>
+                      🎁 {t.promotionNom || 'Promo'}
+                    </span>
                   )}
-                </td>
-                <td style={{ padding: '10px' }}>
-                  <div>{t.employeNom}</div>
-                  {t.saisieParNom && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      Saisi par : {t.saisieParNom}
-                    </div>
-                  )}
-                  {t.modifieParNom && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', fontStyle: 'italic' }}>
-                      Modifié par : {t.modifieParNom}
-                    </div>
-                  )}
-                </td>
-                <td style={{ padding: '10px' }}>
-                  <span style={{ 
-                    padding: '4px 8px', borderRadius: '8px', fontSize: '0.8rem',
-                    backgroundColor: 'var(--bg-input)', fontWeight: '600', color: 'var(--text-main)'
-                  }}>
+                </div>
+                {t.clientNom && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    👤 Client : <strong style={{ color: 'var(--text-main)' }}>{t.clientNom}</strong>
+                  </div>
+                )}
+                {t.type === 'depense' && t.categorie && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    📁 Catégorie : {t.categorie}
+                  </div>
+                )}
+                {t.lignes && t.lignes.length > 1 && (
+                  <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    {t.lignes.map((l, i) => (
+                      <div key={i} style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'var(--bg-input)', padding: '3px 8px', borderRadius: '6px' }}>
+                        • {l.serviceNom} {l.agents && l.agents.length > 0 && `(${l.agents.map(a => a.nom).join(', ')})`} : {Number(l.prixFinal).toLocaleString('fr-FR')} F
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer: Employé, Mode, Actions */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '8px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ padding: '2px 6px', background: 'var(--bg-input)', borderRadius: '4px', fontWeight: 600 }}>
                     {t.modePaiement}
                   </span>
-                </td>
-                <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: t.type === 'prestation' ? 'var(--success)' : 'var(--text-main)' }}>
-                  {t.type === 'depense' ? '-' : ''}{t.montant} FCFA
-                </td>
-                <td style={{ padding: '10px', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                    {t.type === 'prestation' ? (
-                      <>
-                        <button 
-                          onClick={() => handleOpenEditModal(t)}
-                          style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer' }}
-                          title="Modifier"
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button 
-                          onClick={() => setFactureModal(t)}
-                          style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer' }}
-                          title="Reçu"
-                        >
-                          <FileText size={18} />
-                        </button>
-                      </>
-                    ) : (
+                  <span>{t.employeNom}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {t.type === 'prestation' ? (
+                    <>
                       <button 
-                        onClick={() => handleOpenEditDepense(t)}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer' }}
-                        title="Modifier cette dépense"
+                        onClick={() => handleOpenEditModal(t)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', padding: '4px' }}
+                        title="Modifier"
                       >
-                        <Edit2 size={18} />
+                        <Edit2 size={16} />
                       </button>
-                    )}
+                      <button 
+                        onClick={() => setFactureModal(t)}
+                        style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', padding: '4px' }}
+                        title="Reçu"
+                      >
+                        <FileText size={16} />
+                      </button>
+                    </>
+                  ) : (
                     <button 
-                      onClick={() => handleDelete(t.id, t.type, t.montant, t.motif)}
-                      style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}
-                      title="Supprimer"
+                      onClick={() => handleOpenEditDepense(t)}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', padding: '4px' }}
+                      title="Modifier cette dépense"
                     >
-                      <Trash2 size={18} />
+                      <Edit2 size={16} />
                     </button>
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+                  )}
+                  <button 
+                    onClick={() => handleDelete(t.id, t.type, t.montant, t.motif)}
+                    style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '4px' }}
+                    title="Supprimer"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </>
   );
 
   return (
@@ -776,6 +956,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
               setModePaiement={setModePaiement}
               showClientField={true}
               clients={clients}
+              prefilledPromotion={prefilledPromotion}
             />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>

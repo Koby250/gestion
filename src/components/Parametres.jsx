@@ -42,6 +42,7 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
   const MODULES_AGENTS = [
     { key: 'accesCaisse',       label: 'Caisse' },
     { key: 'accesReservations', label: 'Reservations' },
+    { key: 'accesPromotions',   label: 'Promotions' },
     { key: 'accesInventaire',   label: 'Inventaire' },
     { key: 'accesTresorerie',   label: 'Tresorerie' },
     { key: 'accesBilan',        label: 'Bilan' },

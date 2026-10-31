@@ -816,6 +816,14 @@ select.input-control option {
   align-items: center;
 }
 
+.desktop-table {
+  display: block;
+}
+
+.mobile-cards {
+  display: none;
+}
+
 /* ── Mobile Responsive ────────────────────────────── */
 @media (max-width: 768px) {
   .app-container {
@@ -917,7 +925,11 @@ select.input-control option {
   }
 
   .desktop-table { display: none !important; }
-  .mobile-cards  { display: block !important; }
+  .mobile-cards  { display: flex !important; flex-direction: column; gap: 10px; }
+
+  input, select, textarea {
+    font-size: 16px !important;
+  }
 
   .card[style*="maxWidth: 600px"],
   .card[style*="maxWidth: 700px"],
