@@ -190,6 +190,8 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
           montant: totalMontant,
           motif: motifDescription,
           clientNom: clientNomCaisse.trim() || 'Client anonyme',
+          clientId: clientIdCaisse || null,
+          clientTel: clients.find(c => c.id === clientIdCaisse)?.telephone || '',
           employeNom: allAgentNoms.length > 0 ? allAgentNoms.join(', ') : 'Aucun (Billard)',
           employeId: firstAgent?.id || '',
           modePaiement,
@@ -1133,6 +1135,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
         <FactureModal 
           data={factureModal} 
           type="transaction" 
+          clients={clients}
           onClose={() => setFactureModal(null)} 
         />
       )}

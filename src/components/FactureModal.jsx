@@ -1,106 +1,240 @@
 import { useState } from 'react';
-import { X, Download, Image, FileText } from 'lucide-react';
+import {
+  X, Download, Image, FileText, Printer, Share2,
+  Calendar, Clock, User, Phone, Sparkles, CheckCircle2
+} from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-const FactureModal = ({ data, type = 'reservation', onClose }) => {
+const FactureModal = ({ data, type = 'reservation', clients = [], onClose }) => {
+  const [docFormat, setDocFormat] = useState('prestige'); // 'prestige' | 'ticket'
   const [showNotes, setShowNotes] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingImg, setIsGeneratingImg] = useState(false);
 
+  // Détection du statut de paiement
   const isPaid =
     type === 'transaction' ||
     (type === 'reservation' &&
       (data.statut === 'encaisse' || data.statut === 'paye_totalement'));
 
+  const isAcompte =
+    type === 'reservation' &&
+    data.statut === 'acompte_verse' &&
+    Number(data.acomptePaye || 0) > 0;
+
+  // Résolution intelligente du numéro de téléphone client
+  const clientFound = clients && clients.length > 0
+    ? clients.find(c =>
+        (data.clientId && c.id === data.clientId) ||
+        [c.prenom, c.nom].filter(Boolean).join(' ').toLowerCase().trim() === (data.clientNom || '').toLowerCase().trim() ||
+        (c.nom || '').toLowerCase().trim() === (data.clientNom || '').toLowerCase().trim()
+      )
+    : null;
+
+  const clientPhone = data.clientTel || clientFound?.telephone || '';
+
+  // Dates et heures formatées
+  const dateObj = new Date(data.datePrevue || data.date || data.createdAt || 0);
+  const dateFormatee = dateObj.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  const heureFormatee =
+    data.heurePrevue ||
+    dateObj.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+  // Totaux financiers
+  const totalFacture = data.lignes && data.lignes.length > 0
+    ? data.lignes.reduce((a, l) => a + Number(l.prixFinal || 0), 0)
+    : Number(data.prixTotal || data.montant || 0);
+
+  // Calcul du sous-total brut de base et des remises éventuelles
+  let totalBaseBrut = 0;
+  let totalRemises = 0;
+
+  if (data.lignes && data.lignes.length > 0) {
+    data.lignes.forEach(l => {
+      const base = Number(l.prixBase) || Number(l.prixFinal) || 0;
+      const finalPrice = Number(l.prixFinal) || 0;
+      totalBaseBrut += base;
+      if (base > finalPrice) {
+        totalRemises += (base - finalPrice);
+      }
+    });
+  } else if (data.prixOriginal && Number(data.prixOriginal) > totalFacture) {
+    totalBaseBrut = Number(data.prixOriginal);
+    totalRemises = totalBaseBrut - totalFacture;
+  } else {
+    totalBaseBrut = totalFacture;
+  }
+
+  const acomptePaye = Number(data.acomptePaye || 0);
+  const resteAPayer = type === 'reservation'
+    ? Math.max(0, totalFacture - acomptePaye)
+    : 0;
+
+  const numDoc = `LC-${(data.id || '').slice(0, 8).toUpperCase()}`;
+
+  // Détermination du libellé du document
+  const getDocTitle = () => {
+    if (type === 'reservation') {
+      if (isPaid) return 'FACTURE ACQUITTÉE';
+      if (isAcompte) return 'FACTURE AVEC ACOMPTE';
+      return 'FACTURE DE RÉSERVATION';
+    }
+    return 'REÇU DE PAIEMENT';
+  };
+
+  // Capture canvas haute résolution pour export PDF et Image
   const captureCanvas = async () => {
     const element = document.getElementById('facture-print-area');
     return html2canvas(element, {
-      scale: 2,
+      scale: 2.5,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
+      logging: false,
       scrollX: 0,
       scrollY: 0,
       width: element.scrollWidth,
       height: element.scrollHeight,
       windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
+      windowHeight: element.scrollHeight
     });
   };
 
+  // Téléchargement PDF ajusté à l'A4
   const handleDownloadPdf = async () => {
     setIsGeneratingPdf(true);
     try {
       const canvas = await captureCanvas();
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(pdfHeight, 297));
-      const fileName =
-        type === 'reservation'
-          ? `Facture_${data.clientNom || 'Client'}_${dateFormatee.replace(/\//g, '-')}.pdf`
-          : `Recu_${(data.id || '').slice(0, 8).toUpperCase()}.pdf`;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = docFormat === 'ticket' ? 30 : 10;
+      const printableWidth = pageWidth - (margin * 2);
+      const printableHeight = (canvas.height * printableWidth) / canvas.width;
+
+      if (printableHeight <= pageHeight - (margin * 2)) {
+        const yOffset = docFormat === 'ticket' ? 15 : margin;
+        pdf.addImage(imgData, 'JPEG', margin, yOffset, printableWidth, printableHeight);
+      } else {
+        const scale = (pageHeight - (margin * 2)) / printableHeight;
+        const scaledWidth = printableWidth * scale;
+        const xOffset = margin + (printableWidth - scaledWidth) / 2;
+        pdf.addImage(imgData, 'JPEG', xOffset, margin, scaledWidth, pageHeight - (margin * 2));
+      }
+
+      const fileName = type === 'reservation'
+        ? `Facture_${(data.clientNom || 'Client').replace(/\s+/g, '_')}_${numDoc}.pdf`
+        : `Recu_${(data.clientNom || 'Client').replace(/\s+/g, '_')}_${numDoc}.pdf`;
       pdf.save(fileName);
+    } catch (err) {
+      console.error('Erreur PDF:', err);
+      alert('Une erreur est survenue lors de la création du PDF.');
     } finally {
       setIsGeneratingPdf(false);
     }
   };
 
+  // Téléchargement Image JPEG haute fidélité
   const handleDownloadImage = async () => {
     setIsGeneratingImg(true);
     try {
       const canvas = await captureCanvas();
-      // Compress to JPEG at 85% quality — typically 150–400 KB
       const link = document.createElement('a');
-      link.download =
-        type === 'reservation'
-          ? `Facture_${data.clientNom || 'Client'}_${dateFormatee.replace(/\//g, '-')}.jpg`
-          : `Recu_${(data.id || '').slice(0, 8).toUpperCase()}.jpg`;
-      link.href = canvas.toDataURL('image/jpeg', 0.85);
+      link.download = type === 'reservation'
+        ? `Facture_${(data.clientNom || 'Client').replace(/\s+/g, '_')}_${numDoc}.jpg`
+        : `Recu_${(data.clientNom || 'Client').replace(/\s+/g, '_')}_${numDoc}.jpg`;
+      link.href = canvas.toDataURL('image/jpeg', 0.95);
       link.click();
+    } catch (err) {
+      console.error('Erreur Image:', err);
+      alert("Une erreur est survenue lors de l'export en image.");
     } finally {
       setIsGeneratingImg(false);
     }
   };
 
-  const dateFormatee = new Date(
-    data.datePrevue || data.date || data.createdAt
-  ).toLocaleDateString('fr-FR');
-  const heureFormatee =
-    data.heurePrevue ||
-    new Date(data.date || data.createdAt).toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  // Impression directe du document
+  const handlePrint = () => {
+    window.print();
+  };
 
-  const totalFacture = data.lignes
-    ? data.lignes.reduce((a, l) => a + Number(l.prixFinal || 0), 0)
-    : data.prixTotal || data.montant || 0;
+  // Partage instantané du reçu sur WhatsApp avec texte de synthèse haute facture
+  const handleShareWhatsApp = () => {
+    const totalStr = Number(totalFacture).toLocaleString('fr-FR');
+    const servicesList = data.lignes && data.lignes.length > 0
+      ? data.lignes.map(l => `• ${l.serviceNom} (${Number(l.prixFinal).toLocaleString('fr-FR')} F)`).join('\n')
+      : `• ${data.serviceNom || data.motif || 'Prestation'} (${totalStr} F)`;
 
-  const resteAPayer =
-    type === 'reservation'
-      ? totalFacture - (data.acomptePaye || 0)
-      : totalFacture;
+    let statutWhatsApp = `✅ Payé intégralement via ${data.modePaiement || 'Cash'}`;
+    if (!isPaid) {
+      if (isAcompte) {
+        statutWhatsApp = `★ Acompte versé : ${Number(acomptePaye).toLocaleString('fr-FR')} F (Reste : ${Number(resteAPayer).toLocaleString('fr-FR')} F)`;
+      } else {
+        statutWhatsApp = `⏳ En attente de règlement au salon (${Number(resteAPayer).toLocaleString('fr-FR')} F)`;
+      }
+    }
 
-  const numFacture = `LC-${(data.id || '').slice(0, 8).toUpperCase()}`;
+    const msg =
+`💈 *LE CERCLE — ${getDocTitle()}*
+━━━━━━━━━━━━━━━━━━━━━━
+📄 *Réf :* ${numDoc}
+👤 *Client :* ${data.clientNom || 'Client'}
+📅 *Date :* ${dateFormatee} à ${heureFormatee}
+${type === 'reservation' && data.datePrevue ? `🗓️ *Rendez-vous :* ${new Date(data.datePrevue).toLocaleDateString('fr-FR')} à ${data.heurePrevue}\n` : ''}
+*Détail des soins :*
+${servicesList}
+
+━━━━━━━━━━━━━━━━━━━━━━
+💰 *TOTAL : ${totalStr} FCFA*
+${statutWhatsApp}
+━━━━━━━━━━━━━━━━━━━━━━
+✨ _Merci pour votre confiance !_
+📍 Niamey, Niger
+📞 +227 87 37 73 70`;
+
+    const cleanPhone = clientPhone ? clientPhone.replace(/[\s.()-]/g, '') : '';
+    const normalizedPhone = cleanPhone.startsWith('+')
+      ? cleanPhone.slice(1)
+      : cleanPhone.startsWith('00')
+        ? cleanPhone.slice(2)
+        : (cleanPhone.length === 8 ? `227${cleanPhone}` : cleanPhone);
+
+    const waUrl = cleanPhone
+      ? `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+    window.open(waUrl, '_blank');
+  };
 
   return (
     <div className="modal-overlay hide-on-print">
       <div
         className="modal-content"
         style={{
-          maxWidth: '680px',
-          width: '100%',
+          maxWidth: '740px',
+          width: '96vw',
           padding: 0,
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '92vh',
+          maxHeight: '94vh',
+          borderRadius: '20px',
+          boxShadow: '0 25px 60px rgba(0,0,0,0.45)',
+          background: 'var(--bg-card)'
         }}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Header Modale ─────────────────────────────────────── */}
+        {/* ── BARRE D'EN-TÊTE MODALE (Sélecteur de format & Actions rapides) ── */}
         <div
           style={{
             display: 'flex',
@@ -108,454 +242,967 @@ const FactureModal = ({ data, type = 'reservation', onClose }) => {
             alignItems: 'center',
             padding: '14px 20px',
             borderBottom: '1px solid var(--border-color)',
+            backgroundColor: 'var(--bg-card)',
             flexShrink: 0,
+            gap: '12px',
+            flexWrap: 'wrap'
           }}
         >
-          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', color: 'var(--text-main)' }}>
-            <FileText size={18} color="var(--text-main)" />
-            {type === 'reservation' ? 'Facture de Réservation' : 'Reçu de Caisse'}
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-            <X size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '10px',
+              backgroundColor: 'rgba(217, 119, 6, 0.15)', color: '#D97706',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <FileText size={19} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+                {type === 'reservation' ? 'Facture & Reçu de Réservation' : 'Reçu de Caisse Officiel'}
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Réf : {numDoc} • {data.clientNom || 'Client'}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Toggle de Format : Facture A4 Prestige vs Ticket de Caisse */}
+            <div style={{
+              display: 'flex',
+              backgroundColor: 'var(--bg-input)',
+              padding: '3px',
+              borderRadius: '10px',
+              border: '1px solid var(--border-color)'
+            }}>
+              <button
+                type="button"
+                onClick={() => setDocFormat('prestige')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '7px',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  backgroundColor: docFormat === 'prestige' ? 'var(--btn-primary-bg)' : 'transparent',
+                  color: docFormat === 'prestige' ? 'var(--btn-primary-text)' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>📄</span> Facture Prestige
+              </button>
+              <button
+                type="button"
+                onClick={() => setDocFormat('ticket')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '7px',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  backgroundColor: docFormat === 'ticket' ? 'var(--btn-primary-bg)' : 'transparent',
+                  color: docFormat === 'ticket' ? 'var(--btn-primary-text)' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>🧾</span> Reçu Ticket
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              style={{
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: 'var(--text-muted)'
+              }}
+              title="Fermer"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
-        {/* ── Zone scrollable ──────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', backgroundColor: '#e5e5e5', padding: '16px 12px', minHeight: 0 }}>
+        {/* ── ZONE DE DÉFILEMENT DU DOCUMENT ── */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          overflowX: 'auto',
+          backgroundColor: '#0c0d0e',
+          padding: '24px 16px',
+          minHeight: 0,
+          display: 'flex',
+          justifyContent: 'center'
+        }}>
 
-          {/* ══ FACTURE (100% NOIR & BLANC PRO) ══════════════════ */}
+          {/* ════════════════════════════════════════════════════════════════
+              DOCUMENT PRIMAIRE IMPRIMABLE (#facture-print-area)
+              Construit sur fond 100% BLANC pur, avec typographie haute
+              couture, logo noir haute résolution et finitions dorées.
+              ════════════════════════════════════════════════════════════════ */}
           <div
             id="facture-print-area"
             className="print-area"
             style={{
               fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-              backgroundColor: '#ffffff',
-              color: '#000000',
+              backgroundColor: '#FFFFFF',
+              color: '#0F172A',
               width: '100%',
-              maxWidth: '620px',
+              maxWidth: docFormat === 'ticket' ? '400px' : '650px',
               margin: '0 auto',
               boxSizing: 'border-box',
-              border: '1px solid #d4d4d4',
+              borderRadius: docFormat === 'ticket' ? '12px' : '16px',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+              overflow: 'hidden',
+              border: '1px solid #E2E8F0',
+              WebkitFontSmoothing: 'antialiased'
             }}
           >
-            {/* Ligne supérieure noire */}
-            <div style={{ height: '6px', backgroundColor: '#000000' }} />
 
-            <div style={{ padding: '32px 36px 28px' }}>
-              {/* EN-TÊTE */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                paddingBottom: '24px',
-                borderBottom: '2px solid #000000',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <img
-                    src="/logos/blanc.png"
-                    alt="Le Cercle"
-                    crossOrigin="anonymous"
-                    style={{
-                      height: '52px',
-                      width: '52px',
-                      borderRadius: '50%',
-                      objectFit: 'contain',
-                      display: 'block',
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div>
-                    <h2 style={{
-                      margin: 0,
-                      fontSize: '20px',
-                      fontWeight: '900',
-                      letterSpacing: '2.5px',
-                      color: '#000000',
-                      textTransform: 'uppercase',
-                      lineHeight: '1.1',
+            {/* ────────────────────────────────────────────────────────────
+                FORMAT 1 : FACTURE PRESTIGE (Présentation A4 Haute Couture)
+               ──────────────────────────────────────────────────────────── */}
+            {docFormat === 'prestige' && (
+              <div>
+                {/* Ruban supérieur bicolore Noir & Or */}
+                <div style={{ display: 'flex', height: '6px', width: '100%' }}>
+                  <div style={{ flex: 3, backgroundColor: '#0F172A' }} />
+                  <div style={{ flex: 1, backgroundColor: '#D97706' }} />
+                  <div style={{ flex: 1, backgroundColor: '#B45309' }} />
+                </div>
+
+                <div style={{ padding: '32px 36px 28px' }}>
+                  {/* EN-TÊTE DU SALON & DOCUMENT */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    paddingBottom: '22px',
+                    borderBottom: '1px solid #E2E8F0',
+                    gap: '16px'
+                  }}>
+                    {/* Logo & Identité Salon */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <img
+                        src="/logos/noir.png"
+                        alt="Logo Le Cercle"
+                        crossOrigin="anonymous"
+                        style={{
+                          height: '56px',
+                          width: '56px',
+                          borderRadius: '50%',
+                          objectFit: 'contain',
+                          display: 'block',
+                          flexShrink: 0,
+                          border: '2px solid #D97706',
+                          padding: '2px',
+                          backgroundColor: '#FFFFFF'
+                        }}
+                      />
+                      <div>
+                        <div style={{
+                          fontSize: '22px',
+                          fontWeight: '900',
+                          letterSpacing: '3px',
+                          color: '#0F172A',
+                          textTransform: 'uppercase',
+                          lineHeight: '1.1'
+                        }}>
+                          LE CERCLE
+                        </div>
+                        <div style={{
+                          margin: '3px 0 0 0',
+                          fontSize: '9.5px',
+                          fontWeight: '800',
+                          letterSpacing: '2px',
+                          color: '#B45309',
+                          textTransform: 'uppercase'
+                        }}>
+                          Salon de Coiffure &amp; Lounge VIP
+                        </div>
+                        <div style={{
+                          margin: '3px 0 0 0',
+                          fontSize: '11px',
+                          color: '#64748B',
+                          fontStyle: 'italic'
+                        }}>
+                          Espace &amp; Services de Prestige
+                        </div>
+                        <div style={{
+                          margin: '5px 0 0 0',
+                          fontSize: '11px',
+                          color: '#334155',
+                          fontWeight: '600'
+                        }}>
+                          📍 Niamey, Niger &nbsp;•&nbsp; 📞 +227 87 37 73 70
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Titre & Numéro de Pièce */}
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{
+                        display: 'inline-block',
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        backgroundColor: '#0F172A',
+                        color: '#FFFFFF',
+                        border: '1.5px solid #D97706',
+                        fontSize: '12px',
+                        fontWeight: '800',
+                        letterSpacing: '2px',
+                        textTransform: 'uppercase',
+                        lineHeight: 1
+                      }}>
+                        {getDocTitle()}
+                      </div>
+                      <div style={{
+                        margin: '8px 0 0 0',
+                        fontSize: '13.5px',
+                        fontWeight: '900',
+                        color: '#0F172A',
+                        letterSpacing: '0.8px'
+                      }}>
+                        N° {numDoc}
+                      </div>
+                      <div style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#64748B' }}>
+                        Émis le {dateFormatee} à {heureFormatee}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BENTO : INFORMATIONS CLIENT & RÈGLEMENT */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                    gap: '12px',
+                    margin: '20px 0'
+                  }}>
+                    {/* Carte Client */}
+                    <div style={{
+                      backgroundColor: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: '12px',
+                      padding: '14px 16px'
                     }}>
-                      LE CERCLE
-                    </h2>
-                    <p style={{
-                      margin: '4px 0 0 0',
-                      fontSize: '9.5px',
-                      fontWeight: '600',
-                      letterSpacing: '1.8px',
-                      color: '#555555',
-                      textTransform: 'uppercase',
+                      <div style={{
+                        fontSize: '9px',
+                        fontWeight: '800',
+                        letterSpacing: '1.8px',
+                        color: '#94A3B8',
+                        textTransform: 'uppercase',
+                        marginBottom: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}>
+                        <User size={12} color="#D97706" /> FACTURÉ À
+                      </div>
+                      <div style={{ fontSize: '15px', fontWeight: '800', color: '#0F172A', lineHeight: 1.2 }}>
+                        {data.clientNom || 'Client Anonyme'}
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginTop: '5px',
+                        fontSize: '11.5px',
+                        color: '#475569',
+                        fontWeight: '600'
+                      }}>
+                        <Phone size={12} color="#64748B" />
+                        {clientPhone || 'Numéro non renseigné'}
+                      </div>
+
+                      {data.promotionNom && (
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          marginTop: '8px',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          backgroundColor: '#FFFBEB',
+                          border: '1px solid #FDE68A',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          color: '#B45309'
+                        }}>
+                          <Sparkles size={11} color="#D97706" /> Offre : {data.promotionNom}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Carte Informations Règlement & Rendez-vous */}
+                    <div style={{
+                      backgroundColor: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: '12px',
+                      padding: '14px 16px'
                     }}>
-                      Espace &amp; Services de Prestige
-                    </p>
-                    <p style={{
-                      margin: '5px 0 0 0',
-                      fontSize: '11px',
-                      color: '#333333',
-                      fontWeight: '500',
+                      <div style={{
+                        fontSize: '9px',
+                        fontWeight: '800',
+                        letterSpacing: '1.8px',
+                        color: '#94A3B8',
+                        textTransform: 'uppercase',
+                        marginBottom: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}>
+                        <Calendar size={12} color="#D97706" /> DÉTAILS DE L'OPÉRATION
+                      </div>
+
+                      {type === 'reservation' && data.datePrevue && (
+                        <div style={{ fontSize: '12.5px', color: '#0F172A', fontWeight: '700', marginBottom: '5px' }}>
+                          📅 RDV prévu : <span style={{ color: '#D97706' }}>{new Date(data.datePrevue).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} à {data.heurePrevue}</span>
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: '11.5px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>Règlement :</span>
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          backgroundColor: '#FFFFFF',
+                          border: '1px solid #CBD5E1',
+                          fontWeight: '700',
+                          color: '#0F172A',
+                          fontSize: '11px'
+                        }}>
+                          💳 {data.modePaiement || 'Cash'}
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: '11px', color: '#64748B', marginTop: '5px' }}>
+                        ✂️ Intervenant : <strong style={{ color: '#334155' }}>{data.employeNom || 'Équipe Le Cercle'}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* TABLEAU DES PRESTATIONS */}
+                  <div style={{ marginTop: '16px', overflow: 'hidden', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}>
+                          <th style={{ padding: '11px 14px', fontSize: '9.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'left' }}>
+                            Désignation &amp; Détails
+                          </th>
+                          <th style={{ padding: '11px 12px', fontSize: '9.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'center' }}>
+                            Praticien
+                          </th>
+                          <th style={{ padding: '11px 12px', fontSize: '9.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'right' }}>
+                            Tarif Base
+                          </th>
+                          <th style={{ padding: '11px 14px', fontSize: '9.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'right' }}>
+                            Total Net
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.lignes && data.lignes.length > 0 ? (
+                          data.lignes.map((ligne, index) => {
+                            const isBillard = ligne.isBillard || (ligne.serviceNom || '').toLowerCase().includes('billard');
+                            const nomAffiche = isBillard && (ligne.nombreParties || 1) > 1
+                              ? `${ligne.serviceNom || 'Billard'} (${ligne.nombreParties} parties)`
+                              : (ligne.serviceNom || 'Prestation');
+                            const agentAffiche = (ligne.agents && ligne.agents.length > 0)
+                              ? ligne.agents.map(a => a.nom).join(', ')
+                              : (isBillard ? '—' : (ligne.employeNom || 'Équipe Le Cercle'));
+
+                            const aUneRemise = Number(ligne.prixBase || 0) > Number(ligne.prixFinal || 0);
+
+                            return (
+                              <tr
+                                key={index}
+                                style={{
+                                  borderBottom: '1px solid #F1F5F9',
+                                  backgroundColor: index % 2 === 1 ? '#FAFAFA' : '#FFFFFF'
+                                }}
+                              >
+                                <td style={{ padding: '12px 14px' }}>
+                                  <div style={{ fontWeight: '700', color: '#0F172A', fontSize: '13px' }}>
+                                    {nomAffiche}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '3px' }}>
+                                    {ligne.isDomicile && (
+                                      <span style={{ fontSize: '9.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#EDE9FE', color: '#6D28D9', fontWeight: '700' }}>
+                                        🏠 À domicile
+                                      </span>
+                                    )}
+                                    {(ligne.promotionNom || (data.promotionNom && ligne.isPromo)) && (
+                                      <span style={{ fontSize: '9.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#FEF3C7', color: '#B45309', fontWeight: '700' }}>
+                                        🎁 Pack : {ligne.promotionNom || data.promotionNom}
+                                      </span>
+                                    )}
+                                    {ligne.remiseType && ligne.remiseType !== 'aucune' && (
+                                      <span style={{ fontSize: '9.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#ECFDF5', color: '#047857', fontWeight: '600', fontStyle: 'italic' }}>
+                                        ✂️ Remise : {ligne.remiseMotif}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'center', fontSize: '11.5px', color: '#475569' }}>
+                                  {agentAffiche}
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'right', fontSize: '11.5px', color: '#64748B' }}>
+                                  {aUneRemise ? (
+                                    <span style={{ textDecoration: 'line-through', color: '#94A3B8' }}>
+                                      {Number(ligne.prixBase).toLocaleString('fr-FR')} F
+                                    </span>
+                                  ) : (
+                                    `${Number(ligne.prixBase || ligne.prixFinal).toLocaleString('fr-FR')} F`
+                                  )}
+                                </td>
+                                <td style={{ padding: '12px 14px', textAlign: 'right', fontSize: '13px', fontWeight: '800', color: '#0F172A' }}>
+                                  {Number(ligne.prixFinal).toLocaleString('fr-FR')} FCFA
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr style={{ backgroundColor: '#FFFFFF' }}>
+                            <td style={{ padding: '14px' }}>
+                              <div style={{ fontWeight: '700', color: '#0F172A', fontSize: '13px' }}>
+                                {data.serviceNom || data.motif || 'Prestation'}
+                              </div>
+                              {data.reductionActive && (
+                                <div style={{ fontSize: '10px', color: '#047857', fontStyle: 'italic', marginTop: '2px' }}>
+                                  ✂️ Remise : {data.reductionMotif}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '14px', textAlign: 'center', fontSize: '11.5px', color: '#475569' }}>
+                              {data.employeNom || 'Équipe Le Cercle'}
+                            </td>
+                            <td style={{ padding: '14px', textAlign: 'right', fontSize: '11.5px', color: '#64748B' }}>
+                              {data.reductionActive ? (
+                                <span style={{ textDecoration: 'line-through', color: '#94A3B8' }}>{data.prixOriginal} F</span>
+                              ) : `${Number(data.prixTotal || data.montant || 0).toLocaleString('fr-FR')} F`}
+                            </td>
+                            <td style={{ padding: '14px', textAlign: 'right', fontSize: '13px', fontWeight: '800', color: '#0F172A' }}>
+                              {Number(data.prixTotal || data.montant || 0).toLocaleString('fr-FR')} FCFA
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* TOTAUX FINANCIERS + TAMPON OFFICIEL NUMÉRIQUE */}
+                  <div style={{
+                    marginTop: '22px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-end',
+                    flexWrap: 'wrap',
+                    gap: '20px'
+                  }}>
+                    {/* TAMPON OFFICIEL NUMÉRIQUE CERTIFIÉ */}
+                    <div style={{ minWidth: '220px' }}>
+                      {isPaid ? (
+                        <div style={{
+                          display: 'inline-block',
+                          border: '2px solid #059669',
+                          outline: '1.5px dashed #10B981',
+                          outlineOffset: '2px',
+                          borderRadius: '10px',
+                          padding: '10px 16px',
+                          backgroundColor: '#F0FDF4',
+                          color: '#047857',
+                          transform: 'rotate(-1.5deg)',
+                          boxShadow: '0 4px 12px rgba(16, 185, 129, 0.08)'
+                        }}>
+                          <div style={{ fontSize: '11px', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <CheckCircle2 size={13} color="#059669" /> CERTIFIÉ PAYÉ
+                          </div>
+                          <div style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '1px', marginTop: '2px', color: '#065F46' }}>
+                            LE CERCLE NIAMEY
+                          </div>
+                          <div style={{ fontSize: '8.5px', marginTop: '2px', color: '#047857' }}>
+                            Mode : {data.modePaiement || 'Cash'} • {dateFormatee}
+                          </div>
+                        </div>
+                      ) : isAcompte ? (
+                        <div style={{
+                          display: 'inline-block',
+                          border: '2px solid #D97706',
+                          outline: '1.5px dashed #F59E0B',
+                          outlineOffset: '2px',
+                          borderRadius: '10px',
+                          padding: '10px 16px',
+                          backgroundColor: '#FFFBEB',
+                          color: '#B45309',
+                          transform: 'rotate(-1.5deg)'
+                        }}>
+                          <div style={{ fontSize: '11px', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                            ★ ACOMPTE VERSÉ ★
+                          </div>
+                          <div style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '1px', marginTop: '2px', color: '#92400E' }}>
+                            LE CERCLE NIAMEY
+                          </div>
+                          <div style={{ fontSize: '8.5px', marginTop: '2px', color: '#B45309' }}>
+                            Reste dû : {resteAPayer.toLocaleString('fr-FR')} FCFA
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'inline-block',
+                          border: '1.5px dashed #64748B',
+                          borderRadius: '10px',
+                          padding: '8px 14px',
+                          backgroundColor: '#F8FAFC',
+                          color: '#475569'
+                        }}>
+                          <div style={{ fontSize: '10.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <Clock size={12} color="#64748B" /> EN ATTENTE DE RÈGLEMENT
+                          </div>
+                          <div style={{ fontSize: '8.5px', color: '#64748B', marginTop: '2px' }}>
+                            Modes acceptés : Cash • VISA • NITA • AMANA
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* BLOC RÉCAPITULATIF DES TOTAUX */}
+                    <div style={{ width: '270px' }}>
+                      <div style={{ paddingBottom: '10px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748B' }}>
+                          <span>Sous-total brut</span>
+                          <span style={{ fontWeight: '600', color: '#0F172A' }}>
+                            {totalBaseBrut.toLocaleString('fr-FR')} FCFA
+                          </span>
+                        </div>
+
+                        {totalRemises > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#059669', fontWeight: '700' }}>
+                            <span>Remise / Offre promo</span>
+                            <span>– {totalRemises.toLocaleString('fr-FR')} FCFA</span>
+                          </div>
+                        )}
+
+                        {type === 'reservation' && acomptePaye > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#0F172A', fontWeight: '600' }}>
+                            <span>Acompte déjà versé</span>
+                            <span>– {acomptePaye.toLocaleString('fr-FR')} FCFA</span>
+                          </div>
+                        )}
+
+                        {type === 'reservation' && !isPaid && resteAPayer > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#D97706', fontWeight: '700' }}>
+                            <span>Solde restant dû</span>
+                            <span>{resteAPayer.toLocaleString('fr-FR')} FCFA</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* BANNIÈRE DE MONTANT PRINCIPAL */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        backgroundColor: '#0F172A',
+                        color: '#FFFFFF',
+                        padding: '12px 16px',
+                        borderRadius: '10px',
+                        borderLeft: '4px solid #D97706',
+                        boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)'
+                      }}>
+                        <span style={{ fontSize: '10px', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase', color: '#CBD5E1' }}>
+                          {isPaid ? 'TOTAL PAYÉ' : (resteAPayer > 0 && acomptePaye > 0 ? 'NET RESTANT' : 'NET À PAYER')}
+                        </span>
+                        <span style={{ fontSize: '18px', fontWeight: '900', letterSpacing: '0.5px', color: '#FFFFFF' }}>
+                          {(isPaid ? totalFacture : (resteAPayer > 0 ? resteAPayer : totalFacture)).toLocaleString('fr-FR')} FCFA
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* NOTES CLIENTS & CONSIGNES PARTICULIÈRES (Optionnel) */}
+                  {showNotes && type === 'reservation' && data.historiqueNotes && data.historiqueNotes.length > 0 && (
+                    <div style={{
+                      marginTop: '22px',
+                      padding: '12px 16px',
+                      border: '1px solid #FEF3C7',
+                      borderLeft: '3px solid #D97706',
+                      borderRadius: '8px',
+                      backgroundColor: '#FFFBEB'
                     }}>
-                      Tél : +227 87 37 73 70 · Niamey, Niger
-                    </p>
+                      <div style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#92400E', marginBottom: '4px' }}>
+                        Notes &amp; Instructions relatives au rendez-vous
+                      </div>
+                      {data.historiqueNotes.map((note, index) => (
+                        <div key={index} style={{ fontSize: '11px', color: '#78350F', lineHeight: '1.4' }}>
+                          • <strong>{new Date(note.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(',', ' à')} :</strong> {note.texte}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* PIED DE PAGE HAUTE SÉCURITÉ & CONTACTS */}
+                  <div style={{
+                    marginTop: '28px',
+                    paddingTop: '16px',
+                    borderTop: '1px solid #E2E8F0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}>
+                    {/* Faux Code-barres de certification esthétique */}
+                    <div style={{ textAlign: 'center' }}>
+                      <svg width="220" height="28" viewBox="0 0 220 28" style={{ display: 'block', margin: '0 auto', opacity: 0.85 }}>
+                        {[3, 1, 4, 1, 2, 1, 3, 2, 1, 4, 2, 1, 3, 1, 2, 4, 1, 3, 2, 1, 4, 1, 2, 3, 1, 2, 4, 1, 3, 1, 2, 4, 1, 3, 2, 1, 4, 2, 1, 3, 1, 4].map((w, i) => (
+                          <rect key={i} x={i * 5.2} y="0" width={w} height="24" fill="#0F172A" />
+                        ))}
+                      </svg>
+                      <div style={{ fontSize: '8px', letterSpacing: '2.5px', color: '#64748B', fontWeight: '700', marginTop: '2px', textTransform: 'uppercase' }}>
+                        DOC-ID : {numDoc}-LE-CERCLE-NIAMEY-OFFICIAL
+                      </div>
+                    </div>
+
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '10px',
+                      color: '#64748B',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      marginTop: '4px'
+                    }}>
+                      <span>Merci de votre fidélité — <strong style={{ color: '#0F172A' }}>LE CERCLE VIP</strong></span>
+                      <span><strong style={{ color: '#0F172A' }}>+227 87 37 73 70</strong> &nbsp;•&nbsp; Niamey, Niger &nbsp;•&nbsp; 7j/7</span>
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{
-                    margin: 0,
-                    fontSize: '22px',
-                    fontWeight: '900',
-                    color: '#000000',
-                    letterSpacing: '3px',
-                    textTransform: 'uppercase',
-                    lineHeight: '1',
-                  }}>
-                    {type === 'reservation' ? 'FACTURE' : 'REÇU'}
-                  </p>
-                  <p style={{
-                    margin: '6px 0 0 0',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    color: '#000000',
-                    letterSpacing: '0.5px',
-                  }}>
-                    N° {numFacture}
-                  </p>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#555555' }}>
-                    {new Date(data.datePrevue || data.date || data.createdAt).toLocaleDateString('fr-FR', {
-                      day: 'numeric', month: 'long', year: 'numeric'
-                    })} à {heureFormatee}
-                  </p>
-                </div>
+                {/* Ligne inférieure de finition */}
+                <div style={{ height: '4px', backgroundColor: '#0F172A' }} />
               </div>
+            )}
 
-              {/* INFOS CLIENT & RDV */}
-              <div style={{
-                padding: '20px 0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                borderBottom: '1px solid #e5e5e5',
-              }}>
-                <div>
-                  <p style={{
-                    margin: '0 0 4px 0',
-                    fontSize: '9px',
-                    fontWeight: '800',
-                    letterSpacing: '2px',
-                    textTransform: 'uppercase',
-                    color: '#777777',
-                  }}>
-                    FACTURÉ À
-                  </p>
-                  <p style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#000000' }}>
-                    {data.clientNom || 'Client Anonyme'}
-                  </p>
-                  {data.clientTel && (
-                    <p style={{ margin: '3px 0 0 0', fontSize: '11.5px', color: '#444444', fontWeight: '500' }}>
-                      Tél : {data.clientTel}
-                    </p>
+            {/* ────────────────────────────────────────────────────────────
+                FORMAT 2 : TICKET DE CAISSE COMPACT (Format Reçu 80mm)
+               ──────────────────────────────────────────────────────────── */}
+            {docFormat === 'ticket' && (
+              <div style={{ padding: '24px 22px' }}>
+                {/* Ruban haut discret */}
+                <div style={{ height: '4px', backgroundColor: '#D97706', margin: '-24px -22px 18px -22px' }} />
+
+                {/* En-tête centré */}
+                <div style={{ textAlign: 'center' }}>
+                  <img
+                    src="/logos/noir.png"
+                    alt="Logo Le Cercle"
+                    crossOrigin="anonymous"
+                    style={{
+                      height: '50px',
+                      width: '50px',
+                      borderRadius: '50%',
+                      margin: '0 auto 8px',
+                      display: 'block',
+                      border: '1.5px solid #D97706',
+                      padding: '2px'
+                    }}
+                  />
+                  <div style={{ fontSize: '20px', fontWeight: '900', letterSpacing: '2px', color: '#0F172A' }}>
+                    LE CERCLE
+                  </div>
+                  <div style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '1.5px', color: '#B45309', textTransform: 'uppercase' }}>
+                    Salon de Coiffure &amp; Lounge VIP
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#64748B', marginTop: '2px' }}>
+                    Tél : +227 87 37 73 70 • Niamey, Niger
+                  </div>
+                </div>
+
+                {/* Ligne pointillée */}
+                <div style={{ borderBottom: '1.5px dashed #CBD5E1', margin: '14px 0' }} />
+
+                {/* Métadonnées ticket */}
+                <div style={{ fontSize: '11px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748B' }}>TICKET :</span>
+                    <strong style={{ color: '#0F172A' }}>{numDoc}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748B' }}>DATE :</span>
+                    <span>{dateFormatee} à {heureFormatee}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748B' }}>CLIENT :</span>
+                    <strong style={{ color: '#0F172A' }}>{data.clientNom || 'Client de passage'}</strong>
+                  </div>
+                  {clientPhone && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748B' }}>TÉLÉPHONE :</span>
+                      <span>{clientPhone}</span>
+                    </div>
                   )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748B' }}>OPÉRATEUR :</span>
+                    <span>{data.employeNom || 'Équipe Le Cercle'}</span>
+                  </div>
                   {data.promotionNom && (
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      marginTop: '6px',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      backgroundColor: '#f3f4f6',
-                      border: '1px solid #d1d5db',
-                      fontSize: '10px',
-                      fontWeight: '700',
-                      color: '#111827'
-                    }}>
-                      <span>🏷️ Offre Promo :</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#B45309', fontWeight: '700' }}>
+                      <span>OFFRE PROMO :</span>
                       <span>{data.promotionNom}</span>
                     </div>
                   )}
                 </div>
 
-                {type === 'reservation' && data.datePrevue && (
-                  <div style={{ textAlign: 'right' }}>
-                    <p style={{
-                      margin: '0 0 4px 0',
-                      fontSize: '9px',
-                      fontWeight: '800',
-                      letterSpacing: '2px',
-                      textTransform: 'uppercase',
-                      color: '#777777',
-                    }}>
-                      RENDEZ-VOUS PRÉVU
-                    </p>
-                    <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#000000', textTransform: 'capitalize' }}>
-                      {new Date(data.datePrevue).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                    </p>
-                    <p style={{ margin: '3px 0 0 0', fontSize: '11.5px', color: '#444444', fontWeight: '500' }}>
-                      à {heureFormatee}
-                    </p>
-                  </div>
-                )}
-              </div>
+                {/* Ligne pointillée */}
+                <div style={{ borderBottom: '1.5px dashed #CBD5E1', margin: '14px 0' }} />
 
-              {/* TABLEAU PRESTATIONS */}
-              <div style={{ padding: '20px 0 16px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                  <thead>
-                    <tr style={{ borderTop: '1.5px solid #000000', borderBottom: '1.5px solid #000000' }}>
-                      <th style={{ padding: '10px 8px 10px 0', color: '#000000', fontSize: '9.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'left' }}>
-                        Désignation
-                      </th>
-                      <th style={{ padding: '10px 8px', color: '#000000', fontSize: '9.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'center' }}>
-                        Intervenant
-                      </th>
-                      <th style={{ padding: '10px 8px', color: '#000000', fontSize: '9.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'right' }}>
-                        Prix Base
-                      </th>
-                      <th style={{ padding: '10px 0 10px 8px', color: '#000000', fontSize: '9.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'right' }}>
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.lignes && data.lignes.length > 0 ? (
-                      data.lignes.map((ligne, index) => {
-                        const isBillard = ligne.isBillard || (ligne.serviceNom || '').toLowerCase().includes('billard');
-                        const nomAffiche = isBillard && (ligne.nombreParties || 1) > 1
-                          ? `${ligne.serviceNom || 'Billard'} (${ligne.nombreParties} parties)`
-                          : (ligne.serviceNom || 'Prestation');
-                        const agentAffiche = (ligne.agents && ligne.agents.length > 0)
-                          ? ligne.agents.map(a => a.nom).join(', ')
-                          : (isBillard ? '—' : (ligne.employeNom || '—'));
+                {/* Liste des prestations du ticket */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '11.5px' }}>
+                  {data.lignes && data.lignes.length > 0 ? (
+                    data.lignes.map((ligne, idx) => {
+                      const isBillard = ligne.isBillard || (ligne.serviceNom || '').toLowerCase().includes('billard');
+                      const nomAffiche = isBillard && (ligne.nombreParties || 1) > 1
+                        ? `${ligne.serviceNom || 'Billard'} (${ligne.nombreParties}p)`
+                        : (ligne.serviceNom || 'Prestation');
 
-                        return (
-                          <tr key={index} style={{ borderBottom: '1px solid #eaeaea' }}>
-                            <td style={{ padding: '12px 8px 12px 0', fontSize: '12.5px' }}>
-                              <strong style={{ color: '#000000', fontWeight: '700' }}>{nomAffiche}</strong>
-                              {(ligne.promotionNom || (data.promotionNom && ligne.isPromo)) && (
-                                <div style={{ fontSize: '10px', color: '#111827', fontWeight: '600', marginTop: '2px' }}>
-                                  🎁 Offre : {ligne.promotionNom || data.promotionNom}
-                                </div>
-                              )}
-                              {ligne.remiseType && ligne.remiseType !== 'aucune' && (
-                                <div style={{ fontSize: '10.5px', color: '#555555', fontStyle: 'italic', marginTop: '2px' }}>
-                                  Remise : {ligne.remiseMotif}
-                                </div>
-                              )}
-                            </td>
-                            <td style={{ padding: '12px 8px', textAlign: 'center', fontSize: '11.5px', color: '#444444' }}>
-                              {agentAffiche}
-                            </td>
-                            <td style={{ padding: '12px 8px', textAlign: 'right', fontSize: '11.5px', color: '#777777' }}>
-                              {ligne.remiseType && ligne.remiseType !== 'aucune' ? (
-                                <span style={{ textDecoration: 'line-through' }}>{Number(ligne.prixBase).toLocaleString('fr-FR')} F</span>
-                              ) : `${Number(ligne.prixBase).toLocaleString('fr-FR')} F`}
-                            </td>
-                            <td style={{ padding: '12px 0 12px 8px', textAlign: 'right', fontSize: '13px', fontWeight: '800', color: '#000000' }}>
-                              {Number(ligne.prixFinal).toLocaleString('fr-FR')} FCFA
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr style={{ borderBottom: '1px solid #eaeaea' }}>
-                        <td style={{ padding: '12px 8px 12px 0', fontSize: '12.5px' }}>
-                          <strong style={{ color: '#000000', fontWeight: '700' }}>{data.serviceNom || data.motif || 'Prestation'}</strong>
-                          {data.reductionActive && (
-                            <div style={{ fontSize: '10.5px', color: '#555555', fontStyle: 'italic', marginTop: '2px' }}>
-                              Remise : {data.reductionMotif}
+                      return (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1, paddingRight: '10px' }}>
+                            <div style={{ fontWeight: '700', color: '#0F172A' }}>
+                              {idx + 1}. {nomAffiche}
                             </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '12px 8px', textAlign: 'center', fontSize: '11.5px', color: '#444444' }}>
-                          {data.employeNom || '—'}
-                        </td>
-                        <td style={{ padding: '12px 8px', textAlign: 'right', fontSize: '11.5px', color: '#777777' }}>
-                          {data.reductionActive ? (
-                            <span style={{ textDecoration: 'line-through' }}>{data.prixOriginal} F</span>
-                          ) : `${data.prixTotal || data.montant || 0} F`}
-                        </td>
-                        <td style={{ padding: '12px 0 12px 8px', textAlign: 'right', fontSize: '13px', fontWeight: '800', color: '#000000' }}>
-                          {(data.prixTotal || data.montant || 0).toLocaleString('fr-FR')} FCFA
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* TOTAUX + STATUT */}
-              <div style={{
-                paddingTop: '12px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-end',
-              }}>
-                {/* Tampon statut monochrome */}
-                <div>
-                  {isPaid ? (
-                    <div style={{
-                      display: 'inline-block',
-                      border: '2px solid #000000',
-                      color: '#000000',
-                      fontWeight: '900',
-                      fontSize: '13px',
-                      padding: '6px 16px',
-                      letterSpacing: '3px',
-                      textTransform: 'uppercase',
-                    }}>
-                      PAYÉ
-                    </div>
+                            {ligne.remiseType && ligne.remiseType !== 'aucune' && (
+                              <div style={{ fontSize: '10px', color: '#047857' }}>
+                                Remise: {ligne.remiseMotif}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ fontWeight: '800', color: '#0F172A' }}>
+                            {Number(ligne.prixFinal).toLocaleString('fr-FR')} F
+                          </div>
+                        </div>
+                      );
+                    })
                   ) : (
-                    <div style={{
-                      display: 'inline-block',
-                      border: '1.5px dashed #333333',
-                      color: '#333333',
-                      fontWeight: '800',
-                      fontSize: '10.5px',
-                      padding: '6px 12px',
-                      letterSpacing: '1.8px',
-                      textTransform: 'uppercase',
-                    }}>
-                      EN ATTENTE DE RÈGLEMENT
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{data.serviceNom || data.motif || 'Prestation'}</span>
+                      <strong style={{ color: '#0F172A' }}>{Number(totalFacture).toLocaleString('fr-FR')} F</strong>
                     </div>
-                  )}
-                  {isPaid && data.modePaiement && (
-                    <p style={{ margin: '8px 0 0 0', fontSize: '11px', color: '#333333' }}>
-                      Mode de règlement : <strong style={{ color: '#000000' }}>{data.modePaiement}</strong>
-                    </p>
-                  )}
-                  {!isPaid && (
-                    <p style={{ margin: '8px 0 0 0', fontSize: '10.5px', color: '#666666' }}>
-                      Modes acceptés : Cash · NITA · AMANA · VISA
-                    </p>
                   )}
                 </div>
 
-                {/* Bloc totaux */}
-                <div style={{ width: '250px' }}>
-                  <div style={{ paddingBottom: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#444444', marginBottom: '6px' }}>
-                      <span>Sous-total</span>
-                      <span style={{ fontWeight: '600', color: '#000000' }}>{totalFacture.toLocaleString('fr-FR')} FCFA</span>
-                    </div>
-                    {type === 'reservation' && data.acomptePaye > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#444444', marginBottom: '4px' }}>
-                        <span>Acompte versé</span>
-                        <span style={{ fontWeight: '600', color: '#000000' }}>– {data.acomptePaye.toLocaleString('fr-FR')} FCFA</span>
-                      </div>
-                    )}
+                {/* Ligne pointillée */}
+                <div style={{ borderBottom: '1.5px dashed #CBD5E1', margin: '14px 0' }} />
+
+                {/* Totaux & Reste */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '11px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
+                    <span>Sous-total :</span>
+                    <span>{totalBaseBrut.toLocaleString('fr-FR')} FCFA</span>
                   </div>
+
+                  {totalRemises > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669', fontWeight: '700' }}>
+                      <span>Remise accordée :</span>
+                      <span>– {totalRemises.toLocaleString('fr-FR')} FCFA</span>
+                    </div>
+                  )}
+
+                  {type === 'reservation' && acomptePaye > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0F172A', fontWeight: '700' }}>
+                      <span>Acompte versé :</span>
+                      <span>– {acomptePaye.toLocaleString('fr-FR')} FCFA</span>
+                    </div>
+                  )}
+
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    backgroundColor: '#000000',
-                    color: '#ffffff',
-                    padding: '11px 14px',
+                    marginTop: '6px',
+                    padding: '8px 10px',
+                    backgroundColor: '#0F172A',
+                    color: '#FFFFFF',
+                    borderRadius: '8px'
                   }}>
-                    <span style={{ fontSize: '10.5px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '900', letterSpacing: '1px' }}>
                       {isPaid ? 'TOTAL PAYÉ' : 'NET À PAYER'}
                     </span>
-                    <span style={{ fontSize: '16px', fontWeight: '900', letterSpacing: '0.5px' }}>
-                      {resteAPayer.toLocaleString('fr-FR')} FCFA
+                    <span style={{ fontSize: '16px', fontWeight: '900' }}>
+                      {(isPaid ? totalFacture : (resteAPayer > 0 ? resteAPayer : totalFacture)).toLocaleString('fr-FR')} F
                     </span>
                   </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', color: '#475569', fontSize: '10.5px' }}>
+                    <span>Mode de règlement :</span>
+                    <strong>{data.modePaiement || 'Cash'}</strong>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: isPaid ? '#047857' : '#D97706', fontWeight: '800', fontSize: '10.5px' }}>
+                    <span>Statut :</span>
+                    <span>{isPaid ? '✓ ENCAISSÉ' : (isAcompte ? '★ ACOMPTE PARTIEL' : '⏳ EN ATTENTE')}</span>
+                  </div>
+                </div>
+
+                {/* Ligne pointillée */}
+                <div style={{ borderBottom: '1.5px dashed #CBD5E1', margin: '14px 0' }} />
+
+                {/* Code-barres compact */}
+                <div style={{ textAlign: 'center', marginTop: '4px' }}>
+                  <svg width="160" height="24" viewBox="0 0 160 24" style={{ display: 'block', margin: '0 auto', opacity: 0.8 }}>
+                    {[2, 1, 3, 1, 1, 2, 4, 1, 2, 3, 1, 2, 1, 3, 2, 1, 4, 1, 2, 1, 3, 1, 2, 4, 1, 2, 1, 3, 1, 2, 1, 4].map((w, i) => (
+                      <rect key={i} x={i * 5} y="0" width={w} height="20" fill="#0F172A" />
+                    ))}
+                  </svg>
+                  <div style={{ fontSize: '7.5px', color: '#64748B', fontWeight: '700', letterSpacing: '1.5px', marginTop: '2px' }}>
+                    *{numDoc}*
+                  </div>
+                </div>
+
+                {/* Message de fin */}
+                <div style={{ textAlign: 'center', fontSize: '9.5px', color: '#64748B', marginTop: '12px', lineHeight: '1.4' }}>
+                  Merci pour votre confiance !<br />
+                  <strong style={{ color: '#0F172A' }}>LE CERCLE — L'Excellence au quotidien</strong>
                 </div>
               </div>
-
-              {/* NOTES (si activées) */}
-              {showNotes && type === 'reservation' && data.historiqueNotes && data.historiqueNotes.length > 0 && (
-                <div style={{
-                  marginTop: '24px',
-                  padding: '12px 16px',
-                  border: '1px solid #e0e0e0',
-                  borderLeft: '3px solid #000000',
-                  backgroundColor: '#fafafa',
-                }}>
-                  <p style={{
-                    margin: '0 0 6px 0',
-                    fontSize: '9px',
-                    fontWeight: '800',
-                    letterSpacing: '2px',
-                    textTransform: 'uppercase',
-                    color: '#000000',
-                  }}>
-                    Notes &amp; Instructions
-                  </p>
-                  {data.historiqueNotes.map((note, index) => (
-                    <div key={index} style={{ marginBottom: '4px', fontSize: '11px', color: '#333333', lineHeight: '1.5' }}>
-                      <strong style={{ color: '#000000' }}>
-                        {new Date(note.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(',', ' à')} :
-                      </strong>{' '}
-                      {note.texte}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* PIED DE PAGE */}
-              <div style={{
-                marginTop: '32px',
-                paddingTop: '16px',
-                borderTop: '1px solid #e5e5e5',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                fontSize: '10px',
-                color: '#666666',
-              }}>
-                <span>Merci de votre confiance — <strong style={{ color: '#000000' }}>LE CERCLE</strong></span>
-                <span><strong style={{ color: '#000000' }}>+227 87 37 73 70</strong> · Niamey, Niger</span>
-              </div>
-            </div>
-
-            {/* Ligne inférieure noire */}
-            <div style={{ height: '4px', backgroundColor: '#000000' }} />
+            )}
 
           </div>
-          {/* fin facture-print-area */}
+          {/* Fin #facture-print-area */}
         </div>
-        {/* fin scroll wrapper */}
+        {/* Fin zone scrollable */}
 
-        {/* ── Footer Modale Actions ─────────────────────────────── */}
+        {/* ── BARRE D'ACTIONS INFÉRIEURE (Téléchargements, WhatsApp & Print) ── */}
         <div style={{
           flexShrink: 0,
           borderTop: '1px solid var(--border-color)',
           backgroundColor: 'var(--bg-input)',
-          padding: '14px 20px',
+          padding: '14px 18px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '10px',
+          gap: '10px'
         }}>
           {type === 'reservation' && data.historiqueNotes && data.historiqueNotes.length > 0 && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-main)' }}>
-              <input type="checkbox" checked={showNotes} onChange={(e) => setShowNotes(e.target.checked)} />
-              Inclure les notes dans le document
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              color: 'var(--text-main)',
+              fontWeight: 600
+            }}>
+              <input
+                type="checkbox"
+                checked={showNotes}
+                onChange={(e) => setShowNotes(e.target.checked)}
+                style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+              />
+              Inclure l'historique des notes et consignes sur le document
             </label>
           )}
-          <div style={{ display: 'flex', gap: '10px' }}>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+            gap: '8px'
+          }}>
+            {/* Partage WhatsApp */}
             <button
-              onClick={onClose}
+              type="button"
+              onClick={handleShareWhatsApp}
               className="btn"
-              style={{ flex: 1, padding: '11px', fontSize: '0.9rem' }}
+              style={{
+                backgroundColor: '#25D366',
+                color: '#FFFFFF',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '0.84rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '10px 12px'
+              }}
+              title="Envoyer le récapitulatif du reçu directement au client sur WhatsApp"
             >
-              Fermer
+              <Share2 size={16} /> WhatsApp
             </button>
+
+            {/* Impression directe */}
             <button
+              type="button"
+              onClick={handlePrint}
+              className="btn"
+              style={{
+                backgroundColor: 'var(--bg-card)',
+                color: 'var(--text-main)',
+                border: '1px solid var(--border-color)',
+                fontWeight: 700,
+                fontSize: '0.84rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '10px 12px'
+              }}
+              title="Lancer l'impression directe (imprimante de caisse ou de bureau)"
+            >
+              <Printer size={16} /> Imprimer
+            </button>
+
+            {/* Télécharger Image JPG */}
+            <button
+              type="button"
               onClick={handleDownloadImage}
               disabled={isGeneratingImg}
               className="btn btn-primary"
-              style={{ flex: 2, padding: '11px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              style={{
+                fontWeight: 700,
+                fontSize: '0.84rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '10px 12px'
+              }}
+              title="Télécharger l'image JPEG haute définition du reçu"
             >
-              <Image size={17} />
-              {isGeneratingImg ? 'Création...' : 'Image JPG'}
+              <Image size={16} /> {isGeneratingImg ? 'Création...' : 'Image JPG'}
             </button>
+
+            {/* Télécharger PDF A4 */}
             <button
+              type="button"
               onClick={handleDownloadPdf}
               disabled={isGeneratingPdf}
               className="btn btn-primary"
-              style={{ flex: 2, padding: '11px', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              style={{
+                fontWeight: 700,
+                fontSize: '0.84rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '10px 12px'
+              }}
+              title="Générer un PDF officiel téléchargeable"
             >
-              <Download size={17} />
-              {isGeneratingPdf ? 'Génération...' : 'PDF'}
+              <Download size={16} /> {isGeneratingPdf ? 'PDF...' : 'PDF'}
             </button>
           </div>
         </div>
