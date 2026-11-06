@@ -76,6 +76,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
   const [searchTxTerm, setSearchTxTerm] = useState('');
   const [dateDebutTx, setDateDebutTx] = useState('');
   const [dateFinTx, setDateFinTx] = useState('');
+  const [categoryFilterTx, setCategoryFilterTx] = useState('tous'); // 'tous' | 'salon' | 'boisson' | 'loisirs' | 'depense'
 
   // Fetch reference data
   useEffect(() => {
@@ -199,23 +200,30 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
           saisieParNom: currentUserNom,
           promotionId: promotionId,
           promotionNom: promotionNom,
-          lignes: lignesPanier.map(l => ({
-            serviceId: l.serviceId || 'billard',
-            serviceNom: l.serviceNom,
-            isBillard: !!(l.isBillard || (l.serviceNom || '').toLowerCase().includes('billard')),
-            nombreParties: l.nombreParties || 1,
-            prixUnitaire: Number(l.prixUnitaire) || Number(l.prixFinal) || 0,
-            prixBase: Number(l.prixBase) || 0,
-            prixFinal: Number(l.prixFinal) || 0,
-            remiseType: l.remiseType || 'aucune',
-            remiseValeur: l.remiseValeur || '',
-            remiseMotif: l.remiseMotif || '',
-            isPromo: !!l.isPromo,
-            promotionId: l.promotionId || null,
-            promotionNom: l.promotionNom || null,
-            agents: l.agents || [],
-            isDomicile: !!l.isDomicile
-          }))
+          lignes: lignesPanier.map(l => {
+            const isB = !!(l.isBillard || l.categorieService === 'loisirs' || (l.serviceNom || '').toLowerCase().includes('billard'));
+            const matchedSvc = services.find(s => s.id === l.serviceId);
+            const isBoisson = !isB && !!(l.isBoisson || l.categorieService === 'boisson' || matchedSvc?.categorie === 'boisson');
+            return {
+              serviceId: l.serviceId || 'billard',
+              serviceNom: l.serviceNom,
+              categorieService: isB ? 'loisirs' : isBoisson ? 'boisson' : 'salon',
+              isBoisson: isBoisson,
+              isBillard: isB,
+              nombreParties: l.nombreParties || 1,
+              prixUnitaire: Number(l.prixUnitaire) || Number(l.prixFinal) || 0,
+              prixBase: Number(l.prixBase) || 0,
+              prixFinal: Number(l.prixFinal) || 0,
+              remiseType: l.remiseType || 'aucune',
+              remiseValeur: l.remiseValeur || '',
+              remiseMotif: l.remiseMotif || '',
+              isPromo: !!l.isPromo,
+              promotionId: l.promotionId || null,
+              promotionNom: l.promotionNom || null,
+              agents: l.agents || [],
+              isDomicile: !!l.isDomicile
+            };
+          })
         };
 
         await addDoc(collection(db, 'transactions'), newTransaction);
@@ -452,8 +460,34 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
     setExpandedDays(prev => ({ ...prev, [dayStr]: !prev[dayStr] }));
   };
 
-  // Filter transactions
-  const getFilteredTransactions = () => {
+  // Helper pour classifier une ligne de prestation par catégorie ('boisson' | 'loisirs' | 'salon')
+  const getLineCategory = (l) => {
+    const isB = l.isBillard || l.categorieService === 'loisirs' || (l.serviceNom || '').toLowerCase().includes('billard');
+    if (isB) return 'loisirs';
+    if (l.isBoisson || l.categorieService === 'boisson') return 'boisson';
+    const matchedSvc = services.find(s => s.id === l.serviceId || s.nom === l.serviceNom);
+    if (matchedSvc?.categorie === 'boisson') return 'boisson';
+    if (matchedSvc?.categorie === 'loisirs') return 'loisirs';
+    return 'salon';
+  };
+
+  // Vérifie si une transaction correspond au filtre de catégorie actif
+  const transactionMatchesCategory = (t, catFilter) => {
+    if (catFilter === 'tous') return true;
+    if (catFilter === 'depense') return t.type === 'depense';
+    if (t.type !== 'prestation') return false;
+    if (t.lignes && t.lignes.length > 0) {
+      return t.lignes.some(l => getLineCategory(l) === catFilter);
+    }
+    const isB = (t.motif || '').toLowerCase().includes('billard');
+    if (catFilter === 'loisirs') return isB;
+    const matchedSvc = services.find(s => s.nom === t.motif);
+    if (catFilter === 'boisson') return matchedSvc?.categorie === 'boisson';
+    return !isB && matchedSvc?.categorie !== 'boisson';
+  };
+
+  // Filter transactions (par période et recherche)
+  const getPeriodTransactions = () => {
     let filtered = transactions;
 
     if (dateDebutTx || dateFinTx) {
@@ -508,7 +542,44 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
     return filtered;
   };
 
-  const filteredTransactions = getFilteredTransactions();
+  const periodTransactions = getPeriodTransactions();
+
+  // Calcul du CA par catégorie sur la période sélectionnée (Aujourd'hui / Semaine / Ce Mois)
+  const categoryRevenue = { salon: 0, boisson: 0, loisirs: 0, salonCount: 0, boissonCount: 0, loisirsCount: 0 };
+  periodTransactions.filter(t => t.type === 'prestation').forEach(t => {
+    if (t.lignes && t.lignes.length > 0) {
+      t.lignes.forEach(l => {
+        const cat = getLineCategory(l);
+        const amt = Number(l.prixFinal) || 0;
+        if (cat === 'boisson') {
+          categoryRevenue.boisson += amt;
+          categoryRevenue.boissonCount += 1;
+        } else if (cat === 'loisirs') {
+          categoryRevenue.loisirs += amt;
+          categoryRevenue.loisirsCount += (Number(l.nombreParties) || 1);
+        } else {
+          categoryRevenue.salon += amt;
+          categoryRevenue.salonCount += 1;
+        }
+      });
+    } else {
+      const isB = (t.motif || '').toLowerCase().includes('billard');
+      const matchedSvc = services.find(s => s.nom === t.motif);
+      const amt = Number(t.montant) || 0;
+      if (isB || matchedSvc?.categorie === 'loisirs') {
+        categoryRevenue.loisirs += amt;
+        categoryRevenue.loisirsCount += 1;
+      } else if (matchedSvc?.categorie === 'boisson') {
+        categoryRevenue.boisson += amt;
+        categoryRevenue.boissonCount += 1;
+      } else {
+        categoryRevenue.salon += amt;
+        categoryRevenue.salonCount += 1;
+      }
+    }
+  });
+
+  const filteredTransactions = periodTransactions.filter(t => transactionMatchesCategory(t, categoryFilterTx));
 
   // Group by day for "Cette Semaine" and "Ce Mois"
   const groupedTransactions = {};
@@ -1051,7 +1122,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
         </div>
 
         {(!dateDebutTx && !dateFinTx) && (
-          <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px', marginBottom: '15px', width: 'fit-content' }}>
+          <div style={{ display: 'flex', gap: '5px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '12px', marginBottom: '15px', width: 'fit-content', flexWrap: 'wrap' }}>
             <button 
               className={`nav-btn ${activeHistoryTab === 'aujourd_hui' ? 'active' : ''}`}
               onClick={() => { setActiveHistoryTab('aujourd_hui'); setSelectedTransactions([]); }}
@@ -1069,6 +1140,84 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
             >Ce Mois</button>
           </div>
         )}
+
+        {/* FILTRES PAR CATÉGORIE (ESTHÉTIQUE / BOISSONS / BILLARD) & RECETTES EN TEMPS RÉEL */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
+          gap: '10px',
+          marginBottom: '16px'
+        }}>
+          {[
+            {
+              id: 'tous',
+              label: '📋 Toutes les opérations',
+              amount: categoryRevenue.salon + categoryRevenue.boisson + categoryRevenue.loisirs,
+              sub: `${periodTransactions.filter(t => t.type === 'prestation').length} vente(s)`,
+              color: 'var(--text-main)',
+              accent: 'var(--accent-color)',
+              bg: 'var(--bg-input)'
+            },
+            {
+              id: 'salon',
+              label: '✂️ Esthétique & Salon',
+              amount: categoryRevenue.salon,
+              sub: `${categoryRevenue.salonCount} prestation(s)`,
+              color: 'var(--accent-color)',
+              accent: 'var(--accent-color)',
+              bg: 'rgba(37, 99, 235, 0.08)'
+            },
+            {
+              id: 'boisson',
+              label: '🍹 Boissons & Cocktails',
+              amount: categoryRevenue.boisson,
+              sub: `${categoryRevenue.boissonCount} boisson(s) servie(s)`,
+              color: '#ec4899',
+              accent: '#ec4899',
+              bg: 'rgba(236, 72, 153, 0.08)'
+            },
+            {
+              id: 'loisirs',
+              label: '🎱 Loisirs & Billard',
+              amount: categoryRevenue.loisirs,
+              sub: `${categoryRevenue.loisirsCount} partie(s)`,
+              color: '#8b5cf6',
+              accent: '#8b5cf6',
+              bg: 'rgba(139, 92, 246, 0.08)'
+            },
+          ].map(cat => {
+            const isActive = categoryFilterTx === cat.id;
+            return (
+              <div
+                key={cat.id}
+                onClick={() => setCategoryFilterTx(cat.id)}
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  backgroundColor: isActive ? cat.bg : 'var(--bg-input)',
+                  border: isActive ? `2px solid ${cat.accent}` : '1px solid var(--border-color)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: cat.color }}>{cat.label}</span>
+                  {isActive && (
+                    <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px', backgroundColor: cat.accent, color: '#fff' }}>
+                      Filtre actif
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: cat.color }}>
+                  {Number(cat.amount).toLocaleString('fr-FR')} FCFA
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {cat.sub}
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         <BulkActionBar 
           selectedIds={selectedTransactions}  

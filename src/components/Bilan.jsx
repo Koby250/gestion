@@ -103,6 +103,7 @@ const Bilan = ({ activeDate = localDateStr() }) => {
   const [rankPeriodFilter, setRankPeriodFilter] = useState('mensuel');
   const [expandedAgents, setExpandedAgents] = useState({});
   const [expandedAvancesEmp, setExpandedAvancesEmp] = useState({});
+  const [bilanCategoryFilter, setBilanCategoryFilter] = useState('tous'); // 'tous' | 'salon' | 'boisson' | 'loisirs'
 
   const [servicesDisponibles, setServicesDisponibles] = useState([]);
   const [avances, setAvances] = useState([]);
@@ -587,22 +588,46 @@ const Bilan = ({ activeDate = localDateStr() }) => {
   // Sort reductions by date descending
   reductionsList.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // ── Analyse par service (lignes individuelles) ───────────────────────────
+  // ── Helper classification par pôle (Salon / Boisson / Loisirs) ───────────
+  const getLignePole = (ligne) => {
+    const isB = ligne.isBillard || ligne.categorieService === 'loisirs' || (ligne.serviceNom || '').toLowerCase().includes('billard');
+    if (isB) return 'loisirs';
+    if (ligne.isBoisson || ligne.categorieService === 'boisson') return 'boisson';
+    const matchedSvc = servicesDisponibles.find(s => s.id === ligne.serviceId || s.nom === ligne.serviceNom);
+    if (matchedSvc?.categorie === 'boisson') return 'boisson';
+    if (matchedSvc?.categorie === 'loisirs') return 'loisirs';
+    return 'salon';
+  };
+
+  // ── Analyse par service (lignes individuelles) & Répartition par Pôle ────
   const serviceMap = {};
+  const caParCategorie = {
+    salon: { total: 0, count: 0 },
+    boisson: { total: 0, count: 0 },
+    loisirs: { total: 0, count: 0 }
+  };
+
   prestations.forEach(t => {
     if (t.lignes && t.lignes.length > 0) {
       // Multi-service transaction: iterate each line
       t.lignes.forEach(ligne => {
         const key = ligne.serviceNom || 'Autre';
-        if (!serviceMap[key]) serviceMap[key] = { nom: key, quantite: 0, total: 0, tarif: 0, details: [] };
+        const pole = getLignePole(ligne);
+        const amt = Number(ligne.prixFinal) || 0;
+        const qty = pole === 'loisirs' ? (Number(ligne.nombreParties) || 1) : 1;
+
+        caParCategorie[pole].total += amt;
+        caParCategorie[pole].count += qty;
+
+        if (!serviceMap[key]) serviceMap[key] = { nom: key, categorie: pole, quantite: 0, total: 0, tarif: 0, details: [] };
         serviceMap[key].quantite += 1;
-        serviceMap[key].total += Number(ligne.prixFinal) || 0;
+        serviceMap[key].total += amt;
         serviceMap[key].tarif = Math.round(serviceMap[key].total / serviceMap[key].quantite);
         serviceMap[key].details.push({
           date: t.date,
           client: t.clientNom || 'Client anonyme',
           agents: (ligne.agents || []).map(a => a.nom).join(', ') || t.employeNom || '-',
-          montant: Number(ligne.prixFinal) || 0,
+          montant: amt,
           mode: t.modePaiement || '-',
           saisieParNom: t.saisieParNom || ''
         });
@@ -610,22 +635,34 @@ const Bilan = ({ activeDate = localDateStr() }) => {
     } else {
       // Legacy single-service transaction
       const key = t.motif || 'Autre';
-      if (!serviceMap[key]) serviceMap[key] = { nom: key, quantite: 0, total: 0, tarif: 0, details: [] };
+      const isB = key.toLowerCase().includes('billard');
+      const matchedSvc = servicesDisponibles.find(s => s.nom === key);
+      const pole = (isB || matchedSvc?.categorie === 'loisirs') ? 'loisirs' : matchedSvc?.categorie === 'boisson' ? 'boisson' : 'salon';
+      const amt = Number(t.montant) || 0;
+
+      caParCategorie[pole].total += amt;
+      caParCategorie[pole].count += 1;
+
+      if (!serviceMap[key]) serviceMap[key] = { nom: key, categorie: pole, quantite: 0, total: 0, tarif: 0, details: [] };
       serviceMap[key].quantite += 1;
-      serviceMap[key].total += Number(t.montant);
+      serviceMap[key].total += amt;
       serviceMap[key].tarif = Math.round(serviceMap[key].total / serviceMap[key].quantite);
       serviceMap[key].details.push({
         date: t.date,
         client: t.clientNom || 'Client anonyme',
         agents: t.employeNom || '-',
-        montant: Number(t.montant),
+        montant: amt,
         mode: t.modePaiement || '-',
         saisieParNom: t.saisieParNom || ''
       });
     }
   });
   const serviceList = Object.values(serviceMap).sort((a, b) => b.total - a.total);
-  const totalLignes = serviceList.reduce((s, sv) => s + sv.quantite, 0);
+  const filteredServiceList = bilanCategoryFilter === 'tous'
+    ? serviceList
+    : serviceList.filter(s => s.categorie === bilanCategoryFilter);
+  const totalLignes = filteredServiceList.reduce((s, sv) => s + sv.quantite, 0);
+  const totalCAFiltered = filteredServiceList.reduce((s, sv) => s + sv.total, 0);
 
   // ── Analyse par catégorie de dépenses ────────────────────────────────────
   const depenseMap = {};
@@ -927,6 +964,109 @@ const Bilan = ({ activeDate = localDateStr() }) => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── RÉPARTITION DU CA PAR CATÉGORIE (ESTHÉTIQUE vs BOISSONS vs BILLARD) ── */}
+      <div className="card" style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+          <div>
+            <h2 className="card-title" style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>
+              Chiffre d'Affaires par Catégorie — {MOIS_FR[viewMonth]} {viewYear}
+            </h2>
+            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Suivi en temps réel des recettes par pôle d'activité (début, milieu ou fin de mois). Cliquez sur une catégorie pour filtrer le détail des prestations.
+            </p>
+          </div>
+          {bilanCategoryFilter !== 'tous' && (
+            <button
+              type="button"
+              onClick={() => setBilanCategoryFilter('tous')}
+              className="btn btn-small"
+              style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}
+            >
+              Afficher toutes les catégories
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+          {[
+            {
+              id: 'salon',
+              title: '✂️ Esthétique & Salon',
+              subtitle: 'Coiffure, soins, esthétique & domicile',
+              total: caParCategorie.salon.total,
+              count: caParCategorie.salon.count,
+              unit: 'prestation(s)',
+              color: 'var(--accent-color)',
+              bg: 'rgba(37, 99, 235, 0.08)',
+              border: 'rgba(37, 99, 235, 0.3)'
+            },
+            {
+              id: 'boisson',
+              title: '🍹 Boissons & Cocktails',
+              subtitle: 'Menu Bar, cocktails & rafraîchissements',
+              total: caParCategorie.boisson.total,
+              count: caParCategorie.boisson.count,
+              unit: 'boisson(s) vendue(s)',
+              color: '#ec4899',
+              bg: 'rgba(236, 72, 153, 0.08)',
+              border: 'rgba(236, 72, 153, 0.35)'
+            },
+            {
+              id: 'loisirs',
+              title: '🎱 Loisirs & Billard',
+              subtitle: 'Parties de billard & jeux',
+              total: caParCategorie.loisirs.total,
+              count: caParCategorie.loisirs.count,
+              unit: 'partie(s)',
+              color: '#8b5cf6',
+              bg: 'rgba(139, 92, 246, 0.08)',
+              border: 'rgba(139, 92, 246, 0.35)'
+            }
+          ].map(pole => {
+            const pct = totalCA > 0 ? Math.round((pole.total / totalCA) * 100) : 0;
+            const isSelected = bilanCategoryFilter === pole.id;
+            return (
+              <div
+                key={pole.id}
+                onClick={() => setBilanCategoryFilter(isSelected ? 'tous' : pole.id)}
+                style={{
+                  backgroundColor: isSelected ? pole.bg : 'var(--bg-input)',
+                  border: isSelected ? `2px solid ${pole.color}` : `1px solid ${pole.border}`,
+                  borderRadius: '14px',
+                  padding: '16px 18px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.92rem', color: pole.color }}>{pole.title}</span>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '99px',
+                    backgroundColor: pole.bg,
+                    color: pole.color
+                  }}>
+                    {pct}% du CA
+                  </span>
+                </div>
+                <div style={{ fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.02em', marginBottom: '4px' }}>
+                  {fmt(pole.total)} <span style={{ fontSize: '0.9rem', fontWeight: 700, color: pole.color }}>FCFA</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                  <span>{pole.count} {pole.unit}</span>
+                  <span style={{ fontStyle: 'italic' }}>{isSelected ? 'Filtre actif ✓' : 'Cliquer pour filtrer'}</span>
+                </div>
+                <div style={{ height: '5px', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: '99px', marginTop: '10px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, backgroundColor: pole.color, borderRadius: '99px', transition: 'width 0.4s ease' }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── CLASSEMENT DES AGENTS ────────────────────────────────── */}
@@ -2114,18 +2254,40 @@ const Bilan = ({ activeDate = localDateStr() }) => {
         </div>
       </div>
 
-      {/* ── ANALYSE PAR PRESTATION ────────────────────────────────────────── */}
+      {/* ── ANALYSE PAR PRESTATION & FILTRE PAR CATÉGORIE ─────────────────── */}
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)' }}>
-          <BarChart2 size={20} color="var(--accent-color)" />
-          <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
-            Analyse par prestation
-          </h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <BarChart2 size={20} color="var(--accent-color)" />
+            <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
+              Analyse par prestation &amp; catégorie
+            </h2>
+          </div>
+
+          {/* Boutons de filtre par catégorie */}
+          <div style={{ display: 'flex', gap: '6px', backgroundColor: 'var(--bg-input)', padding: '4px', borderRadius: '10px', flexWrap: 'wrap' }}>
+            {[
+              { id: 'tous', label: `Toutes (${fmt(totalCA)} F)` },
+              { id: 'salon', label: `✂️ Esthétique & Salon (${fmt(caParCategorie.salon.total)} F)` },
+              { id: 'boisson', label: `🍹 Boissons (${fmt(caParCategorie.boisson.total)} F)` },
+              { id: 'loisirs', label: `🎱 Billard / Loisirs (${fmt(caParCategorie.loisirs.total)} F)` },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setBilanCategoryFilter(tab.id)}
+                className={`nav-btn ${bilanCategoryFilter === tab.id ? 'active' : ''}`}
+                style={{ fontSize: '0.78rem', padding: '6px 12px' }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {serviceList.length === 0 ? (
+        {filteredServiceList.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>
-            Aucune prestation enregistrée pour ce mois.
+            Aucune prestation enregistrée pour cette catégorie ce mois-ci.
           </p>
         ) : (
           <>
@@ -2134,7 +2296,8 @@ const Bilan = ({ activeDate = localDateStr() }) => {
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textAlign: 'left' }}>
-                    <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem' }}>Service</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem' }}>Service / Article</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem' }}>Catégorie</th>
                     <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem', textAlign: 'center' }}>Qté</th>
                     <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem', textAlign: 'right' }}>Tarif moy.</th>
                     <th style={{ padding: '10px 12px', fontWeight: '600', fontSize: '0.85rem', textAlign: 'right' }}>Total</th>
@@ -2143,13 +2306,24 @@ const Bilan = ({ activeDate = localDateStr() }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {serviceList.map((s, i) => {
+                  {filteredServiceList.map((s, i) => {
                     const pct = totalCA > 0 ? Math.round((s.total / totalCA) * 100) : 0;
                     const isOpen = expandedService === s.nom;
+                    const catBadge = s.categorie === 'boisson'
+                      ? { label: '🍹 Boisson', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.12)' }
+                      : s.categorie === 'loisirs'
+                      ? { label: '🎱 Loisirs', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)' }
+                      : { label: '✂️ Esthétique', color: 'var(--accent-color)', bg: 'rgba(37, 99, 235, 0.1)' };
+
                     return (
                       <>
                         <tr key={`row-${i}`} style={{ borderBottom: isOpen ? 'none' : '1px solid var(--border-color)', backgroundColor: isOpen ? 'rgba(37,99,235,0.04)' : 'transparent' }}>
                           <td style={{ padding: '12px', fontWeight: '600', color: 'var(--text-main)' }}>{s.nom}</td>
+                          <td style={{ padding: '12px' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', borderRadius: '99px', backgroundColor: catBadge.bg, color: catBadge.color }}>
+                              {catBadge.label}
+                            </span>
+                          </td>
                           <td style={{ padding: '12px', textAlign: 'center' }}>
                             <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.85rem', backgroundColor: 'rgba(37,99,235,0.08)', color: 'var(--accent-color)', fontWeight: '700' }}>
                               {s.quantite}
@@ -2176,17 +2350,17 @@ const Bilan = ({ activeDate = localDateStr() }) => {
                         </tr>
                         {isOpen && (
                           <tr key={`detail-${i}`}>
-                            <td colSpan="6" style={{ padding: '0', backgroundColor: 'rgba(37,99,235,0.03)', borderBottom: '2px solid var(--accent-color)' }}>
+                            <td colSpan="7" style={{ padding: '0', backgroundColor: 'rgba(37,99,235,0.03)', borderBottom: '2px solid var(--accent-color)' }}>
                               <div style={{ padding: '12px 20px' }}>
                                 <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--accent-color)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                  {s.quantite} prestation(s) de type &laquo; {s.nom} &raquo;
+                                  {s.quantite} vente(s) / prestation(s) de type &laquo; {s.nom} &raquo;
                                 </div>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                                   <thead>
                                     <tr style={{ color: 'var(--text-muted)' }}>
                                       <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: '600' }}>Date</th>
                                       <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: '600' }}>Client</th>
-                                      <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: '600' }}>Agent(s)</th>
+                                      <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: '600' }}>{s.categorie === 'boisson' ? 'Préparé / Servi par' : 'Agent(s)'}</th>
                                       <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '600' }}>Montant</th>
                                       <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: '600' }}>Mode</th>
                                     </tr>
@@ -2215,11 +2389,15 @@ const Bilan = ({ activeDate = localDateStr() }) => {
                 </tbody>
                 <tfoot>
                   <tr style={{ backgroundColor: 'var(--bg-input)', borderTop: '2px solid var(--border-color)' }}>
-                    <td style={{ padding: '12px', fontWeight: '800', color: 'var(--text-main)' }}>TOTAL</td>
+                    <td colSpan="2" style={{ padding: '12px', fontWeight: '800', color: 'var(--text-main)' }}>
+                      {bilanCategoryFilter === 'tous' ? 'TOTAL GLOBAL' : `TOTAL (${bilanCategoryFilter === 'boisson' ? 'BOISSONS' : bilanCategoryFilter === 'loisirs' ? 'LOISIRS / BILLARD' : 'ESTHÉTIQUE & SALON'})`}
+                    </td>
                     <td style={{ padding: '12px', textAlign: 'center', fontWeight: '700' }}>{totalLignes}</td>
                     <td></td>
-                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--success)', fontSize: '1.05rem' }}>{fmt(totalCA)} FCFA</td>
-                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: '700', color: 'var(--text-muted)' }}>100%</td>
+                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--success)', fontSize: '1.05rem' }}>{fmt(totalCAFiltered)} FCFA</td>
+                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: '700', color: 'var(--text-muted)' }}>
+                      {totalCA > 0 ? `${Math.round((totalCAFiltered / totalCA) * 100)}%` : '0%'}
+                    </td>
                     <td></td>
                   </tr>
                 </tfoot>

@@ -36,7 +36,8 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
   const [usersList, setUsersList] = useState([]);
 
   // Forms States (Add)
-  const [newService, setNewService] = useState({ nom: '', prix: '' });
+  const [newService, setNewService] = useState({ nom: '', prix: '', categorie: 'salon' });
+  const [serviceCategoryFilter, setServiceCategoryFilter] = useState('tous');
   const [newServiceDomicile, setNewServiceDomicile] = useState({ nom: '', prix: '' });
   const [newCategory, setNewCategory] = useState({ nom: '' });
   const MODULES_AGENTS = [
@@ -56,7 +57,7 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
 
   // Edit States
   const [editingServiceId, setEditingServiceId] = useState(null);
-  const [editServiceForm, setEditServiceForm] = useState({ nom: '', prix: '' });
+  const [editServiceForm, setEditServiceForm] = useState({ nom: '', prix: '', categorie: 'salon' });
 
   const [editingServiceDomicileId, setEditingServiceDomicileId] = useState(null);
   const [editServiceDomicileForm, setEditServiceDomicileForm] = useState({ nom: '', prix: '' });
@@ -152,8 +153,14 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
   const handleAddService = async (e) => {
     e.preventDefault();
     if (!newService.nom || !newService.prix) return;
-    await addDoc(collection(db, 'services'), { nom: newService.nom, prixDefaut: Number(newService.prix), actif: true });
-    setNewService({ nom: '', prix: '' });
+    const cat = newService.categorie || 'salon';
+    await addDoc(collection(db, 'services'), {
+      nom: newService.nom.trim(),
+      prixDefaut: Number(newService.prix),
+      categorie: cat,
+      actif: true
+    });
+    setNewService(prev => ({ nom: '', prix: '', categorie: prev.categorie || 'salon' }));
   };
 
   const handleAddServiceDomicile = async (e) => {
@@ -260,11 +267,19 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
   // Handlers Global Settings)
   const startEditService = (service) => {
     setEditingServiceId(service.id);
-    setEditServiceForm({ nom: service.nom, prix: service.prixDefaut.toString() });
+    setEditServiceForm({
+      nom: service.nom,
+      prix: service.prixDefaut.toString(),
+      categorie: service.categorie || 'salon'
+    });
   };
   const saveEditService = async (id) => {
-    await updateDoc(doc(db, 'services', id), { nom: editServiceForm.nom, prixDefaut: Number(editServiceForm.prix) });
-    await logEvent('PARAMETRE_UPDATE', `Modification du service: ${editServiceForm.nom} (${editServiceForm.prix} FCFA)`);
+    await updateDoc(doc(db, 'services', id), {
+      nom: editServiceForm.nom.trim(),
+      prixDefaut: Number(editServiceForm.prix),
+      categorie: editServiceForm.categorie || 'salon'
+    });
+    await logEvent('PARAMETRE_UPDATE', `Modification du service: ${editServiceForm.nom} (${editServiceForm.prix} FCFA) [${editServiceForm.categorie || 'salon'}]`);
     setEditingServiceId(null);
   };
 
@@ -547,28 +562,88 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
         )}
       </div>
 
-      {/* SECTION SERVICES */}
+      {/* SECTION SERVICES, BOISSONS & LOISIRS */}
       <div className="card">
-        <h2 className="card-title">Prestations & Services</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+          <div>
+            <h2 className="card-title" style={{ margin: 0, borderBottom: 'none', paddingBottom: 0 }}>Prestations, Menu Boissons &amp; Loisirs</h2>
+            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Sélectionnez la catégorie (Salon, Boissons/Cocktails ou Loisirs) puis ajoutez ou modifiez vos articles et tarifs.
+            </p>
+          </div>
+          {/* Onglets de filtre par catégorie */}
+          <div style={{ display: 'flex', gap: '6px', backgroundColor: 'var(--bg-input)', padding: '5px', borderRadius: '10px', flexWrap: 'wrap' }}>
+            {[
+              { id: 'tous', label: `Tous (${services.length})` },
+              { id: 'salon', label: `✂️ Salon & Esthétique (${services.filter(s => (s.categorie || 'salon') === 'salon').length})` },
+              { id: 'boisson', label: `🍹 Boissons & Cocktails (${services.filter(s => s.categorie === 'boisson').length})` },
+              { id: 'loisirs', label: `🎱 Loisirs & Jeux (${services.filter(s => s.categorie === 'loisirs').length})` },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setServiceCategoryFilter(tab.id);
+                  if (tab.id !== 'tous') {
+                    setNewService(prev => ({ ...prev, categorie: tab.id }));
+                  }
+                }}
+                className={`nav-btn ${serviceCategoryFilter === tab.id ? 'active' : ''}`}
+                style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
         
-        <form onSubmit={handleAddService} style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <input 
-            type="text" 
-            className="input-control" 
-            placeholder="Nom du service" 
-            value={newService.nom} 
-            onChange={(e) => setNewService({...newService, nom: e.target.value})}
-            style={{ flex: 1, minWidth: '150px' }}
-          />
-          <input 
-            type="number" 
-            className="input-control" 
-            placeholder="Prix (FCFA)" 
-            value={newService.prix} 
-            onChange={(e) => setNewService({...newService, prix: e.target.value})}
-            style={{ width: '150px' }}
-          />
-          <button type="submit" className="btn btn-primary"><Plus size={18} /> Ajouter</button>
+        <form onSubmit={handleAddService} style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', backgroundColor: 'var(--bg-input)', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+          <div style={{ minWidth: '210px', flex: '0 1 230px' }}>
+            <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              1. Catégorie
+            </label>
+            <select
+              className="input-control"
+              style={{ margin: 0, width: '100%', fontWeight: 600 }}
+              value={newService.categorie || 'salon'}
+              onChange={(e) => setNewService({ ...newService, categorie: e.target.value })}
+            >
+              <option value="salon">✂️ Salon &amp; Esthétique</option>
+              <option value="boisson">🍹 Boissons &amp; Cocktails</option>
+              <option value="loisirs">🎱 Loisirs &amp; Jeux</option>
+            </select>
+          </div>
+          <div style={{ flex: 1, minWidth: '180px' }}>
+            <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              2. {newService.categorie === 'boisson' ? 'Nom de la boisson / cocktail' : newService.categorie === 'loisirs' ? 'Nom du loisir / jeu' : 'Nom de la prestation'}
+            </label>
+            <input 
+              type="text" 
+              className="input-control" 
+              placeholder={newService.categorie === 'boisson' ? "Ex: Cocktail Mojito, Jus pressé..." : newService.categorie === 'loisirs' ? "Ex: Billard, Babyfoot..." : "Ex: Coupe Homme, Soin Visage..."} 
+              value={newService.nom} 
+              onChange={(e) => setNewService({...newService, nom: e.target.value})}
+              style={{ margin: 0, width: '100%' }}
+            />
+          </div>
+          <div style={{ width: '150px' }}>
+            <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              3. Prix de vente (FCFA)
+            </label>
+            <input 
+              type="number" 
+              className="input-control" 
+              placeholder="Prix (FCFA)" 
+              value={newService.prix} 
+              onChange={(e) => setNewService({...newService, prix: e.target.value})}
+              style={{ margin: 0, width: '100%' }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button type="submit" className="btn btn-primary" style={{ height: '42px' }}>
+              <Plus size={18} /> Ajouter
+            </button>
+          </div>
         </form>
 
         <BulkActionBar 
@@ -578,47 +653,79 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
         />
         {services.length > 0 && (
           <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input type="checkbox" id="selectAllServices" onChange={e => toggleAll(e, services, setSelectedServices)} checked={services.length > 0 && selectedServices.length === services.length} style={{ cursor: 'pointer' }} />
+            <input type="checkbox" id="selectAllServices" onChange={e => toggleAll(e, services.filter(s => serviceCategoryFilter === 'tous' || (s.categorie || 'salon') === serviceCategoryFilter), setSelectedServices)} checked={services.length > 0 && selectedServices.length === services.filter(s => serviceCategoryFilter === 'tous' || (s.categorie || 'salon') === serviceCategoryFilter).length && selectedServices.length > 0} style={{ cursor: 'pointer' }} />
             <label htmlFor="selectAllServices" style={{ fontSize: '0.85rem', cursor: 'pointer', color: 'var(--text-muted)' }}>Tout sélectionner</label>
           </div>
         )}
 
         <div className="list-container">
-          {services.map(service => (
-            <div key={service.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px', backgroundColor: selectedServices.includes(service.id) ? 'rgba(37,99,235,0.05)' : 'transparent' }}>
-              
-              <input type="checkbox" checked={selectedServices.includes(service.id)} onChange={() => toggleSelection(service.id, selectedServices, setSelectedServices)} style={{ cursor: 'pointer', marginRight: '5px' }} />
+          {services
+            .filter(service => serviceCategoryFilter === 'tous' || (service.categorie || 'salon') === serviceCategoryFilter)
+            .map(service => {
+              const cat = service.categorie || 'salon';
+              const catBadge = cat === 'boisson'
+                ? { label: '🍹 Boisson / Cocktail', bg: 'rgba(236, 72, 153, 0.12)', color: '#ec4899', border: 'rgba(236, 72, 153, 0.3)' }
+                : cat === 'loisirs'
+                ? { label: '🎱 Loisirs & Jeux', bg: 'rgba(139, 92, 246, 0.12)', color: '#8b5cf6', border: 'rgba(139, 92, 246, 0.3)' }
+                : { label: '✂️ Salon & Esthétique', bg: 'rgba(37, 99, 235, 0.1)', color: 'var(--accent-color)', border: 'rgba(37, 99, 235, 0.25)' };
 
-              {editingServiceId === service.id ? (
-                <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
-                  <input type="text" className="input-control" value={editServiceForm.nom} onChange={e => setEditServiceForm({...editServiceForm, nom: e.target.value})} />
-                  <input type="number" className="input-control" value={editServiceForm.prix} onChange={e => setEditServiceForm({...editServiceForm, prix: e.target.value})} style={{ width: '100px' }} />
-                  <button onClick={() => saveEditService(service.id)} className="btn btn-success btn-small"><CheckCircle size={14} /></button>
-                  <button onClick={() => setEditingServiceId(null)} className="btn btn-small" style={{background:'var(--bg-input)'}}><X size={14}/></button>
-                </div>
-              ) : (
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontWeight: 'bold', color: service.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>{service.nom}</span>
-                  <span style={{ marginLeft: '10px', color: 'var(--accent-color)', fontWeight: 'bold' }}>{service.prixDefaut} FCFA</span>
-                  {!service.actif && <span style={{ marginLeft: '10px', fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
-                </div>
-              )}
+              return (
+                <div key={service.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 10px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px', backgroundColor: selectedServices.includes(service.id) ? 'rgba(37,99,235,0.05)' : 'transparent' }}>
+                  
+                  <input type="checkbox" checked={selectedServices.includes(service.id)} onChange={() => toggleSelection(service.id, selectedServices, setSelectedServices)} style={{ cursor: 'pointer', marginRight: '5px' }} />
 
-              {editingServiceId !== service.id && (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => startEditService(service)} className="btn btn-small" style={{backgroundColor: 'var(--bg-input)', color: 'var(--text-main)'}} title="Modifier">
-                    <Edit2 size={14} />
-                  </button>
-                  <button onClick={() => toggleStatus('services', service.id, service.actif)} className={`btn btn-small ${service.actif ? 'btn-danger' : 'btn-success'}`} title={service.actif ? "Archiver" : "Activer"}>
-                    {service.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
-                  </button>
-                  <button onClick={() => handleDelete('services', service.id)} className="btn btn-small btn-danger" title="Supprimer">
-                    <Trash2 size={14} />
-                  </button>
+                  {editingServiceId === service.id ? (
+                    <div style={{ display: 'flex', gap: '10px', flex: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <select
+                        className="input-control"
+                        style={{ width: '185px', margin: 0 }}
+                        value={editServiceForm.categorie || 'salon'}
+                        onChange={e => setEditServiceForm({ ...editServiceForm, categorie: e.target.value })}
+                      >
+                        <option value="salon">✂️ Salon &amp; Esthétique</option>
+                        <option value="boisson">🍹 Boissons &amp; Cocktails</option>
+                        <option value="loisirs">🎱 Loisirs &amp; Jeux</option>
+                      </select>
+                      <input type="text" className="input-control" style={{ flex: 1, minWidth: '150px', margin: 0 }} value={editServiceForm.nom} onChange={e => setEditServiceForm({...editServiceForm, nom: e.target.value})} />
+                      <input type="number" className="input-control" value={editServiceForm.prix} onChange={e => setEditServiceForm({...editServiceForm, prix: e.target.value})} style={{ width: '110px', margin: 0 }} />
+                      <button onClick={() => saveEditService(service.id)} className="btn btn-success btn-small"><CheckCircle size={14} /></button>
+                      <button onClick={() => setEditingServiceId(null)} className="btn btn-small" style={{background:'var(--bg-input)'}}><X size={14}/></button>
+                    </div>
+                  ) : (
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '3px 9px',
+                        borderRadius: '99px',
+                        backgroundColor: catBadge.bg,
+                        color: catBadge.color,
+                        border: `1px solid ${catBadge.border}`
+                      }}>
+                        {catBadge.label}
+                      </span>
+                      <span style={{ fontWeight: 'bold', color: service.actif ? 'var(--text-main)' : 'var(--text-muted)' }}>{service.nom}</span>
+                      <span style={{ color: 'var(--accent-color)', fontWeight: 'bold' }}>{Number(service.prixDefaut).toLocaleString('fr-FR')} FCFA</span>
+                      {!service.actif && <span style={{ fontSize:'0.75rem', color:'var(--text-muted)'}}>(Archivé)</span>}
+                    </div>
+                  )}
+
+                  {editingServiceId !== service.id && (
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => startEditService(service)} className="btn btn-small" style={{backgroundColor: 'var(--bg-input)', color: 'var(--text-main)'}} title="Modifier">
+                        <Edit2 size={14} />
+                      </button>
+                      <button onClick={() => toggleStatus('services', service.id, service.actif)} className={`btn btn-small ${service.actif ? 'btn-danger' : 'btn-success'}`} title={service.actif ? "Archiver" : "Activer"}>
+                        {service.actif ? <Archive size={14}/> : <CheckCircle size={14}/>}
+                      </button>
+                      <button onClick={() => handleDelete('services', service.id)} className="btn btn-small btn-danger" title="Supprimer">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+              );
+            })}
         </div>
       </div>
 

@@ -249,11 +249,14 @@ const PanierPrestations = ({
 
   const totalGeneral = (lignes || []).reduce((acc, l) => acc + Number(l.prixFinal || 0), 0);
 
-  const addLigne = () => {
+  const addLigne = (defaultCat = 'toutes') => {
     try {
       setLignes(prev => [...prev, {
         serviceId: '',
         serviceNom: '',
+        categorieFilter: defaultCat,
+        categorieService: defaultCat === 'boisson' ? 'boisson' : 'salon',
+        isBoisson: defaultCat === 'boisson',
         isBillard: false,
         prixBase: '',
         prixFinal: '',
@@ -268,11 +271,18 @@ const PanierPrestations = ({
     }
   };
 
+  const addBoissonLigne = () => {
+    addLigne('boisson');
+  };
+
   const addBillardLigne = () => {
     try {
       setLignes(prev => [...prev, {
         serviceId: 'billard',
         serviceNom: 'Billard',
+        categorieFilter: 'loisirs',
+        categorieService: 'loisirs',
+        isBoisson: false,
         isBillard: true,
         nombreParties: 1,
         prixUnitaire: 1000,
@@ -320,12 +330,40 @@ const PanierPrestations = ({
         const updated = [...prev];
         const current = { ...updated[index] };
 
+        // Changement de filtre de catégorie sur la ligne
+        if (field === 'categorieFilter') {
+          current.categorieFilter = value;
+          if (value === 'loisirs') {
+            current.serviceId = 'billard';
+            current.serviceNom = 'Billard';
+            current.categorieService = 'loisirs';
+            current.isBillard = true;
+            current.isBoisson = false;
+            current.nombreParties = current.nombreParties || 1;
+            current.prixUnitaire = current.prixUnitaire ?? 1000;
+            current.prixBase = (current.nombreParties || 1) * current.prixUnitaire;
+            current.prixFinal = current.prixBase;
+          } else {
+            current.isBillard = false;
+            current.isBoisson = value === 'boisson';
+            current.categorieService = value === 'boisson' ? 'boisson' : 'salon';
+            current.serviceId = '';
+            current.serviceNom = '';
+            current.prixBase = '';
+            current.prixFinal = '';
+          }
+          updated[index] = current;
+          return updated;
+        }
+
         // Changement de service
         if (field === 'serviceId') {
           if (value === 'billard' || value === 'service_billard') {
             current.serviceId = 'billard';
             current.serviceNom = 'Billard';
+            current.categorieService = 'loisirs';
             current.isBillard = true;
+            current.isBoisson = false;
             current.nombreParties = current.nombreParties || 1;
             current.prixUnitaire = current.prixUnitaire ?? 1000;
             current.prixBase = (current.nombreParties || 1) * current.prixUnitaire;
@@ -344,10 +382,13 @@ const PanierPrestations = ({
           const realId = isDomicile ? value.replace('dom_', '') : value;
           const service = isDomicile ? (servicesDomicile || []).find(s => s.id === realId) : services.find(s => s.id === realId);
           if (service) {
-            const isBillard = (service.nom || '').toLowerCase().includes('billard');
+            const isBillard = service.categorie === 'loisirs' || (service.nom || '').toLowerCase().includes('billard');
+            const isBoisson = !isDomicile && service.categorie === 'boisson';
             current.serviceId = realId;
             current.serviceNom = service.nom;
+            current.categorieService = isBillard ? 'loisirs' : isBoisson ? 'boisson' : 'salon';
             current.isBillard = isBillard;
+            current.isBoisson = isBoisson;
             if (isBillard) {
               current.nombreParties = current.nombreParties || 1;
               current.prixUnitaire = Number(service.prixDefaut) || 1000;
@@ -601,15 +642,24 @@ const PanierPrestations = ({
         </div>
       )}
 
-      {/* Barre d'action rapide pour prestations, Billard et PROMOTIONS */}
+      {/* Barre d'action rapide pour prestations, Boissons, Billard et PROMOTIONS */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
         <button
           type="button"
-          onClick={addLigne}
+          onClick={() => addLigne('salon')}
           className="btn btn-small"
           style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', border: '1px solid var(--border-color)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
         >
-          <PlusCircle size={15} /> + Prestation classique
+          <PlusCircle size={15} /> ✂️ + Prestation Salon
+        </button>
+
+        <button
+          type="button"
+          onClick={addBoissonLigne}
+          className="btn btn-small"
+          style={{ backgroundColor: 'rgba(236, 72, 153, 0.12)', color: '#ec4899', border: '1px solid rgba(236, 72, 153, 0.45)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
+        >
+          🍹 + Boisson / Cocktail
         </button>
 
         <button
@@ -712,8 +762,15 @@ const PanierPrestations = ({
       {/* Lignes de prestations */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '16px' }}>
         {lignes.map((ligne, index) => {
-          const isBillard = ligne.isBillard || (ligne.serviceNom || '').toLowerCase().includes('billard');
+          const isBillard = ligne.isBillard || ligne.categorieService === 'loisirs' || (ligne.serviceNom || '').toLowerCase().includes('billard');
+          const matchedSvc = services.find(s => s.id === ligne.serviceId);
+          const isBoisson = !isBillard && (ligne.isBoisson || ligne.categorieService === 'boisson' || ligne.categorieFilter === 'boisson' || matchedSvc?.categorie === 'boisson');
           const isPromoItem = !!(ligne.isPromo || ligne.promotionNom);
+          const activeCatFilter = ligne.categorieFilter || (isBillard ? 'loisirs' : isBoisson ? 'boisson' : ligne.isDomicile ? 'domicile' : 'toutes');
+
+          const salonServices = (services || []).filter(s => (s.categorie || 'salon') === 'salon');
+          const boissonServices = (services || []).filter(s => s.categorie === 'boisson');
+          const loisirsServices = (services || []).filter(s => s.categorie === 'loisirs');
 
           return (
             <div
@@ -721,24 +778,28 @@ const PanierPrestations = ({
               style={{
                 border: isBillard
                   ? '1.5px solid var(--accent)'
-                  : isPromoItem
-                    ? '1.5px solid rgba(245, 158, 11, 0.4)'
-                    : '1px solid var(--border-color)',
+                  : isBoisson
+                    ? '1.5px solid rgba(236, 72, 153, 0.45)'
+                    : isPromoItem
+                      ? '1.5px solid rgba(245, 158, 11, 0.4)'
+                      : '1px solid var(--border-color)',
                 borderRadius: '14px',
                 padding: '16px',
                 backgroundColor: 'var(--bg-card)',
                 boxShadow: isBillard
                   ? '0 0 16px var(--accent-glow)'
-                  : isPromoItem
-                    ? '0 0 12px rgba(245, 158, 11, 0.1)'
-                    : 'none',
+                  : isBoisson
+                    ? '0 0 14px rgba(236, 72, 153, 0.12)'
+                    : isPromoItem
+                      ? '0 0 12px rgba(245, 158, 11, 0.1)'
+                      : 'none',
                 position: 'relative'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontWeight: '700', color: isPromoItem ? '#F59E0B' : 'var(--accent)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {isBillard ? '🎱 Billard' : `Prestation ${index + 1}`}
+                  <span style={{ fontWeight: '700', color: isPromoItem ? '#F59E0B' : isBoisson ? '#ec4899' : 'var(--accent)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {isBillard ? '🎱 Loisirs / Billard' : isBoisson ? `🍹 Boisson / Cocktail ${index + 1}` : `✂️ Prestation ${index + 1}`}
                   </span>
                   {isPromoItem && (
                     <span style={{
@@ -772,6 +833,21 @@ const PanierPrestations = ({
               {/* Ligne Billard personnalisée : nombre de parties, prix par partie, total modifiable */}
               {isBillard ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label>Catégorie</label>
+                    <select
+                      className="input-control"
+                      value="loisirs"
+                      onChange={e => updateLigne(index, 'categorieFilter', e.target.value)}
+                    >
+                      <option value="toutes">📋 Toutes les catégories</option>
+                      <option value="salon">✂️ Salon &amp; Esthétique</option>
+                      <option value="boisson">🍹 Boissons &amp; Cocktails</option>
+                      <option value="loisirs">🎱 Loisirs &amp; Jeux (Billard)</option>
+                      <option value="domicile">🏠 À domicile</option>
+                    </select>
+                  </div>
+
                   <div className="form-group" style={{ margin: 0 }}>
                     <label>Nombre de parties</label>
                     <input
@@ -809,41 +885,91 @@ const PanierPrestations = ({
                   </div>
                 </div>
               ) : (
-                /* Prestation classique ou issue d'une promo */
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                  {/* Service */}
+                /* Prestation classique, Boisson/Cocktail ou issue d'une promo */
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '10px' }}>
+                  {/* 1. Sélecteur de Catégorie */}
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label>Service</label>
+                    <label>1. Catégorie</label>
+                    <select
+                      className="input-control"
+                      value={activeCatFilter}
+                      onChange={e => updateLigne(index, 'categorieFilter', e.target.value)}
+                    >
+                      <option value="toutes">📋 Toutes catégories</option>
+                      <option value="salon">✂️ Salon &amp; Esthétique</option>
+                      <option value="boisson">🍹 Boissons &amp; Cocktails</option>
+                      <option value="loisirs">🎱 Loisirs &amp; Jeux</option>
+                      <option value="domicile">🏠 À domicile</option>
+                    </select>
+                  </div>
+
+                  {/* 2. Service ou Boisson */}
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label>2. {isBoisson ? 'Boisson / Cocktail' : 'Service / Prestation'}</label>
                     <select
                       className="input-control"
                       value={ligne.isDomicile ? `dom_${ligne.serviceId}` : ligne.serviceId}
                       onChange={e => updateLigne(index, 'serviceId', e.target.value)}
-                      required
+                      required={!ligne.serviceNom}
                     >
-                      <option value="">Choisir un service</option>
-                      <optgroup label="Loisirs & Jeux">
-                        <option value="billard">🎱 Billard</option>
-                      </optgroup>
-                      {services && services.length > 0 && (
-                        <optgroup label="Au salon">
-                          {services.map(s => (
-                            <option key={s.id} value={s.id}>{s.nom} — {s.prixDefaut} FCFA</option>
+                      <option value="">
+                        {activeCatFilter === 'boisson'
+                          ? (boissonServices.length > 0 ? 'Choisir une boisson / cocktail...' : 'Aucune boisson au menu (saisir ci-dessous ou ajouter dans Paramètres)')
+                          : 'Choisir un service...'}
+                      </option>
+
+                      {(activeCatFilter === 'toutes' || activeCatFilter === 'boisson') && boissonServices.length > 0 && (
+                        <optgroup label="🍹 Boissons & Cocktails">
+                          {boissonServices.map(s => (
+                            <option key={s.id} value={s.id}>🍹 {s.nom} — {Number(s.prixDefaut).toLocaleString('fr-FR')} FCFA</option>
                           ))}
                         </optgroup>
                       )}
-                      {servicesDomicile && servicesDomicile.length > 0 && (
-                        <optgroup label="À domicile">
+
+                      {(activeCatFilter === 'toutes' || activeCatFilter === 'salon') && salonServices.length > 0 && (
+                        <optgroup label="✂️ Salon & Esthétique">
+                          {salonServices.map(s => (
+                            <option key={s.id} value={s.id}>{s.nom} — {Number(s.prixDefaut).toLocaleString('fr-FR')} FCFA</option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {(activeCatFilter === 'toutes' || activeCatFilter === 'loisirs') && (
+                        <optgroup label="🎱 Loisirs & Jeux">
+                          <option value="billard">🎱 Billard</option>
+                          {loisirsServices.map(s => (
+                            <option key={s.id} value={s.id}>🎱 {s.nom} — {Number(s.prixDefaut).toLocaleString('fr-FR')} FCFA</option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {(activeCatFilter === 'toutes' || activeCatFilter === 'domicile') && servicesDomicile && servicesDomicile.length > 0 && (
+                        <optgroup label="🏠 À domicile">
                           {servicesDomicile.map(s => (
-                            <option key={`dom_${s.id}`} value={`dom_${s.id}`}>{s.nom} — {s.prixDefaut} FCFA</option>
+                            <option key={`dom_${s.id}`} value={`dom_${s.id}`}>{s.nom} — {Number(s.prixDefaut).toLocaleString('fr-FR')} FCFA</option>
                           ))}
                         </optgroup>
                       )}
                     </select>
                   </div>
 
+                  {/* Si Boisson et pas encore dans le menu ou saisie libre */}
+                  {isBoisson && !ligne.serviceId && (
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>Nom de la boisson (saisie libre)</label>
+                      <input
+                        type="text"
+                        className="input-control"
+                        placeholder="Ex: Cocktail Mojito..."
+                        value={ligne.serviceNom || ''}
+                        onChange={e => updateLigne(index, 'serviceNom', e.target.value)}
+                      />
+                    </div>
+                  )}
+
                   {/* Prix */}
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label>Prix (FCFA)</label>
+                    <label>{isBoisson ? 'Prix de vente (FCFA)' : 'Prix (FCFA)'}</label>
                     <input
                       type="number"
                       min="0"
@@ -902,8 +1028,13 @@ const PanierPrestations = ({
 
               {/* Agents assignés */}
               <div style={{ marginTop: '12px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                  <Users size={14} /> {isBillard ? 'Agent (Optionnel pour le billard)' : 'Agents assignés à cette prestation'}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: isBoisson ? '#ec4899' : 'var(--text-muted)', fontWeight: isBoisson ? 700 : 500, marginBottom: '8px' }}>
+                  <Users size={14} />
+                  {isBillard
+                    ? 'Agent (Optionnel pour le billard)'
+                    : isBoisson
+                      ? '🍹 Préparé / Servi par (Employé ayant préparé la boisson)'
+                      : 'Agents assignés à cette prestation'}
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {employes.map(emp => {
@@ -928,7 +1059,7 @@ const PanierPrestations = ({
                 ) : (
                   (!ligne.agents || ligne.agents.length === 0) && (
                     <p style={{ fontSize: '0.75rem', color: 'var(--danger)', margin: '4px 0 0 0' }}>
-                      Veuillez assigner au moins un agent.
+                      {isBoisson ? "Veuillez sélectionner l'employé qui a préparé / servi cette boisson." : "Veuillez assigner au moins un agent."}
                     </p>
                   )
                 )}
@@ -952,10 +1083,10 @@ const PanierPrestations = ({
       {/* Bouton ajouter prestation bas */}
       <button
         type="button"
-        onClick={addLigne}
+        onClick={() => addLigne('toutes')}
         className="btn-add-prestation"
       >
-        <PlusCircle size={16} /> Ajouter une autre prestation
+        <PlusCircle size={16} /> Ajouter une autre prestation ou boisson
       </button>
 
       {/* Mode de paiement + Total */}
