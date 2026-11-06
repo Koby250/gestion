@@ -841,7 +841,7 @@ const Bilan = ({ activeDate = localDateStr() }) => {
 
       {/* ── SÉLECTEUR DE MOIS ─────────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
           <button
             onClick={goToPrevMonth}
             className="btn"
@@ -894,8 +894,8 @@ const Bilan = ({ activeDate = localDateStr() }) => {
       {/* ── CARTES RÉSUMÉES ───────────────────────────────────────────────── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '16px',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: '14px',
         marginBottom: '24px'
       }}>
         {statCards.map((card, i) => (
@@ -989,7 +989,7 @@ const Bilan = ({ activeDate = localDateStr() }) => {
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '16px' }}>
           {[
             {
               id: 'salon',

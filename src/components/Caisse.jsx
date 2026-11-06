@@ -153,7 +153,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
           if (!l.serviceId && !l.serviceNom) return true;
           // Le prix = 0 est parfaitement valide (ex: soin offert / remise 100%)
           if (l.prixFinal === '' || l.prixFinal === undefined || l.prixFinal === null || isNaN(Number(l.prixFinal)) || Number(l.prixFinal) < 0) return true;
-          const isBillard = l.isBillard || (l.serviceNom || '').toLowerCase().includes('billard');
+          const isBillard = !!(l.isBillard || l.serviceId === 'billard' || l.categorieService === 'loisirs' || (l.serviceNom || '').toLowerCase().includes('billard'));
           // Le billard ne requiert PAS d'agent obligatoire
           if (!isBillard && (!l.agents || l.agents.length === 0)) return true;
           return false;
@@ -171,9 +171,10 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
         let motifDescription = '';
         if (lignesPanier.length === 1) {
           const l0 = lignesPanier[0];
-          const isB = l0.isBillard || (l0.serviceNom || '').toLowerCase().includes('billard');
-          if (isB && (l0.nombreParties || 1) > 1) {
-            motifDescription = `Billard (${l0.nombreParties} parties)`;
+          const isB = !!(l0.isBillard || l0.serviceId === 'billard' || l0.categorieService === 'loisirs' || (l0.serviceNom || '').toLowerCase().includes('billard'));
+          if (isB) {
+            const nb = Number(l0.nombreParties) || 1;
+            motifDescription = `Billard (${nb} partie${nb > 1 ? 's' : ''})`;
           } else {
             motifDescription = l0.serviceNom || 'Prestation';
           }
@@ -321,7 +322,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
         const isLineInvalid = (l) => {
           if (!l.serviceId && !l.serviceNom) return true;
           if (l.prixFinal === '' || l.prixFinal === undefined || l.prixFinal === null || isNaN(Number(l.prixFinal)) || Number(l.prixFinal) < 0) return true;
-          const isBillard = l.isBillard || (l.serviceNom || '').toLowerCase().includes('billard');
+          const isBillard = !!(l.isBillard || l.serviceId === 'billard' || l.categorieService === 'loisirs' || (l.serviceNom || '').toLowerCase().includes('billard'));
           if (!isBillard && (!l.agents || l.agents.length === 0)) return true;
           return false;
         };
@@ -359,9 +360,10 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
         let motifDesc = '';
         if (editTxLignes.length === 1) {
           const l0 = editTxLignes[0];
-          const isB = l0.isBillard || (l0.serviceNom || '').toLowerCase().includes('billard');
-          if (isB && (l0.nombreParties || 1) > 1) {
-            motifDesc = `Billard (${l0.nombreParties} parties)`;
+          const isB = !!(l0.isBillard || l0.serviceId === 'billard' || l0.categorieService === 'loisirs' || (l0.serviceNom || '').toLowerCase().includes('billard'));
+          if (isB) {
+            const nb = Number(l0.nombreParties) || 1;
+            motifDesc = `Billard (${nb} partie${nb > 1 ? 's' : ''})`;
           } else {
             motifDesc = l0.serviceNom || 'Prestation';
           }
@@ -1144,7 +1146,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
         {/* FILTRES PAR CATÉGORIE (ESTHÉTIQUE / BOISSONS / BILLARD) & RECETTES EN TEMPS RÉEL */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
           gap: '10px',
           marginBottom: '16px'
         }}>

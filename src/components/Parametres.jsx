@@ -633,7 +633,7 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
             <input 
               type="number" 
               className="input-control" 
-              placeholder="Prix (FCFA)" 
+              placeholder={newService.categorie === 'loisirs' ? "Ex: 500" : "Prix (FCFA)"} 
               value={newService.prix} 
               onChange={(e) => setNewService({...newService, prix: e.target.value})}
               style={{ margin: 0, width: '100%' }}

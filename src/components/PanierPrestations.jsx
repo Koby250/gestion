@@ -29,6 +29,11 @@ const PanierPrestations = ({
   const [newClientForm, setNewClientForm] = useState({ nom: '', prenom: '', telephone: '' });
   const [isSavingClient, setIsSavingClient] = useState(false);
   const dropdownRef = useRef(null);
+  const [showBillardAgentsMap, setShowBillardAgentsMap] = useState({});
+
+  const toggleBillardAgentPicker = (index) => {
+    setShowBillardAgentsMap(prev => ({ ...prev, [index]: !prev[index] }));
+  };
 
   // Promotions disponibles
   const [promotions, setPromotions] = useState([]);
@@ -275,6 +280,66 @@ const PanierPrestations = ({
     addLigne('boisson');
   };
 
+  const clearLineAgents = (idx) => {
+    setLignes(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], agents: [] };
+      return updated;
+    });
+  };
+
+  const changeBillardParties = (index, delta) => {
+    setLignes(prev => {
+      const updated = [...prev];
+      const current = { ...updated[index] };
+      const currentP = Number(current.nombreParties) || 1;
+      const nextP = Math.max(1, currentP + delta);
+      current.nombreParties = nextP;
+      const uPrice = current.prixUnitaire !== undefined && current.prixUnitaire !== '' ? Number(current.prixUnitaire) : 500;
+      current.prixUnitaire = uPrice;
+      const baseCalc = nextP * uPrice;
+      current.prixBase = baseCalc;
+      if (current.remiseType === 'offert') {
+        current.prixFinal = 0;
+      } else if (current.remiseType === 'pourcentage') {
+        const pct = Number(current.remiseValeur) || 0;
+        current.prixFinal = Math.max(0, baseCalc - (baseCalc * pct / 100));
+      } else if (current.remiseType === 'fixe') {
+        const fix = Number(current.remiseValeur) || 0;
+        current.prixFinal = Math.max(0, baseCalc - fix);
+      } else {
+        current.prixFinal = baseCalc;
+      }
+      updated[index] = current;
+      return updated;
+    });
+  };
+
+  const setBillardPartiesPreset = (index, nbParties) => {
+    setLignes(prev => {
+      const updated = [...prev];
+      const current = { ...updated[index] };
+      current.nombreParties = nbParties;
+      const uPrice = current.prixUnitaire !== undefined && current.prixUnitaire !== '' ? Number(current.prixUnitaire) : 500;
+      current.prixUnitaire = uPrice;
+      const baseCalc = nbParties * uPrice;
+      current.prixBase = baseCalc;
+      if (current.remiseType === 'offert') {
+        current.prixFinal = 0;
+      } else if (current.remiseType === 'pourcentage') {
+        const pct = Number(current.remiseValeur) || 0;
+        current.prixFinal = Math.max(0, baseCalc - (baseCalc * pct / 100));
+      } else if (current.remiseType === 'fixe') {
+        const fix = Number(current.remiseValeur) || 0;
+        current.prixFinal = Math.max(0, baseCalc - fix);
+      } else {
+        current.prixFinal = baseCalc;
+      }
+      updated[index] = current;
+      return updated;
+    });
+  };
+
   const addBillardLigne = () => {
     try {
       setLignes(prev => [...prev, {
@@ -285,9 +350,9 @@ const PanierPrestations = ({
         isBoisson: false,
         isBillard: true,
         nombreParties: 1,
-        prixUnitaire: 1000,
-        prixBase: 1000,
-        prixFinal: 1000,
+        prixUnitaire: 500,
+        prixBase: 500,
+        prixFinal: 500,
         agents: [],
         remiseType: 'aucune',
         remiseValeur: '',
@@ -340,8 +405,8 @@ const PanierPrestations = ({
             current.isBillard = true;
             current.isBoisson = false;
             current.nombreParties = current.nombreParties || 1;
-            current.prixUnitaire = current.prixUnitaire ?? 1000;
-            current.prixBase = (current.nombreParties || 1) * current.prixUnitaire;
+            current.prixUnitaire = current.prixUnitaire !== undefined && current.prixUnitaire !== '' ? Number(current.prixUnitaire) : 500;
+            current.prixBase = (Number(current.nombreParties) || 1) * current.prixUnitaire;
             current.prixFinal = current.prixBase;
           } else {
             current.isBillard = false;
@@ -365,8 +430,8 @@ const PanierPrestations = ({
             current.isBillard = true;
             current.isBoisson = false;
             current.nombreParties = current.nombreParties || 1;
-            current.prixUnitaire = current.prixUnitaire ?? 1000;
-            current.prixBase = (current.nombreParties || 1) * current.prixUnitaire;
+            current.prixUnitaire = current.prixUnitaire !== undefined && current.prixUnitaire !== '' ? Number(current.prixUnitaire) : 500;
+            current.prixBase = (Number(current.nombreParties) || 1) * current.prixUnitaire;
             current.prixFinal = current.prixBase;
             current.remiseType = 'aucune';
             current.remiseValeur = '';
@@ -391,8 +456,8 @@ const PanierPrestations = ({
             current.isBoisson = isBoisson;
             if (isBillard) {
               current.nombreParties = current.nombreParties || 1;
-              current.prixUnitaire = Number(service.prixDefaut) || 1000;
-              current.prixBase = current.nombreParties * current.prixUnitaire;
+              current.prixUnitaire = Number(service.prixDefaut) || 500;
+              current.prixBase = (Number(current.nombreParties) || 1) * current.prixUnitaire;
               current.prixFinal = current.prixBase;
             } else {
               current.prixBase = service.prixDefaut;
@@ -411,11 +476,11 @@ const PanierPrestations = ({
 
         // Nombre de parties de billard
         if (field === 'nombreParties') {
-          const parties = Math.max(1, parseInt(value, 10) || 1);
-          current.nombreParties = parties;
-          const uPrice = Number(current.prixUnitaire ?? 1000);
+          current.nombreParties = value;
+          const uPrice = current.prixUnitaire !== undefined && current.prixUnitaire !== '' ? Number(current.prixUnitaire) : 500;
           current.prixUnitaire = uPrice;
-          const totalCalc = parties * uPrice;
+          const p = value === '' ? 0 : Math.max(1, parseInt(value, 10) || 1);
+          const totalCalc = p * uPrice;
           current.prixBase = totalCalc;
           current.prixFinal = totalCalc;
           updated[index] = current;
@@ -424,10 +489,10 @@ const PanierPrestations = ({
 
         // Prix par partie de billard
         if (field === 'prixUnitaire') {
-          const uPrice = value === '' ? '' : Math.max(0, Number(value));
-          current.prixUnitaire = uPrice;
-          const parties = Number(current.nombreParties) || 1;
-          const totalCalc = parties * (Number(uPrice) || 0);
+          current.prixUnitaire = value;
+          const uPrice = value === '' ? 0 : Math.max(0, Number(value));
+          const parties = current.nombreParties === '' ? 1 : Math.max(1, parseInt(current.nombreParties, 10) || 1);
+          const totalCalc = parties * uPrice;
           current.prixBase = totalCalc;
           current.prixFinal = totalCalc;
           updated[index] = current;
@@ -668,7 +733,7 @@ const PanierPrestations = ({
           className="btn btn-small"
           style={{ backgroundColor: 'rgba(59, 130, 246, 0.12)', color: 'var(--accent)', border: '1px solid var(--accent)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
         >
-          🎱 + Ajouter Billard (Sans agent)
+          🎱 + Billard (500 F - Sans agent)
         </button>
 
         {promotions.length > 0 && (
@@ -830,58 +895,165 @@ const PanierPrestations = ({
                 )}
               </div>
 
-              {/* Ligne Billard personnalisée : nombre de parties, prix par partie, total modifiable */}
+              {/* Ligne Billard personnalisée : nombre de parties, prix par partie (500 F), total & remise */}
               {isBillard ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label>Catégorie</label>
-                    <select
-                      className="input-control"
-                      value="loisirs"
-                      onChange={e => updateLigne(index, 'categorieFilter', e.target.value)}
-                    >
-                      <option value="toutes">📋 Toutes les catégories</option>
-                      <option value="salon">✂️ Salon &amp; Esthétique</option>
-                      <option value="boisson">🍹 Boissons &amp; Cocktails</option>
-                      <option value="loisirs">🎱 Loisirs &amp; Jeux (Billard)</option>
-                      <option value="domicile">🏠 À domicile</option>
-                    </select>
+                <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '10px', alignItems: 'flex-start' }}>
+                    {/* 1. Catégorie */}
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>Catégorie</label>
+                      <select
+                        className="input-control"
+                        value="loisirs"
+                        onChange={e => updateLigne(index, 'categorieFilter', e.target.value)}
+                      >
+                        <option value="toutes">📋 Toutes les catégories</option>
+                        <option value="salon">✂️ Salon &amp; Esthétique</option>
+                        <option value="boisson">🍹 Boissons &amp; Cocktails</option>
+                        <option value="loisirs">🎱 Loisirs &amp; Jeux (Billard)</option>
+                        <option value="domicile">🏠 À domicile</option>
+                      </select>
+                    </div>
+
+                    {/* 2. Nombre de parties avec stepper - / + */}
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>Nombre de parties</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => changeBillardParties(index, -1)}
+                          className="btn"
+                          style={{
+                            padding: '0 10px',
+                            height: '42px',
+                            minWidth: '36px',
+                            backgroundColor: 'var(--bg-input)',
+                            color: 'var(--text-main)',
+                            border: '1px solid var(--border-color)',
+                            fontSize: '1.1rem',
+                            fontWeight: 'bold',
+                            borderRadius: '8px'
+                          }}
+                          title="Retirer une partie"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          className="input-control"
+                          style={{ margin: 0, textAlign: 'center', fontWeight: '800', fontSize: '1rem', flex: 1 }}
+                          value={ligne.nombreParties ?? 1}
+                          onChange={e => updateLigne(index, 'nombreParties', e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => changeBillardParties(index, 1)}
+                          className="btn"
+                          style={{
+                            padding: '0 10px',
+                            height: '42px',
+                            minWidth: '36px',
+                            backgroundColor: 'var(--bg-input)',
+                            color: 'var(--text-main)',
+                            border: '1px solid var(--border-color)',
+                            fontSize: '1.1rem',
+                            fontWeight: 'bold',
+                            borderRadius: '8px'
+                          }}
+                          title="Ajouter une partie"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3. Prix par partie (500 F par défaut) */}
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>Prix / partie (FCFA)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        className="input-control"
+                        value={ligne.prixUnitaire ?? 500}
+                        onChange={e => updateLigne(index, 'prixUnitaire', e.target.value)}
+                        placeholder="500"
+                      />
+                    </div>
+
+                    {/* 4. Total Billard */}
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>Total Billard (FCFA)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        className="input-control"
+                        style={{ fontWeight: '800', color: 'var(--accent)', fontSize: '1.05rem' }}
+                        value={ligne.prixFinal ?? 0}
+                        onChange={e => updateLigne(index, 'prixFinal', e.target.value)}
+                        placeholder="500"
+                      />
+                    </div>
+
+                    {/* 5. Remise / Offert */}
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>Remise</label>
+                      <select
+                        className="input-control"
+                        value={ligne.remiseType || 'aucune'}
+                        onChange={e => updateLigne(index, 'remiseType', e.target.value)}
+                      >
+                        <option value="aucune">Aucune remise</option>
+                        <option value="pourcentage">Pourcentage (%)</option>
+                        <option value="fixe">Montant fixe (FCFA)</option>
+                        <option value="offert">Partie offerte (0 F)</option>
+                      </select>
+                    </div>
+
+                    {ligne.remiseType && ligne.remiseType !== 'aucune' && ligne.remiseType !== 'offert' && (
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>Valeur remise</label>
+                        <input
+                          type="number"
+                          className="input-control"
+                          value={ligne.remiseValeur || ''}
+                          onChange={e => updateLigne(index, 'remiseValeur', e.target.value)}
+                          placeholder={ligne.remiseType === 'pourcentage' ? 'Ex: 20' : 'Ex: 500'}
+                        />
+                      </div>
+                    )}
                   </div>
 
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label>Nombre de parties</label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="input-control"
-                      value={ligne.nombreParties ?? 1}
-                      onChange={e => updateLigne(index, 'nombreParties', e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label>Prix par partie (FCFA)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      className="input-control"
-                      value={ligne.prixUnitaire ?? 1000}
-                      onChange={e => updateLigne(index, 'prixUnitaire', e.target.value)}
-                      placeholder="1000"
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label>Total Billard (FCFA)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      className="input-control"
-                      style={{ fontWeight: '700', color: 'var(--accent)' }}
-                      value={ligne.prixFinal ?? 0}
-                      onChange={e => updateLigne(index, 'prixFinal', e.target.value)}
-                      placeholder="0"
-                    />
+                  {/* Boutons rapides pour sélectionner 1, 2, 3, 4 parties en 1 clic */}
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>Raccourcis :</span>
+                    {[
+                      { p: 1, label: '1 partie (500 F)' },
+                      { p: 2, label: '2 parties (1 000 F)' },
+                      { p: 3, label: '3 parties (1 500 F)' },
+                      { p: 4, label: '4 parties (2 000 F)' },
+                    ].map(preset => {
+                      const isSel = (Number(ligne.nombreParties) || 1) === preset.p && (Number(ligne.prixUnitaire) || 500) === 500;
+                      return (
+                        <button
+                          key={preset.p}
+                          type="button"
+                          onClick={() => setBillardPartiesPreset(index, preset.p)}
+                          className="btn btn-small"
+                          style={{
+                            fontSize: '0.74rem',
+                            padding: '4px 9px',
+                            borderRadius: '8px',
+                            backgroundColor: isSel ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-input)',
+                            color: isSel ? 'var(--accent)' : 'var(--text-muted)',
+                            border: isSel ? '1px solid var(--accent)' : '1px solid var(--border-color)',
+                            fontWeight: isSel ? 700 : 500
+                          }}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
@@ -1027,43 +1199,126 @@ const PanierPrestations = ({
               )}
 
               {/* Agents assignés */}
-              <div style={{ marginTop: '12px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: isBoisson ? '#ec4899' : 'var(--text-muted)', fontWeight: isBoisson ? 700 : 500, marginBottom: '8px' }}>
-                  <Users size={14} />
-                  {isBillard
-                    ? 'Agent (Optionnel pour le billard)'
-                    : isBoisson
+              {isBillard ? (
+                <div style={{
+                  marginTop: '12px',
+                  padding: '10px 12px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.06)',
+                  border: '1px solid rgba(16, 185, 129, 0.22)',
+                  borderRadius: '10px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.2rem' }}>🎱</span>
+                      <div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--success)' }}>
+                          Partie autonome (Aucun agent requis)
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                          {(ligne.agents && ligne.agents.length > 0)
+                            ? `Agent sélectionné : ${ligne.agents.map(a => a.nom).join(', ')}`
+                            : 'Enregistrement direct sans assignation de personnel.'}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      {ligne.agents && ligne.agents.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => clearLineAgents(index)}
+                          className="btn btn-small"
+                          style={{
+                            fontSize: '0.74rem',
+                            padding: '4px 8px',
+                            borderRadius: '8px',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            color: 'var(--danger)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            cursor: 'pointer'
+                          }}
+                          title="Repasser en partie autonome sans agent"
+                        >
+                          ✕ Retirer l'agent
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleBillardAgentPicker(index)}
+                        className="btn btn-small"
+                        style={{
+                          fontSize: '0.74rem',
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          backgroundColor: (ligne.agents && ligne.agents.length > 0) ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-input)',
+                          color: (ligne.agents && ligne.agents.length > 0) ? 'var(--accent)' : 'var(--text-main)',
+                          border: '1px solid var(--border-color)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {showBillardAgentsMap[index]
+                          ? 'Masquer les agents'
+                          : ((ligne.agents && ligne.agents.length > 0) ? 'Modifier l’agent' : '+ Assigner un agent (Optionnel)')}
+                      </button>
+                    </div>
+                  </div>
+
+                  {(showBillardAgentsMap[index] || (ligne.agents && ligne.agents.length > 0)) && (
+                    <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed rgba(16, 185, 129, 0.25)' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                        <Users size={13} />
+                        Sélectionner l'agent (Optionnel) :
+                      </label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {employes.map(emp => {
+                          const safeAgents = ligne.agents || [];
+                          const isSelected = safeAgents.some(a => a.id === emp.id);
+                          return (
+                            <button
+                              key={emp.id}
+                              type="button"
+                              onClick={() => toggleAgent(index, emp)}
+                              className={`agent-badge ${isSelected ? 'selected' : ''}`}
+                              style={{ fontSize: '0.76rem', padding: '3px 8px' }}
+                            >
+                              {emp.nom}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ marginTop: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: isBoisson ? '#ec4899' : 'var(--text-muted)', fontWeight: isBoisson ? 700 : 500, marginBottom: '8px' }}>
+                    <Users size={14} />
+                    {isBoisson
                       ? '🍹 Préparé / Servi par (Employé ayant préparé la boisson)'
                       : 'Agents assignés à cette prestation'}
-                </label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {employes.map(emp => {
-                    const safeAgents = ligne.agents || [];
-                    const isSelected = safeAgents.some(a => a.id === emp.id);
-                    return (
-                      <button
-                        key={emp.id}
-                        type="button"
-                        onClick={() => toggleAgent(index, emp)}
-                        className={`agent-badge ${isSelected ? 'selected' : ''}`}
-                      >
-                        {emp.nom}
-                      </button>
-                    );
-                  })}
-                </div>
-                {isBillard ? (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--success)', margin: '6px 0 0 0' }}>
-                    🎱 Partie autonome : vous pouvez enregistrer le billard sans sélectionner d'agent.
-                  </p>
-                ) : (
-                  (!ligne.agents || ligne.agents.length === 0) && (
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {employes.map(emp => {
+                      const safeAgents = ligne.agents || [];
+                      const isSelected = safeAgents.some(a => a.id === emp.id);
+                      return (
+                        <button
+                          key={emp.id}
+                          type="button"
+                          onClick={() => toggleAgent(index, emp)}
+                          className={`agent-badge ${isSelected ? 'selected' : ''}`}
+                        >
+                          {emp.nom}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(!ligne.agents || ligne.agents.length === 0) && (
                     <p style={{ fontSize: '0.75rem', color: 'var(--danger)', margin: '4px 0 0 0' }}>
                       {isBoisson ? "Veuillez sélectionner l'employé qui a préparé / servi cette boisson." : "Veuillez assigner au moins un agent."}
                     </p>
-                  )
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
               {/* Prix final calculé si remise */}
               {ligne.remiseType && ligne.remiseType !== 'aucune' && (

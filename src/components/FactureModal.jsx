@@ -618,9 +618,10 @@ ${statutWhatsApp}
                       <tbody>
                         {data.lignes && data.lignes.length > 0 ? (
                           data.lignes.map((ligne, index) => {
-                            const isBillard = ligne.isBillard || (ligne.serviceNom || '').toLowerCase().includes('billard');
-                            const nomAffiche = isBillard && (ligne.nombreParties || 1) > 1
-                              ? `${ligne.serviceNom || 'Billard'} (${ligne.nombreParties} parties)`
+                            const isBillard = !!(ligne.isBillard || ligne.serviceId === 'billard' || ligne.categorieService === 'loisirs' || (ligne.serviceNom || '').toLowerCase().includes('billard'));
+                            const nbB = Number(ligne.nombreParties) || 1;
+                            const nomAffiche = isBillard
+                              ? `${ligne.serviceNom || 'Billard'} (${nbB} partie${nbB > 1 ? 's' : ''})`
                               : (ligne.serviceNom || 'Prestation');
                             const agentAffiche = (ligne.agents && ligne.agents.length > 0)
                               ? ligne.agents.map(a => a.nom).join(', ')
@@ -974,9 +975,10 @@ ${statutWhatsApp}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '11.5px' }}>
                   {data.lignes && data.lignes.length > 0 ? (
                     data.lignes.map((ligne, idx) => {
-                      const isBillard = ligne.isBillard || (ligne.serviceNom || '').toLowerCase().includes('billard');
-                      const nomAffiche = isBillard && (ligne.nombreParties || 1) > 1
-                        ? `${ligne.serviceNom || 'Billard'} (${ligne.nombreParties}p)`
+                      const isBillard = !!(ligne.isBillard || ligne.serviceId === 'billard' || ligne.categorieService === 'loisirs' || (ligne.serviceNom || '').toLowerCase().includes('billard'));
+                      const nbB = Number(ligne.nombreParties) || 1;
+                      const nomAffiche = isBillard
+                        ? `${ligne.serviceNom || 'Billard'} (${nbB}p)`
                         : (ligne.serviceNom || 'Prestation');
 
                       return (
