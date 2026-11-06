@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   X, Download, Image, FileText, Printer, Share2,
-  Calendar, Clock, User, Phone, Sparkles, CheckCircle2, ArrowRight
+  ArrowRight
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -9,7 +9,7 @@ import html2canvas from 'html2canvas';
 /**
  * FactureModal — Affichage, génération PDF & Image, et partage WhatsApp
  * pour les Factures Prestige (A4) et Reçus de Caisse Ticket (80mm).
- * Entièrement responsive sur mobile et desktop avec moteur de rendu de capture isolé.
+ * Design ultra-professionnel, épuré, haute couture sans aucun emoji.
  */
 const FactureModal = ({ data, type = 'reservation', clients = [], onClose }) => {
   const [docFormat, setDocFormat] = useState('prestige'); // 'prestige' | 'ticket'
@@ -86,7 +86,7 @@ const FactureModal = ({ data, type = 'reservation', clients = [], onClose }) => 
 
   const numDoc = `LC-${(data.id || '').slice(0, 8).toUpperCase()}`;
 
-  // Détermination du libellé du document
+  // Détermination du libellé officiel du document
   const getDocTitle = () => {
     if (type === 'reservation') {
       if (isPaid) return 'FACTURE ACQUITTÉE';
@@ -99,7 +99,7 @@ const FactureModal = ({ data, type = 'reservation', clients = [], onClose }) => 
   /**
    * Moteur de capture haute résolution isolé hors écran.
    * Clône le document avec sa largeur de référence réelle (760px pour A4, 380px pour ticket)
-   * afin de garantir que sur mobile (iPhone/Android), aucun élément ni colonne ne soit tronqué.
+   * afin de garantir que sur mobile, aucun élément ni colonne ne soit tronqué.
    */
   const captureCanvas = async (forcedFormat = docFormat) => {
     const isTicket = forcedFormat === 'ticket';
@@ -302,7 +302,7 @@ const FactureModal = ({ data, type = 'reservation', clients = [], onClose }) => 
     window.print();
   };
 
-  // Partage instantané du reçu sur WhatsApp avec texte de synthèse haute facture
+  // Partage instantané du reçu sur WhatsApp avec texte exécutif soigné sans emoji
   const handleShareWhatsApp = () => {
     const totalStr = Number(totalFacture).toLocaleString('fr-FR');
     const servicesList = data.lignes && data.lignes.length > 0
@@ -310,36 +310,35 @@ const FactureModal = ({ data, type = 'reservation', clients = [], onClose }) => 
           const isBillard = !!(l.isBillard || l.serviceId === 'billard' || l.categorieService === 'loisirs' || (l.serviceNom || '').toLowerCase().includes('billard'));
           const nbB = Number(l.nombreParties) || 1;
           const label = isBillard ? `Billard (${nbB} partie${nbB > 1 ? 's' : ''})` : l.serviceNom;
-          return `• ${label} (${Number(l.prixFinal).toLocaleString('fr-FR')} F)`;
+          return `• ${label} : ${Number(l.prixFinal).toLocaleString('fr-FR')} FCFA`;
         }).join('\n')
-      : `• ${data.serviceNom || data.motif || 'Prestation'} (${totalStr} F)`;
+      : `• ${data.serviceNom || data.motif || 'Prestation'} : ${totalStr} FCFA`;
 
-    let statutWhatsApp = `✅ Payé intégralement via ${data.modePaiement || 'Cash'}`;
+    let statutWhatsApp = `Règlement : Payé intégralement (${data.modePaiement || 'Cash'})`;
     if (!isPaid) {
       if (isAcompte) {
-        statutWhatsApp = `★ Acompte versé : ${Number(acomptePaye).toLocaleString('fr-FR')} F (Reste : ${Number(resteAPayer).toLocaleString('fr-FR')} F)`;
+        statutWhatsApp = `Règlement : Acompte versé ${Number(acomptePaye).toLocaleString('fr-FR')} FCFA (Solde restant dû : ${Number(resteAPayer).toLocaleString('fr-FR')} FCFA)`;
       } else {
-        statutWhatsApp = `⏳ En attente de règlement au salon (${Number(resteAPayer).toLocaleString('fr-FR')} F)`;
+        statutWhatsApp = `Règlement : En attente au salon (${Number(resteAPayer).toLocaleString('fr-FR')} FCFA)`;
       }
     }
 
     const msg =
-`💈 *LE CERCLE — ${getDocTitle()}*
-━━━━━━━━━━━━━━━━━━━━━━
-📄 *Réf :* ${numDoc}
-👤 *Client :* ${data.clientNom || 'Client'}
-📅 *Date :* ${dateFormatee} à ${heureFormatee}
-${type === 'reservation' && data.datePrevue ? `🗓️ *Rendez-vous :* ${new Date(data.datePrevue).toLocaleDateString('fr-FR')} à ${data.heurePrevue}\n` : ''}
-*Détail des soins :*
+`*LE CERCLE — SALON DE COIFFURE & LOUNGE VIP*
+────────────────────────────
+${getDocTitle()} : ${numDoc}
+Client : ${data.clientNom || 'Client'}
+Date d'émission : ${dateFormatee} à ${heureFormatee}
+${type === 'reservation' && data.datePrevue ? `Date de rendez-vous : ${new Date(data.datePrevue).toLocaleDateString('fr-FR')} à ${data.heurePrevue}\n` : ''}
+Prestations & Soins :
 ${servicesList}
 
-━━━━━━━━━━━━━━━━━━━━━━
-💰 *TOTAL : ${totalStr} FCFA*
+────────────────────────────
+TOTAL : ${totalStr} FCFA
 ${statutWhatsApp}
-━━━━━━━━━━━━━━━━━━━━━━
-✨ _Merci pour votre confiance !_
-📍 Niamey, Niger
-📞 +227 87 37 73 70`;
+────────────────────────────
+Le Cercle vous remercie de votre visite.
+Niamey, Niger | Tél. +227 87 37 73 70`;
 
     const cleanPhone = clientPhone ? clientPhone.replace(/[\s.()-]/g, '') : '';
     const normalizedPhone = cleanPhone.startsWith('+')
@@ -415,7 +414,7 @@ ${statutWhatsApp}
           display: 'flex',
           flexDirection: 'column',
           maxHeight: '94vh',
-          borderRadius: '20px',
+          borderRadius: '16px',
           boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
           background: 'var(--bg-card)'
         }}
@@ -437,14 +436,14 @@ ${statutWhatsApp}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
-              width: '36px', height: '36px', borderRadius: '10px',
-              backgroundColor: 'rgba(217, 119, 6, 0.15)', color: '#D97706',
+              width: '34px', height: '34px', borderRadius: '8px',
+              backgroundColor: 'rgba(217, 119, 6, 0.12)', color: '#D97706',
               display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}>
-              <FileText size={19} />
+              <FileText size={18} />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+              <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
                 {type === 'reservation' ? 'Facture & Reçu de Réservation' : 'Reçu de Caisse Officiel'}
               </h3>
               <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
@@ -459,15 +458,15 @@ ${statutWhatsApp}
               display: 'flex',
               backgroundColor: 'var(--bg-input)',
               padding: '3px',
-              borderRadius: '10px',
+              borderRadius: '8px',
               border: '1px solid var(--border-color)'
             }}>
               <button
                 type="button"
                 onClick={() => setDocFormat('prestige')}
                 style={{
-                  padding: '6px 11px',
-                  borderRadius: '7px',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
                   border: 'none',
                   fontSize: '0.76rem',
                   fontWeight: 700,
@@ -476,18 +475,18 @@ ${statutWhatsApp}
                   color: docFormat === 'prestige' ? 'var(--btn-primary-text)' : 'var(--text-muted)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: '5px',
                   transition: 'all 0.15s ease'
                 }}
               >
-                <span>📄</span> Facture A4
+                Facture A4
               </button>
               <button
                 type="button"
                 onClick={() => setDocFormat('ticket')}
                 style={{
-                  padding: '6px 11px',
-                  borderRadius: '7px',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
                   border: 'none',
                   fontSize: '0.76rem',
                   fontWeight: 700,
@@ -496,11 +495,11 @@ ${statutWhatsApp}
                   color: docFormat === 'ticket' ? 'var(--btn-primary-text)' : 'var(--text-muted)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
+                  gap: '5px',
                   transition: 'all 0.15s ease'
                 }}
               >
-                <span>🧾</span> Reçu Ticket
+                Reçu Ticket
               </button>
             </div>
 
@@ -554,7 +553,7 @@ ${statutWhatsApp}
               maxWidth: docFormat === 'ticket' ? '390px' : '720px',
               margin: '0 auto',
               boxSizing: 'border-box',
-              borderRadius: docFormat === 'ticket' ? '12px' : '16px',
+              borderRadius: docFormat === 'ticket' ? '8px' : '12px',
               boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
               overflow: 'hidden',
               border: '1px solid #E2E8F0',
@@ -567,8 +566,8 @@ ${statutWhatsApp}
                ──────────────────────────────────────────────────────────── */}
             {docFormat === 'prestige' && (
               <div>
-                {/* Ruban supérieur bicolore Noir & Or */}
-                <div style={{ display: 'flex', height: '6px', width: '100%' }}>
+                {/* Ruban supérieur épuré bicolore Noir & Or */}
+                <div style={{ display: 'flex', height: '5px', width: '100%' }}>
                   <div style={{ flex: 3, backgroundColor: '#0F172A' }} />
                   <div style={{ flex: 1, backgroundColor: '#D97706' }} />
                   <div style={{ flex: 1, backgroundColor: '#B45309' }} />
@@ -594,13 +593,13 @@ ${statutWhatsApp}
                         alt="Logo Le Cercle"
                         crossOrigin="anonymous"
                         style={{
-                          height: '54px',
-                          width: '54px',
+                          height: '52px',
+                          width: '52px',
                           borderRadius: '50%',
                           objectFit: 'contain',
                           display: 'block',
                           flexShrink: 0,
-                          border: '2px solid #D97706',
+                          border: '1.5px solid #D97706',
                           padding: '2px',
                           backgroundColor: '#FFFFFF'
                         }}
@@ -618,7 +617,7 @@ ${statutWhatsApp}
                         </div>
                         <div style={{
                           margin: '3px 0 0 0',
-                          fontSize: '9.5px',
+                          fontSize: '9px',
                           fontWeight: '800',
                           letterSpacing: '2px',
                           color: '#B45309',
@@ -628,9 +627,8 @@ ${statutWhatsApp}
                         </div>
                         <div style={{
                           margin: '3px 0 0 0',
-                          fontSize: '11px',
-                          color: '#64748B',
-                          fontStyle: 'italic'
+                          fontSize: '10.5px',
+                          color: '#64748B'
                         }}>
                           Espace &amp; Services de Prestige
                         </div>
@@ -640,7 +638,7 @@ ${statutWhatsApp}
                           color: '#334155',
                           fontWeight: '600'
                         }}>
-                          📍 Niamey, Niger &nbsp;•&nbsp; 📞 +227 87 37 73 70
+                          Niamey, Niger &nbsp;•&nbsp; Tél. +227 87 37 73 70
                         </div>
                       </div>
                     </div>
@@ -649,12 +647,12 @@ ${statutWhatsApp}
                     <div className="facture-header-badge" style={{ textAlign: 'right' }}>
                       <div style={{
                         display: 'inline-block',
-                        padding: '6px 14px',
-                        borderRadius: '8px',
+                        padding: '5px 12px',
+                        borderRadius: '6px',
                         backgroundColor: '#0F172A',
                         color: '#FFFFFF',
-                        border: '1.5px solid #D97706',
-                        fontSize: '11.5px',
+                        border: '1px solid #D97706',
+                        fontSize: '11px',
                         fontWeight: '800',
                         letterSpacing: '1.8px',
                         textTransform: 'uppercase',
@@ -663,15 +661,15 @@ ${statutWhatsApp}
                         {getDocTitle()}
                       </div>
                       <div style={{
-                        margin: '7px 0 0 0',
-                        fontSize: '13.5px',
+                        margin: '6px 0 0 0',
+                        fontSize: '13px',
                         fontWeight: '900',
                         color: '#0F172A',
                         letterSpacing: '0.8px'
                       }}>
                         N° {numDoc}
                       </div>
-                      <div style={{ margin: '3px 0 0 0', fontSize: '11px', color: '#64748B' }}>
+                      <div style={{ margin: '3px 0 0 0', fontSize: '10.5px', color: '#64748B' }}>
                         Émis le {dateFormatee} à {heureFormatee}
                       </div>
                     </div>
@@ -691,53 +689,46 @@ ${statutWhatsApp}
                     <div style={{
                       backgroundColor: '#F8FAFC',
                       border: '1px solid #E2E8F0',
-                      borderRadius: '12px',
+                      borderRadius: '8px',
                       padding: '13px 15px'
                     }}>
                       <div style={{
                         fontSize: '9px',
                         fontWeight: '800',
-                        letterSpacing: '1.8px',
+                        letterSpacing: '1.5px',
                         color: '#94A3B8',
                         textTransform: 'uppercase',
-                        marginBottom: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px'
+                        marginBottom: '6px'
                       }}>
-                        <User size={12} color="#D97706" /> FACTURÉ À
+                        FACTURÉ À
                       </div>
-                      <div style={{ fontSize: '15px', fontWeight: '800', color: '#0F172A', lineHeight: 1.2 }}>
+                      <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0F172A', lineHeight: 1.2 }}>
                         {data.clientNom || 'Client Anonyme'}
                       </div>
                       <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        marginTop: '5px',
-                        fontSize: '11.5px',
+                        marginTop: '4px',
+                        fontSize: '11px',
                         color: '#475569',
                         fontWeight: '600'
                       }}>
-                        <Phone size={12} color="#64748B" />
-                        {clientPhone || 'Numéro non renseigné'}
+                        Tél. : {clientPhone || 'Non renseigné'}
                       </div>
 
                       {data.promotionNom && (
                         <div style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          marginTop: '8px',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
+                          display: 'inline-block',
+                          marginTop: '7px',
+                          padding: '2px 7px',
+                          borderRadius: '4px',
                           backgroundColor: '#FFFBEB',
                           border: '1px solid #FDE68A',
-                          fontSize: '10px',
+                          fontSize: '9px',
                           fontWeight: '700',
-                          color: '#B45309'
+                          letterSpacing: '0.5px',
+                          color: '#B45309',
+                          textTransform: 'uppercase'
                         }}>
-                          <Sparkles size={11} color="#D97706" /> Offre : {data.promotionNom}
+                          Offre : {data.promotionNom}
                         </div>
                       )}
                     </div>
@@ -746,45 +737,43 @@ ${statutWhatsApp}
                     <div style={{
                       backgroundColor: '#F8FAFC',
                       border: '1px solid #E2E8F0',
-                      borderRadius: '12px',
+                      borderRadius: '8px',
                       padding: '13px 15px'
                     }}>
                       <div style={{
                         fontSize: '9px',
                         fontWeight: '800',
-                        letterSpacing: '1.8px',
+                        letterSpacing: '1.5px',
                         color: '#94A3B8',
                         textTransform: 'uppercase',
-                        marginBottom: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px'
+                        marginBottom: '6px'
                       }}>
-                        <Calendar size={12} color="#D97706" /> DÉTAILS DE L'OPÉRATION
+                        DÉTAILS DU RÈGLEMENT
                       </div>
 
                       {type === 'reservation' && data.datePrevue && (
-                        <div style={{ fontSize: '12px', color: '#0F172A', fontWeight: '700', marginBottom: '5px' }}>
-                          📅 RDV : <span style={{ color: '#D97706' }}>{new Date(data.datePrevue).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} à {data.heurePrevue}</span>
+                        <div style={{ fontSize: '11.5px', color: '#0F172A', fontWeight: '600', marginBottom: '5px' }}>
+                          Rendez-vous : <span style={{ color: '#D97706', fontWeight: '700' }}>{new Date(data.datePrevue).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} à {data.heurePrevue}</span>
                         </div>
                       )}
 
                       <div style={{ fontSize: '11.5px', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>Règlement :</span>
+                        <span>Mode de paiement :</span>
                         <span style={{
                           padding: '2px 8px',
-                          borderRadius: '6px',
+                          borderRadius: '4px',
                           backgroundColor: '#FFFFFF',
                           border: '1px solid #CBD5E1',
                           fontWeight: '700',
-                          color: '#0F172A'
+                          color: '#0F172A',
+                          fontSize: '11px'
                         }}>
-                          💳 {data.modePaiement || 'Cash'}
+                          {data.modePaiement || 'Cash'}
                         </span>
                       </div>
 
                       <div style={{ fontSize: '11px', color: '#64748B', marginTop: '5px' }}>
-                        ✂️ Intervenant : <strong style={{ color: '#334155' }}>{data.employeNom || 'Équipe Le Cercle'}</strong>
+                        Praticien : <strong style={{ color: '#334155' }}>{data.employeNom || 'Équipe Le Cercle'}</strong>
                       </div>
                     </div>
                   </div>
@@ -794,18 +783,21 @@ ${statutWhatsApp}
                     className="mobile-scroll-hint hide-on-export"
                     style={{
                       alignItems: 'center',
-                      gap: '5px',
-                      fontSize: '10.5px',
+                      gap: '6px',
+                      fontSize: '9.5px',
+                      letterSpacing: '0.3px',
                       color: '#64748B',
-                      marginBottom: '6px',
-                      padding: '4px 8px',
-                      backgroundColor: '#F1F5F9',
+                      marginBottom: '8px',
+                      padding: '5px 10px',
+                      backgroundColor: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
                       borderRadius: '6px',
-                      fontWeight: 600
+                      fontWeight: 600,
+                      textTransform: 'uppercase'
                     }}
                   >
-                    <span>👉 Faites glisser le tableau pour voir toutes les colonnes</span>
-                    <ArrowRight size={12} color="#64748B" />
+                    <span>Faites défiler le tableau horizontalement pour le détail complet</span>
+                    <ArrowRight size={11} color="#64748B" />
                   </div>
 
                   {/* TABLEAU DES PRESTATIONS (AVEC SCROLL HORIZONTAL PROTÉGÉ SUR MOBILE) */}
@@ -813,7 +805,7 @@ ${statutWhatsApp}
                     className="facture-table-wrapper"
                     style={{
                       marginTop: '12px',
-                      borderRadius: '10px',
+                      borderRadius: '8px',
                       border: '1px solid #E2E8F0',
                       overflowX: 'auto',
                       WebkitOverflowScrolling: 'touch',
@@ -874,18 +866,18 @@ ${statutWhatsApp}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '3px' }}>
                                     {ligne.isDomicile && (
-                                      <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#EDE9FE', color: '#6D28D9', fontWeight: '700' }}>
-                                        🏠 À domicile
+                                      <span style={{ fontSize: '8.5px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#F5F3FF', color: '#6D28D9', border: '1px solid #DDD6FE', fontWeight: '700', letterSpacing: '0.5px' }}>
+                                        À DOMICILE
                                       </span>
                                     )}
                                     {(ligne.promotionNom || (data.promotionNom && ligne.isPromo)) && (
-                                      <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#FEF3C7', color: '#B45309', fontWeight: '700' }}>
-                                        🎁 Pack : {ligne.promotionNom || data.promotionNom}
+                                      <span style={{ fontSize: '8.5px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A', fontWeight: '700', letterSpacing: '0.5px' }}>
+                                        PACK : {ligne.promotionNom || data.promotionNom}
                                       </span>
                                     )}
                                     {ligne.remiseType && ligne.remiseType !== 'aucune' && (
-                                      <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#ECFDF5', color: '#047857', fontWeight: '600', fontStyle: 'italic' }}>
-                                        ✂️ Remise : {ligne.remiseMotif}
+                                      <span style={{ fontSize: '8.5px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0', fontWeight: '700', letterSpacing: '0.5px' }}>
+                                        REMISE : {ligne.remiseMotif}
                                       </span>
                                     )}
                                   </div>
@@ -915,8 +907,8 @@ ${statutWhatsApp}
                                 {data.serviceNom || data.motif || 'Prestation'}
                               </div>
                               {data.reductionActive && (
-                                <div style={{ fontSize: '9.5px', color: '#047857', fontStyle: 'italic', marginTop: '2px' }}>
-                                  ✂️ Remise : {data.reductionMotif}
+                                <div style={{ fontSize: '9px', color: '#047857', fontWeight: '600', marginTop: '3px', letterSpacing: '0.3px' }}>
+                                  Remise : {data.reductionMotif}
                                 </div>
                               )}
                             </td>
@@ -955,61 +947,61 @@ ${statutWhatsApp}
                         <div style={{
                           display: 'inline-block',
                           border: '2px solid #059669',
-                          outline: '1.5px dashed #10B981',
+                          outline: '1px solid #10B981',
                           outlineOffset: '2px',
-                          borderRadius: '10px',
-                          padding: '10px 15px',
+                          borderRadius: '8px',
+                          padding: '10px 16px',
                           backgroundColor: '#F0FDF4',
                           color: '#047857',
-                          transform: 'rotate(-1.5deg)',
+                          transform: 'rotate(-1deg)',
                           boxShadow: '0 4px 12px rgba(16, 185, 129, 0.08)'
                         }}>
-                          <div style={{ fontSize: '10.5px', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <CheckCircle2 size={13} color="#059669" /> CERTIFIÉ PAYÉ
+                          <div style={{ fontSize: '10.5px', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                            CERTIFIÉ PAYÉ
                           </div>
-                          <div style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '1px', marginTop: '2px', color: '#065F46' }}>
+                          <div style={{ fontSize: '8.5px', fontWeight: '800', letterSpacing: '1px', marginTop: '2px', color: '#065F46' }}>
                             LE CERCLE NIAMEY
                           </div>
-                          <div style={{ fontSize: '8.5px', marginTop: '2px', color: '#047857' }}>
-                            Mode : {data.modePaiement || 'Cash'} • {dateFormatee}
+                          <div style={{ fontSize: '8px', marginTop: '2px', color: '#047857', letterSpacing: '0.5px' }}>
+                            RÈGLEMENT : {(data.modePaiement || 'Cash').toUpperCase()} · {dateFormatee}
                           </div>
                         </div>
                       ) : isAcompte ? (
                         <div style={{
                           display: 'inline-block',
                           border: '2px solid #D97706',
-                          outline: '1.5px dashed #F59E0B',
+                          outline: '1px solid #F59E0B',
                           outlineOffset: '2px',
-                          borderRadius: '10px',
-                          padding: '10px 15px',
+                          borderRadius: '8px',
+                          padding: '10px 16px',
                           backgroundColor: '#FFFBEB',
                           color: '#B45309',
-                          transform: 'rotate(-1.5deg)'
+                          transform: 'rotate(-1deg)'
                         }}>
                           <div style={{ fontSize: '10.5px', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase' }}>
-                            ★ ACOMPTE VERSÉ ★
+                            ACOMPTE ENCAISSÉ
                           </div>
-                          <div style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '1px', marginTop: '2px', color: '#92400E' }}>
+                          <div style={{ fontSize: '8.5px', fontWeight: '800', letterSpacing: '1px', marginTop: '2px', color: '#92400E' }}>
                             LE CERCLE NIAMEY
                           </div>
-                          <div style={{ fontSize: '8.5px', marginTop: '2px', color: '#B45309' }}>
-                            Reste dû : {resteAPayer.toLocaleString('fr-FR')} FCFA
+                          <div style={{ fontSize: '8px', marginTop: '2px', color: '#B45309', letterSpacing: '0.5px' }}>
+                            SOLDE RESTANT : {resteAPayer.toLocaleString('fr-FR')} FCFA
                           </div>
                         </div>
                       ) : (
                         <div style={{
                           display: 'inline-block',
                           border: '1.5px dashed #64748B',
-                          borderRadius: '10px',
-                          padding: '8px 14px',
+                          borderRadius: '8px',
+                          padding: '9px 14px',
                           backgroundColor: '#F8FAFC',
                           color: '#475569'
                         }}>
-                          <div style={{ fontSize: '10px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <Clock size={12} color="#64748B" /> EN ATTENTE DE RÈGLEMENT
+                          <div style={{ fontSize: '10px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+                            EN ATTENTE DE RÈGLEMENT
                           </div>
-                          <div style={{ fontSize: '8.5px', color: '#64748B', marginTop: '2px' }}>
-                            Modes acceptés : Cash • VISA • NITA • AMANA
+                          <div style={{ fontSize: '8px', color: '#64748B', marginTop: '2px', letterSpacing: '0.3px' }}>
+                            MODES ACCEPTÉS : CASH · VISA · NITA · AMANA
                           </div>
                         </div>
                       )}
@@ -1055,11 +1047,11 @@ ${statutWhatsApp}
                         backgroundColor: '#0F172A',
                         color: '#FFFFFF',
                         padding: '11px 15px',
-                        borderRadius: '10px',
+                        borderRadius: '8px',
                         borderLeft: '4px solid #D97706',
                         boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)'
                       }}>
-                        <span style={{ fontSize: '9.5px', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase', color: '#CBD5E1' }}>
+                        <span style={{ fontSize: '9px', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase', color: '#CBD5E1' }}>
                           {isPaid ? 'TOTAL PAYÉ' : (resteAPayer > 0 && acomptePaye > 0 ? 'NET RESTANT' : 'NET À PAYER')}
                         </span>
                         <span style={{ fontSize: '17px', fontWeight: '900', letterSpacing: '0.5px', color: '#FFFFFF' }}>
@@ -1076,7 +1068,7 @@ ${statutWhatsApp}
                       padding: '12px 15px',
                       border: '1px solid #FEF3C7',
                       borderLeft: '3px solid #D97706',
-                      borderRadius: '8px',
+                      borderRadius: '6px',
                       backgroundColor: '#FFFBEB'
                     }}>
                       <div style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#92400E', marginBottom: '4px' }}>
@@ -1138,7 +1130,7 @@ ${statutWhatsApp}
             {docFormat === 'ticket' && (
               <div style={{ padding: '22px 20px' }}>
                 {/* Ruban haut discret */}
-                <div style={{ height: '4px', backgroundColor: '#D97706', margin: '-22px -20px 16px -20px' }} />
+                <div style={{ height: '3px', backgroundColor: '#D97706', margin: '-22px -20px 16px -20px' }} />
 
                 {/* En-tête centré */}
                 <div style={{ textAlign: 'center' }}>
@@ -1147,8 +1139,8 @@ ${statutWhatsApp}
                     alt="Logo Le Cercle"
                     crossOrigin="anonymous"
                     style={{
-                      height: '48px',
-                      width: '48px',
+                      height: '46px',
+                      width: '46px',
                       borderRadius: '50%',
                       margin: '0 auto 6px',
                       display: 'block',
@@ -1156,19 +1148,19 @@ ${statutWhatsApp}
                       padding: '2px'
                     }}
                   />
-                  <div style={{ fontSize: '19px', fontWeight: '900', letterSpacing: '2px', color: '#0F172A' }}>
+                  <div style={{ fontSize: '18px', fontWeight: '900', letterSpacing: '2px', color: '#0F172A' }}>
                     LE CERCLE
                   </div>
-                  <div style={{ fontSize: '9px', fontWeight: '800', letterSpacing: '1.5px', color: '#B45309', textTransform: 'uppercase' }}>
+                  <div style={{ fontSize: '8.5px', fontWeight: '800', letterSpacing: '1.5px', color: '#B45309', textTransform: 'uppercase' }}>
                     Salon de Coiffure &amp; Lounge VIP
                   </div>
                   <div style={{ fontSize: '10px', color: '#64748B', marginTop: '2px' }}>
-                    Tél : +227 87 37 73 70 • Niamey, Niger
+                    Tél. : +227 87 37 73 70 • Niamey, Niger
                   </div>
                 </div>
 
-                {/* Ligne pointillée */}
-                <div style={{ borderBottom: '1.5px dashed #CBD5E1', margin: '12px 0' }} />
+                {/* Ligne de séparation fine */}
+                <div style={{ borderBottom: '1px solid #E2E8F0', margin: '12px 0' }} />
 
                 {/* Métadonnées ticket */}
                 <div style={{ fontSize: '11px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1191,7 +1183,7 @@ ${statutWhatsApp}
                     </div>
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>OPÉRATEUR :</span>
+                    <span style={{ color: '#64748B' }}>PRATICIEN :</span>
                     <span>{data.employeNom || 'Équipe Le Cercle'}</span>
                   </div>
                   {data.promotionNom && (
@@ -1202,8 +1194,8 @@ ${statutWhatsApp}
                   )}
                 </div>
 
-                {/* Ligne pointillée */}
-                <div style={{ borderBottom: '1.5px dashed #CBD5E1', margin: '12px 0' }} />
+                {/* Ligne de séparation fine */}
+                <div style={{ borderBottom: '1px solid #E2E8F0', margin: '12px 0' }} />
 
                 {/* Liste des prestations du ticket */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '11.5px' }}>
@@ -1212,7 +1204,7 @@ ${statutWhatsApp}
                       const isBillard = !!(ligne.isBillard || ligne.serviceId === 'billard' || ligne.categorieService === 'loisirs' || (ligne.serviceNom || '').toLowerCase().includes('billard'));
                       const nbB = Number(ligne.nombreParties) || 1;
                       const nomAffiche = isBillard
-                        ? `${ligne.serviceNom || 'Billard'} (${nbB}p)`
+                        ? `${ligne.serviceNom || 'Billard'} (${nbB} parties)`
                         : (ligne.serviceNom || 'Prestation');
 
                       return (
@@ -1222,7 +1214,7 @@ ${statutWhatsApp}
                               {idx + 1}. {nomAffiche}
                             </div>
                             {ligne.remiseType && ligne.remiseType !== 'aucune' && (
-                              <div style={{ fontSize: '9.5px', color: '#047857' }}>
+                              <div style={{ fontSize: '9px', color: '#047857', fontWeight: '600' }}>
                                 Remise : {ligne.remiseMotif}
                               </div>
                             )}
@@ -1241,8 +1233,8 @@ ${statutWhatsApp}
                   )}
                 </div>
 
-                {/* Ligne pointillée */}
-                <div style={{ borderBottom: '1.5px dashed #CBD5E1', margin: '12px 0' }} />
+                {/* Ligne de séparation fine */}
+                <div style={{ borderBottom: '1px solid #E2E8F0', margin: '12px 0' }} />
 
                 {/* Totaux & Reste */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '11px' }}>
@@ -1273,9 +1265,9 @@ ${statutWhatsApp}
                     padding: '8px 10px',
                     backgroundColor: '#0F172A',
                     color: '#FFFFFF',
-                    borderRadius: '8px'
+                    borderRadius: '6px'
                   }}>
-                    <span style={{ fontSize: '10.5px', fontWeight: '900', letterSpacing: '1px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: '900', letterSpacing: '1px' }}>
                       {isPaid ? 'TOTAL PAYÉ' : 'NET À PAYER'}
                     </span>
                     <span style={{ fontSize: '15px', fontWeight: '900' }}>
@@ -1290,12 +1282,12 @@ ${statutWhatsApp}
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: isPaid ? '#047857' : '#D97706', fontWeight: '800', fontSize: '10.5px' }}>
                     <span>Statut :</span>
-                    <span>{isPaid ? '✓ ENCAISSÉ' : (isAcompte ? '★ ACOMPTE PARTIEL' : '⏳ EN ATTENTE')}</span>
+                    <span>{isPaid ? 'ENCAISSÉ' : (isAcompte ? 'ACOMPTE PARTIEL' : 'EN ATTENTE')}</span>
                   </div>
                 </div>
 
-                {/* Ligne pointillée */}
-                <div style={{ borderBottom: '1.5px dashed #CBD5E1', margin: '12px 0' }} />
+                {/* Ligne de séparation fine */}
+                <div style={{ borderBottom: '1px solid #E2E8F0', margin: '12px 0' }} />
 
                 {/* Code-barres compact */}
                 <div style={{ textAlign: 'center', marginTop: '4px' }}>
@@ -1311,7 +1303,7 @@ ${statutWhatsApp}
 
                 {/* Message de fin */}
                 <div style={{ textAlign: 'center', fontSize: '9.5px', color: '#64748B', marginTop: '10px', lineHeight: '1.4' }}>
-                  Merci pour votre confiance !<br />
+                  Merci pour votre confiance.<br />
                   <strong style={{ color: '#0F172A' }}>LE CERCLE — L'Excellence au quotidien</strong>
                 </div>
               </div>
