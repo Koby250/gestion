@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Calculator, BarChart3, Settings, Calendar,
-  LogOut, User, Wallet, Users, History, Menu, X, Sun, Moon, LayoutDashboard, Package, UserCheck, Tag
+  LogOut, User, Wallet, Users, History, Menu, X, Sun, Moon, LayoutDashboard, Package, UserCheck, Tag, Repeat
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -19,6 +19,7 @@ import Tracabilite  from './components/Tracabilite';
 import Inventaire   from './components/Inventaire';
 import Clients      from './components/Clients';
 import Promotions   from './components/Promotions';
+import Abonnements  from './components/Abonnements';
 import BirthdayWidget from './components/BirthdayWidget';
 
 // Retourne la date locale du navigateur en format YYYY-MM-DD
@@ -38,7 +39,7 @@ function App() {
   const [monthRevenue,  setMonthRevenue]  = useState(0);
   const [user,          setUser]          = useState(null);
   const [userRole,      setUserRole]      = useState('agent');
-  const [userPerms,     setUserPerms]     = useState({ accesCaisse: false, accesReservations: false, accesInventaire: false, accesBilan: false, accesTresorerie: false, accesParametres: false, accesClients: false, accesPromotions: true });
+  const [userPerms,     setUserPerms]     = useState({ accesCaisse: false, accesReservations: false, accesInventaire: false, accesBilan: false, accesTresorerie: false, accesParametres: false, accesClients: false, accesPromotions: true, accesAbonnements: true });
   const [currentUserNom, setCurrentUserNom] = useState('');
   const [authLoading,   setAuthLoading]   = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -89,6 +90,7 @@ function App() {
               accesParametres:   !!data.accesParametres,
               accesClients:      !!data.accesClients,
               accesPromotions:   data.accesPromotions !== undefined ? !!data.accesPromotions : true,
+              accesAbonnements:  data.accesAbonnements !== undefined ? !!data.accesAbonnements : true,
             };
             setUserPerms(perms);
             setCurrentUserNom(data.nom || u.email || 'Inconnu');
@@ -192,7 +194,7 @@ function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'accueil':      return <Accueil activeDate={activeDate} userRole={userRole} />;
+      case 'accueil':      return <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
       case 'caisse':       return (userRole === 'admin' || userPerms.accesCaisse) ? (
         <Caisse
           activeDate={activeDate}
@@ -200,7 +202,7 @@ function App() {
           prefilledPromotion={prefilledPromotion}
           onClearPrefilledPromotion={() => setPrefilledPromotion(null)}
         />
-      ) : <Accueil activeDate={activeDate} userRole={userRole} />;
+      ) : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
       case 'reservations': return (userRole === 'admin' || userPerms.accesReservations) ? (
         <Reservations
           activeDate={activeDate}
@@ -209,7 +211,7 @@ function App() {
           prefilledPromotion={prefilledPromotion}
           onClearPrefilledPromotion={() => setPrefilledPromotion(null)}
         />
-      ) : <Accueil activeDate={activeDate} userRole={userRole} />;
+      ) : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
       case 'promotions':   return (userRole === 'admin' || userPerms.accesPromotions !== false) ? (
         <Promotions
           activeDate={activeDate}
@@ -222,15 +224,22 @@ function App() {
             setActiveTab('reservations');
           }}
         />
-      ) : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'clients':      return (userRole === 'admin' || userPerms.accesClients) ? <Clients onNavigateToReservation={(c) => { setPrefilledReservationClient(c); setActiveTab('reservations'); }} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'inventaire':   return (userRole === 'admin' || userPerms.accesInventaire) ? <Inventaire activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'bilan':        return (userRole === 'admin' || userPerms.accesBilan) ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'tresorerie':   return (userRole === 'admin' || userPerms.accesTresorerie) ? <Tresorerie activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'rh':           return userRole === 'admin' ? <RH activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'tracabilite':  return userRole === 'admin' ? <Tracabilite activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      case 'parametres':   return (userRole === 'admin' || userPerms.accesParametres) ? <Parametres activeDate={activeDate} accentTheme={accentTheme} onAccentChange={setAccentTheme} theme={theme} onThemeChange={setTheme} /> : <Accueil activeDate={activeDate} userRole={userRole} />;
-      default:             return <Accueil activeDate={activeDate} userRole={userRole} />;
+      ) : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      case 'abonnements':  return (userRole === 'admin' || userPerms.accesAbonnements !== false) ? (
+        <Abonnements
+          activeDate={activeDate}
+          currentUserNom={currentUserNom}
+          userRole={userRole}
+        />
+      ) : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      case 'clients':      return (userRole === 'admin' || userPerms.accesClients) ? <Clients onNavigateToReservation={(c) => { setPrefilledReservationClient(c); setActiveTab('reservations'); }} /> : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      case 'inventaire':   return (userRole === 'admin' || userPerms.accesInventaire) ? <Inventaire activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      case 'bilan':        return (userRole === 'admin' || userPerms.accesBilan) ? <Bilan activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      case 'tresorerie':   return (userRole === 'admin' || userPerms.accesTresorerie) ? <Tresorerie activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      case 'rh':           return userRole === 'admin' ? <RH activeDate={activeDate} currentUserNom={currentUserNom} /> : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      case 'tracabilite':  return userRole === 'admin' ? <Tracabilite activeDate={activeDate} /> : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      case 'parametres':   return (userRole === 'admin' || userPerms.accesParametres) ? <Parametres activeDate={activeDate} accentTheme={accentTheme} onAccentChange={setAccentTheme} theme={theme} onThemeChange={setTheme} /> : <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
+      default:             return <Accueil activeDate={activeDate} userRole={userRole} onNavigateToAbonnements={() => setActiveTab('abonnements')} />;
     }
   };
 
@@ -246,6 +255,9 @@ function App() {
     ] : []),
     ...((userRole === 'admin' || userPerms.accesPromotions !== false) ? [
       { key: 'promotions',   label: 'Promotions',      icon: <Tag size={20} /> }
+    ] : []),
+    ...((userRole === 'admin' || userPerms.accesAbonnements !== false) ? [
+      { key: 'abonnements',  label: 'Abonnements',     icon: <Repeat size={20} /> }
     ] : []),
     ...((userRole === 'admin' || userPerms.accesClients) ? [
       { key: 'clients',    label: 'Clients',            icon: <UserCheck size={20} /> }

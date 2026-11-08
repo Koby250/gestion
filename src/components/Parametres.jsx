@@ -44,6 +44,7 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
     { key: 'accesCaisse',       label: 'Caisse' },
     { key: 'accesReservations', label: 'Reservations' },
     { key: 'accesPromotions',   label: 'Promotions' },
+    { key: 'accesAbonnements',  label: 'Abonnements' },
     { key: 'accesInventaire',   label: 'Inventaire' },
     { key: 'accesTresorerie',   label: 'Tresorerie' },
     { key: 'accesBilan',        label: 'Bilan' },

@@ -4,18 +4,19 @@ import { db } from '../firebase';
 import {
   Calendar, Clock, User, Scissors,
   CreditCard, CheckCircle, AlertCircle,
-  TrendingUp, Wallet, MessageSquare, Filter, AlertTriangle, X, ChevronRight, Award, Star, ChevronDown, ChevronUp
+  TrendingUp, Wallet, MessageSquare, Filter, AlertTriangle, X, ChevronRight, Award, Star, ChevronDown, ChevronUp, Repeat
 } from 'lucide-react';
 import RechercheExpress from './RechercheExpress';
 import { computeDetailedGlobalStats } from '../utils/points';
 
 const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
+const Accueil = ({ activeDate = localDateStr(), userRole = '', onNavigateToAbonnements = () => {} }) => {
   const [reservations,  setReservations]  = useState([]);
   const [employes,      setEmployes]      = useState([]);
   const [transactions,  setTransactions]  = useState([]);
   const [chargesFixes,  setChargesFixes]  = useState([]);
   const [inventaire,    setInventaire]    = useState([]);
+  const [abonnements,   setAbonnements]   = useState([]);
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
 
   // Filtres
@@ -44,7 +45,10 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
     const unsubInv = onSnapshot(collection(db, 'inventaire'), snap =>
       setInventaire(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     );
-    return () => { unsubRes(); unsubEmp(); unsubTx(); unsubCharges(); unsubInv(); };
+    const unsubAb = onSnapshot(collection(db, 'abonnements'), snap =>
+      setAbonnements(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return () => { unsubRes(); unsubEmp(); unsubTx(); unsubCharges(); unsubInv(); unsubAb(); };
   }, []);
 
   // ── Dates ──────────────────────────────────────────────────────────────────
@@ -228,6 +232,19 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
     </div>
   );
 
+  // ── Alertes Abonnements ────────────────────────────────────────────────────
+  const in7DaysDate = new Date();
+  in7DaysDate.setDate(in7DaysDate.getDate() + 7);
+  const in7DaysStr = localDateStr(in7DaysDate);
+
+  const activeAbonnements = abonnements.filter(a => a.statut === 'actif');
+  const expiringAbonnements = activeAbonnements.filter(a => a.dateFin && a.dateFin <= in7DaysStr);
+  const oneSessionAbonnements = activeAbonnements.filter(a => {
+    const restant = (Number(a.nombreSeances) || 0) - (Number(a.seancesEffectuees) || 0);
+    return restant === 1;
+  });
+  const totalAbonnementsAlerts = expiringAbonnements.length + oneSessionAbonnements.length;
+
   return (
     <div className="view-container">
       <RechercheExpress reservations={reservations} />
@@ -281,6 +298,53 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '' }) => {
           </div>
         );
       })()}
+
+      {/* ── RAPPELS IN-APP ABONNEMENTS ────────────────────────── */}
+      {totalAbonnementsAlerts > 0 && (
+        <div style={{
+          marginBottom: '16px',
+          backgroundColor: 'rgba(217, 119, 6, 0.08)',
+          border: '1px solid rgba(217, 119, 6, 0.25)',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '8px 12px',
+          flexWrap: 'wrap',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Repeat size={16} color="#d97706" />
+              <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rappels Forfaits</span>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              {expiringAbonnements.length > 0 && (
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-main)', padding: '2px 8px', backgroundColor: 'var(--bg-card)', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                  <span style={{ fontWeight: '600' }}>Expirant sous 7j</span> : <span style={{ color: '#d97706', fontWeight: 'bold' }}>{expiringAbonnements.length}</span>
+                </span>
+              )}
+              {oneSessionAbonnements.length > 0 && (
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-main)', padding: '2px 8px', backgroundColor: 'var(--bg-card)', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                  <span style={{ fontWeight: '600' }}>Dernière séance restante</span> : <span style={{ color: '#d97706', fontWeight: 'bold' }}>{oneSessionAbonnements.length}</span>
+                </span>
+              )}
+            </div>
+          </div>
+          
+          <button
+            onClick={onNavigateToAbonnements}
+            style={{
+              background: 'none', border: 'none', color: '#d97706',
+              fontSize: '0.82rem', fontWeight: '600', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            Gérer les abonnements <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
 
       {/* ── MODAL LISTE COMPLÈTE ALERTES STOCK ──────────────────────────── */}
       {isAlertModalOpen && (
