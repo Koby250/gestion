@@ -91,6 +91,59 @@ const computeNextSessionDate = (lastDateStr, frequence) => {
   return localDateStr(d);
 };
 
+/**
+ * Liste exhaustive des mots-clés de boissons et eaux à exclure formellement des abonnements.
+ * Tous les termes sont sans accent et vérifiés avec délimiteurs de mots.
+ */
+const BEVERAGE_KEYWORDS = [
+  'boisson', 'boissons', 'drink', 'drinks', 'beverage', 'beverages',
+  'eau', 'eaux', 'water', 'jus', 'juice',
+  'cocktail', 'cocktails', 'mocktail', 'mocktails', 'mojito',
+  'cafe', 'coffee', 'espresso', 'expresso', 'cappuccino', 'capuccino', 'latte', 'macchiato', 'nescafe',
+  'the', 'tea', 'infusion', 'tisane', 'chocolat chaud',
+  'soda', 'sodas', 'coca', 'coke', 'fanta', 'sprite', 'pepsi', 'schweppes', 'tonic', 'orangina', 'limonade',
+  'biere', 'bieres', 'beer', 'beers', 'heineken', 'corona', 'castel', 'beaufort', 'guinness', 'desperados', 'panache',
+  'vin', 'vins', 'wine', 'champagne', 'champagnes', 'prosecco', 'cava',
+  'whisky', 'whiskey', 'vodka', 'rhum', 'rum', 'gin', 'tequila', 'liqueur', 'sirop', 'alcool', 'aperitif',
+  'red bull', 'redbull', 'monster', 'energisante', 'energetique',
+  'smoothie', 'smoothies', 'milkshake', 'canette',
+  'kirene', 'tangui', 'celeste', 'perrier', 'san pellegrino', 'evian', 'volvic', 'cristaline',
+  'bissap', 'gingembre', 'bouye'
+];
+
+/**
+ * Détermine si un service correspond à une boisson ou de l'eau (pour exclusion totale des abonnements)
+ */
+const isBeverageService = (service) => {
+  if (!service) return false;
+  const cat = (service.categorie || '').toLowerCase().trim();
+  if (cat === 'boisson' || cat === 'boissons' || service.isBoisson) return true;
+
+  const normName = (service.nom || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  const normCat = cat
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  const normDesc = (service.description || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  const textToScan = `${normName} ${normCat} ${normDesc}`;
+
+  return BEVERAGE_KEYWORDS.some(kw => {
+    const regex = new RegExp(`(^|[^a-z0-9])${kw}([^a-z0-9]|$)`, 'i');
+    return regex.test(textToScan);
+  });
+};
+
 const Abonnements = ({ currentUserNom = 'Admin' }) => {
   // Collections Firestore
   const [abonnements, setAbonnements] = useState([]);
@@ -161,12 +214,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
       const activeServices = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(s => {
-          if (s.actif === false) return false;
-          const cat = (s.categorie || '').toLowerCase().trim();
-          if (cat === 'boisson' || cat === 'boissons' || s.isBoisson) return false;
-          return true;
-        })
+        .filter(s => s.actif !== false && !isBeverageService(s))
         .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }));
       setServices(activeServices);
     });
@@ -391,8 +439,8 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
     e.preventDefault();
     if (isSaving) return;
 
-    if (!selectedServiceId || !currentService) {
-      alert("Veuillez sélectionner un service pour ce forfait.");
+    if (!selectedServiceId || !currentService || isBeverageService(currentService)) {
+      alert("Veuillez sélectionner une prestation valide (les boissons ne sont pas éligibles aux abonnements).");
       return;
     }
 
@@ -1570,10 +1618,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                 >
                   <option value="">-- Choisir une prestation --</option>
                   {services
-                    .filter(s => {
-                      const cat = (s.categorie || '').toLowerCase().trim();
-                      return cat !== 'boisson' && cat !== 'boissons' && !s.isBoisson;
-                    })
+                    .filter(s => !isBeverageService(s))
                     .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }))
                     .map(s => (
                       <option key={s.id} value={s.id}>
