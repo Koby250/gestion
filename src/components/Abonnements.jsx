@@ -161,7 +161,12 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
     const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
       const activeServices = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(s => s.actif !== false);
+        .filter(s => {
+          if (s.actif === false) return false;
+          const cat = (s.categorie || '').toLowerCase().trim();
+          if (cat === 'boisson' || cat === 'boissons' || s.isBoisson) return false;
+          return true;
+        });
       setServices(activeServices);
     });
 
@@ -1563,11 +1568,16 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                   required
                 >
                   <option value="">-- Choisir une prestation --</option>
-                  {services.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.nom} — Tarif unitaire : {Number(s.prixDefaut || 0).toLocaleString('fr-FR')} FCFA
-                    </option>
-                  ))}
+                  {services
+                    .filter(s => {
+                      const cat = (s.categorie || '').toLowerCase().trim();
+                      return cat !== 'boisson' && cat !== 'boissons' && !s.isBoisson;
+                    })
+                    .map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.nom} — Tarif unitaire : {Number(s.prixDefaut || 0).toLocaleString('fr-FR')} FCFA
+                      </option>
+                    ))}
                 </select>
                 {currentService && (
                   <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '4px' }}>
