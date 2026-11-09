@@ -7,6 +7,7 @@ import FactureModal from './FactureModal';
 import SuccessModal from './SuccessModal';
 import BulkActionBar from './BulkActionBar';
 import PanierPrestations from './PanierPrestations';
+import ModalPortal from './ModalPortal';
 
 const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const getCurrentTimeStr = () => {
@@ -1297,77 +1298,80 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
       )}
 
       {editTxModal && editTxModal.type === 'prestation' && (
-        <div className="modal-overlay" onClick={() => setEditTxModal(null)}>
-          <div className="modal-content" style={{ maxWidth: '800px', width: '95%' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Modifier la prestation</h2>
-              <button className="btn-icon" onClick={() => setEditTxModal(null)}><X size={20} /></button>
-            </div>
-
-            {/* Date & Heure modifiable pour la prestation */}
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', padding: '12px 14px', backgroundColor: 'var(--bg-input)', borderRadius: '12px', border: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  <Calendar size={13} color="var(--accent)" /> Date de la prestation
-                </label>
-                <input 
-                  type="date" 
-                  className="input-control" 
-                  style={{ margin: 0 }}
-                  value={editTxDate} 
-                  onChange={e => setEditTxDate(e.target.value)} 
-                />
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setEditTxModal(null)}>
+            <div className="modal-content" style={{ maxWidth: '800px', width: '95%' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Modifier la prestation</h2>
+                <button className="btn-icon" onClick={() => setEditTxModal(null)}><X size={20} /></button>
               </div>
-              <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '130px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                  <Clock size={13} color="var(--accent)" /> Heure de la prestation
-                </label>
-                <input 
-                  type="time" 
-                  className="input-control" 
-                  style={{ margin: 0 }}
-                  value={editTxHeure} 
-                  onChange={e => setEditTxHeure(e.target.value)} 
-                />
-              </div>
-            </div>
 
-            <PanierPrestations 
-              lignes={editTxLignes}
-              setLignes={setEditTxLignes}
-              services={services}
-              servicesDomicile={servicesDomicile}
-              employes={employes}
-              clientNom={editTxClientNom}
-              setClientNom={setEditTxClientNom}
-              modePaiement={editTxModePaiement}
-              setModePaiement={setEditTxModePaiement}
-              showClientField={true}
-            />
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-              <button 
-                onClick={handleSaveEditTransaction} 
-                className="btn btn-primary" 
-                style={{ flex: 1 }}
-                disabled={isEditing}
-              >
-                {isEditing ? 'Enregistrement...' : 'Enregistrer les modifications'}
-              </button>
-              <button onClick={() => setEditTxModal(null)} className="btn" style={{ flex: 1, backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}>
-                Annuler
-              </button>
+              {/* Date & Heure modifiable pour la prestation */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', padding: '12px 14px', backgroundColor: 'var(--bg-input)', borderRadius: '12px', border: '1px solid var(--border-color)', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    <Calendar size={13} color="var(--accent)" /> Date de la prestation
+                  </label>
+                  <input 
+                    type="date" 
+                    className="input-control" 
+                    style={{ margin: 0 }}
+                    value={editTxDate} 
+                    onChange={e => setEditTxDate(e.target.value)} 
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '130px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    <Clock size={13} color="var(--accent)" /> Heure de la prestation
+                  </label>
+                  <input 
+                    type="time" 
+                    className="input-control" 
+                    style={{ margin: 0 }}
+                    value={editTxHeure} 
+                    onChange={e => setEditTxHeure(e.target.value)} 
+                  />
+                </div>
+              </div>
+
+              <PanierPrestations 
+                lignes={editTxLignes}
+                setLignes={setEditTxLignes}
+                services={services}
+                servicesDomicile={servicesDomicile}
+                employes={employes}
+                clientNom={editTxClientNom}
+                setClientNom={setEditTxClientNom}
+                modePaiement={editTxModePaiement}
+                setModePaiement={setEditTxModePaiement}
+                showClientField={true}
+              />
+              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                <button 
+                  onClick={handleSaveEditTransaction} 
+                  className="btn btn-primary" 
+                  style={{ flex: 1 }}
+                  disabled={isEditing}
+                >
+                  {isEditing ? 'Enregistrement...' : 'Enregistrer les modifications'}
+                </button>
+                <button onClick={() => setEditTxModal(null)} className="btn" style={{ flex: 1, backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}>
+                  Annuler
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {editDepenseModal && (
-        <div className="modal-overlay" onClick={() => setEditDepenseModal(null)}>
-          <div className="modal-content" style={{ maxWidth: '520px', width: '95%' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Modifier la dépense</h2>
-              <button className="btn-icon" onClick={() => setEditDepenseModal(null)}><X size={20} /></button>
-            </div>
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setEditDepenseModal(null)}>
+            <div className="modal-content" style={{ maxWidth: '520px', width: '95%' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Modifier la dépense</h2>
+                <button className="btn-icon" onClick={() => setEditDepenseModal(null)}><X size={20} /></button>
+              </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '140px' }}>
@@ -1463,6 +1467,7 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

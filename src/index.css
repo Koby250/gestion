@@ -668,6 +668,32 @@ select.input-control option {
   color: var(--text-main);
 }
 
+/* Grilles de formulaires responsive */
+.form-grid-carnet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-grid-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-grid-client {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.form-grid-tarification {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  align-items: flex-start;
+}
+
 /* ── Buttons ──────────────────────────────────────── */
 .btn {
   padding: 11px 20px;
@@ -986,42 +1012,102 @@ select.input-control option {
     max-width: 135px;
   }
 
+  /* Objectifs Topbar Mobile : Grille 2 colonnes avec Titre au-dessus de la valeur */
   .topbar-goals-wrapper {
-    width: 100%;
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
-    flex: none;
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    flex: none !important;
   }
 
   .topbar-goal {
-    flex: 1 1 0;
+    flex: 1 1 0 !important;
     min-width: 0 !important;
-    width: auto !important;
-    background: var(--bg-input);
-    padding: 6px 10px;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-    gap: 3px;
+    width: 100% !important;
+    background: var(--bg-input) !important;
+    padding: 6px 10px !important;
+    border-radius: 10px !important;
+    border: 1px solid var(--border-color) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
   }
 
   .goal-labels {
-    font-size: 0.68rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 1px !important;
+    width: 100% !important;
   }
 
-  .goal-labels span:first-child {
-    font-size: 0.65rem;
+  .goal-label-title {
+    font-size: 0.62rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    color: var(--text-muted) !important;
+    line-height: 1.1 !important;
   }
 
-  .goal-labels span:last-child {
-    font-size: 0.68rem;
+  .goal-label-value {
+    font-size: 0.72rem !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    width: 100% !important;
+    line-height: 1.2 !important;
   }
 
   .goal-progress-bar {
-    height: 4px;
+    height: 4px !important;
+    margin-top: 2px !important;
+  }
+
+  /* Formulaires et grilles responsive mobile */
+  .form-grid-carnet {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .form-grid-dates {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .form-grid-client {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .form-grid-tarification {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Règle universelle pour tous les formulaires dans les modales et cartes sur mobile */
+  .modal-content form [style*="gridTemplateColumns"]:not(.topbar-goals-wrapper):not(.kpi-grid),
+  .modal-body [style*="gridTemplateColumns"],
+  .card form [style*="gridTemplateColumns"] {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="text"],
+  input[type="number"],
+  input[type="tel"],
+  select.input-control {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   /* Affichage Cartes vs Table */

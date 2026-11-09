@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X, Download, Image, FileText, Printer, Share2,
   ArrowRight
@@ -354,7 +355,7 @@ Niamey, Niger | Tél. +227 87 37 73 70`;
     window.open(waUrl, '_blank');
   };
 
-  return (
+  const modalNode = (
     <div className="modal-overlay hide-on-print">
       {/* Styles d'adaptation responsive intégrés */}
       <style>{`
@@ -1445,6 +1446,9 @@ Niamey, Niger | Tél. +227 87 37 73 70`;
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return modalNode;
+  return createPortal(modalNode, document.body);
 };
 
 export default FactureModal;

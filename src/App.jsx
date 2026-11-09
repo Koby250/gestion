@@ -402,8 +402,8 @@ function App() {
             {/* Objectif Journalier */}
             <div className="topbar-goal">
               <div className="goal-labels">
-                <span>Obj. Jour</span>
-                <span style={{ color: dailyPct >= 100 ? 'var(--success)' : 'var(--text-soft)', fontWeight: 600 }}>
+                <span className="goal-label-title">Obj. Jour</span>
+                <span className="goal-label-value" style={{ color: dailyPct >= 100 ? 'var(--success)' : 'var(--text-soft)', fontWeight: 600 }}>
                   {todayRevenue.toLocaleString('fr-FR')} / {dynamicDailyGoal.toLocaleString('fr-FR')} F
                 </span>
               </div>
@@ -416,8 +416,8 @@ function App() {
             {userRole === 'admin' && monthlyGoal > 0 && (
               <div className="topbar-goal">
                 <div className="goal-labels">
-                  <span>Obj. {MOIS_FR[activeDateObj.getMonth()]}</span>
-                  <span style={{ color: monthlyPct >= 100 ? 'var(--success)' : 'var(--text-soft)', fontWeight: 600 }}>
+                  <span className="goal-label-title">Obj. {MOIS_FR[activeDateObj.getMonth()]}</span>
+                  <span className="goal-label-value" style={{ color: monthlyPct >= 100 ? 'var(--success)' : 'var(--text-soft)', fontWeight: 600 }}>
                     {monthRevenue.toLocaleString('fr-FR')} / {monthlyGoal.toLocaleString('fr-FR')} F ({Math.round(monthlyPct)}%)
                   </span>
                 </div>

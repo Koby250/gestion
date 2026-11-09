@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 const SuccessModal = ({ message, onClose, duration = 2500 }) => {
   useEffect(() => {
@@ -8,12 +9,12 @@ const SuccessModal = ({ message, onClose, duration = 2500 }) => {
     return () => clearTimeout(timer);
   }, [onClose, duration]);
 
-  return (
+  const modalNode = (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       display: 'flex', justifyContent: 'center', alignItems: 'center',
-      backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 9999,
-      backdropFilter: 'blur(3px)',
+      backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 99999,
+      backdropFilter: 'blur(4px)',
       animation: 'fadeIn 0.2s ease-out'
     }}>
       <style>{`
@@ -60,6 +61,9 @@ const SuccessModal = ({ message, onClose, duration = 2500 }) => {
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return modalNode;
+  return createPortal(modalNode, document.body);
 };
 
 export default SuccessModal;

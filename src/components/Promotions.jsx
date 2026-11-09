@@ -8,6 +8,7 @@ import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'fireb
 import { db } from '../firebase';
 import { logEvent } from '../utils/audit';
 import SuccessModal from './SuccessModal';
+import ModalPortal from './ModalPortal';
 
 const localDateStr = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -833,16 +834,17 @@ const Promotions = ({ onNavigateToCaisse, onNavigateToReservation }) => {
 
       {/* ── MODAL CRÉATION / ÉDITION DE PROMOTION ─────────────────────────── */}
       {isModalOpen && (
-        <div
-          className="modal-overlay"
-          onClick={() => !isSaving && setIsModalOpen(false)}
-          style={{ zIndex: 1100 }}
-        >
+        <ModalPortal>
           <div
-            className="modal-content"
-            style={{ maxWidth: '640px', width: '95%', maxHeight: '92vh', overflowY: 'auto' }}
-            onClick={e => e.stopPropagation()}
+            className="modal-overlay"
+            onClick={() => !isSaving && setIsModalOpen(false)}
+            style={{ zIndex: 1100 }}
           >
+            <div
+              className="modal-content"
+              style={{ maxWidth: '640px', width: '95%', maxHeight: '92vh', overflowY: 'auto' }}
+              onClick={e => e.stopPropagation()}
+            >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
@@ -1142,6 +1144,7 @@ const Promotions = ({ onNavigateToCaisse, onNavigateToReservation }) => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

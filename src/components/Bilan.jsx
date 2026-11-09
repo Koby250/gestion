@@ -9,6 +9,7 @@ import {
 import { computeDetailedGlobalStats, getPointsForService } from '../utils/points';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { logEvent } from '../utils/audit';
+import ModalPortal from './ModalPortal';
 
 // Retourne la date locale en YYYY-MM-DD (évite le décalage UTC de toISOString)
 const localDateStr = (d = new Date()) =>
@@ -2595,9 +2596,10 @@ const Bilan = ({ activeDate = localDateStr() }) => {
         const ecartGlobal = lines.reduce((s, l) => s + l.ecart, 0);
 
         return (
-          <div className="modal-overlay" onClick={() => setShowClosureModal(false)}>
-            <div className="modal-content" style={{ maxWidth: '500px', width: '95%' }} onClick={e => e.stopPropagation()}>
-              <h2 style={{ marginBottom: '6px', fontSize: '1.15rem' }}>Clôture des charges — {MOIS_FR[viewMonth]} {viewYear}</h2>
+          <ModalPortal>
+            <div className="modal-overlay" onClick={() => setShowClosureModal(false)}>
+              <div className="modal-content" style={{ maxWidth: '500px', width: '95%' }} onClick={e => e.stopPropagation()}>
+                <h2 style={{ marginBottom: '6px', fontSize: '1.15rem' }}>Clôture des charges — {MOIS_FR[viewMonth]} {viewYear}</h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
                 Clôture exclusive des charges du mois de {MOIS_FR[viewMonth]} {viewYear}. Tout surplus reste dans ce mois et n'est pas répercuté sur le mois suivant.
               </p>
@@ -2650,6 +2652,7 @@ const Bilan = ({ activeDate = localDateStr() }) => {
               </div>
             </div>
           </div>
+          </ModalPortal>
         );
       })()}
 
@@ -2672,8 +2675,9 @@ const Bilan = ({ activeDate = localDateStr() }) => {
           : Object.values(individualSalariesForm).reduce((s, v) => s + (Number(v) || 0), 0);
 
         return (
-          <div className="modal-overlay" onClick={() => setShowSalariesClosureModal(false)}>
-            <div className="modal-content" style={{ maxWidth: '600px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+          <ModalPortal>
+            <div className="modal-overlay" onClick={() => setShowSalariesClosureModal(false)}>
+              <div className="modal-content" style={{ maxWidth: '600px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
               <h2 style={{ marginBottom: '6px', fontSize: '1.15rem' }}>Clôture des salaires — {MOIS_FR[viewMonth]} {viewYear}</h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '18px' }}>
                 Choisissez le mode de clôture puis cliquez sur Confirmer. Les montants versés seront enregistrés dans le journal des opérations.
@@ -2759,6 +2763,7 @@ const Bilan = ({ activeDate = localDateStr() }) => {
               </div>
             </div>
           </div>
+          </ModalPortal>
         );
       })()}
     </div>

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { PlusCircle, Trash2, Users, Search, UserPlus, X, CheckCircle, Tag, Sparkles, ShoppingBag } from 'lucide-react';
 import { collection, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import ModalPortal from './ModalPortal';
 
 /**
  * PanierPrestations — Panier multi-services avec gestion du Billard sans agent,
@@ -1381,16 +1382,17 @@ const PanierPrestations = ({
 
       {/* ── MODAL SÉLECTEUR DE PROMOTIONS ─────────────────────────────────── */}
       {showPromoModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowPromoModal(false)}
-          style={{ zIndex: 1200 }}
-        >
+        <ModalPortal>
           <div
-            className="modal-content"
-            style={{ maxWidth: '640px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}
-            onClick={e => e.stopPropagation()}
+            className="modal-overlay"
+            onClick={() => setShowPromoModal(false)}
+            style={{ zIndex: 1200 }}
           >
+            <div
+              className="modal-content"
+              style={{ maxWidth: '640px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}
+              onClick={e => e.stopPropagation()}
+            >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
@@ -1528,6 +1530,7 @@ const PanierPrestations = ({
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

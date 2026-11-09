@@ -12,6 +12,7 @@ import BulkActionBar from './BulkActionBar';
 import RechercheExpress from './RechercheExpress';
 import AgendaVisuel from './AgendaVisuel';
 import PanierPrestations from './PanierPrestations';
+import ModalPortal from './ModalPortal';
 
 const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPrefill, prefilledPromotion = null, onClearPrefilledPromotion = null }) => {
@@ -1013,25 +1014,28 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
 
       {/* ── MODAL AJOUT (Vue Liste + Agenda) ──────────────────────────────── */}
       {isFormModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsFormModalOpen(false)}>
-          <div className="modal-content" style={{ maxWidth: '720px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2><PlusCircle size={20} color="var(--accent-color)" /> Nouvelle Réservation</h2>
-              <button className="btn-icon" onClick={() => setIsFormModalOpen(false)}><X size={20} /></button>
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setIsFormModalOpen(false)}>
+            <div className="modal-content" style={{ maxWidth: '720px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2><PlusCircle size={20} color="var(--accent-color)" /> Nouvelle Réservation</h2>
+                <button className="btn-icon" onClick={() => setIsFormModalOpen(false)}><X size={20} /></button>
+              </div>
+              {renderReservationForm()}
             </div>
-            {renderReservationForm()}
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* ── MODAL DÉTAILS ÉVÉNEMENT (Agenda) ──────────────────────────────── */}
       {eventDetailsModal && (
-        <div className="modal-overlay" onClick={() => setEventDetailsModal(null)}>
-          <div className="modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Détails de la réservation</h2>
-              <button className="btn-icon" onClick={() => setEventDetailsModal(null)}><X size={20} /></button>
-            </div>
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setEventDetailsModal(null)}>
+            <div className="modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Détails de la réservation</h2>
+                <button className="btn-icon" onClick={() => setEventDetailsModal(null)}><X size={20} /></button>
+              </div>
 
             <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <p><strong>Client:</strong> {eventDetailsModal.clientNom} {eventDetailsModal.clientTel ? `(${eventDetailsModal.clientTel})` : ''}</p>
@@ -1087,187 +1091,194 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── MODAL ENCAISSEMENT ────────────────────────────────────────────── */}
       {encaissementModal && (
-        <div className="modal-overlay" onClick={() => setEncaissementModal(null)}>
-          <div className="modal-content" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2><CreditCard size={20} color="var(--accent-color)" /> Encaissement du solde</h2>
-              <button className="btn-icon" onClick={() => setEncaissementModal(null)}><X size={20} /></button>
-            </div>
-
-            <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontSize: '0.9rem' }}>
-              Client : <strong style={{ color: 'var(--text-main)' }}>{encaissementModal.clientNom}</strong>
-              &nbsp;&mdash;&nbsp;{encaissementModal.serviceNom}
-            </p>
-
-            {/* Montant */}
-            <div style={{
-              backgroundColor: 'rgba(239, 68, 68, 0.07)', borderRadius: '14px',
-              padding: '18px', marginBottom: '22px', textAlign: 'center'
-            }}>
-              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                Montant à encaisser
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setEncaissementModal(null)}>
+            <div className="modal-content" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2><CreditCard size={20} color="var(--accent-color)" /> Encaissement du solde</h2>
+                <button className="btn-icon" onClick={() => setEncaissementModal(null)}><X size={20} /></button>
               </div>
-              <div style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--danger)', letterSpacing: '-0.02em' }}>
-                {encaissementModal.prixTotal - (encaissementModal.acomptePaye || 0)} FCFA
-              </div>
-            </div>
 
-            {/* Mode de paiement */}
-            <div className="form-group">
-              <label>Mode de règlement</label>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {['Cash', 'NITA', 'AMANA', 'Carte VISA'].map(mode => (
-                  <button key={mode} type="button"
-                    onClick={() => setModeEncaissement(mode)}
-                    style={{
-                      flex: 1, padding: '10px 8px', borderRadius: '10px', border: '2px solid',
-                      borderColor: modeEncaissement === mode ? 'var(--accent-color)' : 'var(--border-color)',
-                      backgroundColor: modeEncaissement === mode ? 'rgba(37, 99, 235, 0.08)' : 'var(--bg-input)',
-                      color: modeEncaissement === mode ? 'var(--accent-color)' : 'var(--text-muted)',
-                      fontWeight: modeEncaissement === mode ? '700' : '500',
-                      cursor: 'pointer', transition: 'all 0.2s ease',
-                      fontSize: '0.9rem'
-                    }}>
-                    {mode}
-                  </button>
-                ))}
-              </div>
-            </div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '20px', fontSize: '0.9rem' }}>
+                Client : <strong style={{ color: 'var(--text-main)' }}>{encaissementModal.clientNom}</strong>
+                &nbsp;&mdash;&nbsp;{encaissementModal.serviceNom}
+              </p>
 
-            {/* Actions modal */}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '22px' }}>
-              <button onClick={() => setEncaissementModal(null)}
-                className="btn"
-                style={{ flex: 1, backgroundColor: 'var(--bg-input)', color: 'var(--text-muted)' }}
-                disabled={encaissementLoading}>
-                Annuler
-              </button>
-              <button onClick={handleConfirmerEncaissement}
-                className="btn btn-success"
-                style={{ flex: 2 }}
-                disabled={encaissementLoading}>
-                <CheckCircle size={17} />
-                {encaissementLoading ? 'Enregistrement...' : "Confirmer l'encaissement"}
-              </button>
+              {/* Montant */}
+              <div style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.07)', borderRadius: '14px',
+                padding: '18px', marginBottom: '22px', textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Montant à encaisser
+                </div>
+                <div style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--danger)', letterSpacing: '-0.02em' }}>
+                  {encaissementModal.prixTotal - (encaissementModal.acomptePaye || 0)} FCFA
+                </div>
+              </div>
+
+              {/* Mode de paiement */}
+              <div className="form-group">
+                <label>Mode de règlement</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {['Cash', 'NITA', 'AMANA', 'Carte VISA'].map(mode => (
+                    <button key={mode} type="button"
+                      onClick={() => setModeEncaissement(mode)}
+                      style={{
+                        flex: 1, padding: '10px 8px', borderRadius: '10px', border: '2px solid',
+                        borderColor: modeEncaissement === mode ? 'var(--accent-color)' : 'var(--border-color)',
+                        backgroundColor: modeEncaissement === mode ? 'rgba(37, 99, 235, 0.08)' : 'var(--bg-input)',
+                        color: modeEncaissement === mode ? 'var(--accent-color)' : 'var(--text-muted)',
+                        fontWeight: modeEncaissement === mode ? '700' : '500',
+                        cursor: 'pointer', transition: 'all 0.2s ease',
+                        fontSize: '0.9rem'
+                      }}>
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions modal */}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '22px' }}>
+                <button onClick={() => setEncaissementModal(null)}
+                  className="btn"
+                  style={{ flex: 1, backgroundColor: 'var(--bg-input)', color: 'var(--text-muted)' }}
+                  disabled={encaissementLoading}>
+                  Annuler
+                </button>
+                <button onClick={handleConfirmerEncaissement}
+                  className="btn btn-success"
+                  style={{ flex: 2 }}
+                  disabled={encaissementLoading}>
+                  <CheckCircle size={17} />
+                  {encaissementLoading ? 'Enregistrement...' : "Confirmer l'encaissement"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* ── MODAL NOTES ───────────────────────────────────────────────────── */}
       {notesModal && (
-        <div className="modal-overlay" onClick={() => setNotesModal(null)}>
-          <div className="modal-content" style={{ maxWidth: '520px', display: 'flex', flexDirection: 'column', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2><MessageSquare size={20} color="var(--accent-color)" /> Notes &amp; Historique</h2>
-              <button className="btn-icon" onClick={() => setNotesModal(null)}><X size={20} /></button>
-            </div>
-            
-            <div style={{ flex: 1, overflowY: 'auto', marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {(notesModal.historiqueNotes || []).length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>Aucune note pour ce rendez-vous.</p>
-              ) : (
-                notesModal.historiqueNotes.map((n, i) => (
-                  <div key={i} style={{ backgroundColor: 'var(--bg-input)', padding: '10px', borderRadius: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {new Date(n.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(',', ' à')}
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setNotesModal(null)}>
+            <div className="modal-content" style={{ maxWidth: '520px', display: 'flex', flexDirection: 'column', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2><MessageSquare size={20} color="var(--accent-color)" /> Notes &amp; Historique</h2>
+                <button className="btn-icon" onClick={() => setNotesModal(null)}><X size={20} /></button>
+              </div>
+              
+              <div style={{ flex: 1, overflowY: 'auto', marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {(notesModal.historiqueNotes || []).length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>Aucune note pour ce rendez-vous.</p>
+                ) : (
+                  notesModal.historiqueNotes.map((n, i) => (
+                    <div key={i} style={{ backgroundColor: 'var(--bg-input)', padding: '10px', borderRadius: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {new Date(n.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }).replace(',', ' à')}
+                        </div>
+                        <button onClick={() => { setEditingNoteIndex(i); setEditingNoteText(n.texte); }} style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer' }} title="Modifier">
+                          <Edit2 size={12} />
+                        </button>
                       </div>
-                      <button onClick={() => { setEditingNoteIndex(i); setEditingNoteText(n.texte); }} style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer' }} title="Modifier">
-                        <Edit2 size={12} />
-                      </button>
+                      {editingNoteIndex === i ? (
+                        <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
+                          <input type="text" className="input-control" value={editingNoteText} onChange={e => setEditingNoteText(e.target.value)} style={{ padding: '4px 8px', fontSize: '0.9rem', flex: 1 }} />
+                          <button onClick={() => handleSaveEditedNote(i)} className="btn btn-primary" style={{ padding: '4px 8px' }}>OK</button>
+                          <button onClick={() => setEditingNoteIndex(null)} className="btn" style={{ padding: '4px 8px', background: 'var(--bg-card)', color: 'var(--text-main)' }}><X size={14}/></button>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{n.texte}</div>
+                      )}
                     </div>
-                    {editingNoteIndex === i ? (
-                      <div style={{ display: 'flex', gap: '5px', marginTop: '5px' }}>
-                        <input type="text" className="input-control" value={editingNoteText} onChange={e => setEditingNoteText(e.target.value)} style={{ padding: '4px 8px', fontSize: '0.9rem', flex: 1 }} />
-                        <button onClick={() => handleSaveEditedNote(i)} className="btn btn-primary" style={{ padding: '4px 8px' }}>OK</button>
-                        <button onClick={() => setEditingNoteIndex(null)} className="btn" style={{ padding: '4px 8px', background: 'var(--bg-card)', color: 'var(--text-main)' }}><X size={14}/></button>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{n.texte}</div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+                  ))
+                )}
+              </div>
 
-            <form onSubmit={handleAddNote} style={{ display: 'flex', gap: '10px' }}>
-              <input
-                type="text"
-                className="input-control"
-                placeholder="Ajouter une note..."
-                value={newNote}
-                onChange={e => setNewNote(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button type="submit" className="btn btn-primary" style={{ padding: '0 15px' }}>
-                <Send size={16} />
-              </button>
-            </form>
+              <form onSubmit={handleAddNote} style={{ display: 'flex', gap: '10px' }}>
+                <input
+                  type="text"
+                  className="input-control"
+                  placeholder="Ajouter une note..."
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button type="submit" className="btn btn-primary" style={{ padding: '0 15px' }}>
+                  <Send size={16} />
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* ── MODAL EDIT ────────────────────────────────────────────────────── */}
       {editModal && (
-        <div className="modal-overlay" onClick={() => setEditModal(null)}>
-          <div className="modal-content" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2><Edit2 size={20} color="var(--accent-color)" /> Modifier le Rendez-vous</h2>
-              <button className="btn-icon" onClick={() => setEditModal(null)}><X size={20} /></button>
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setEditModal(null)}>
+            <div className="modal-content" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2><Edit2 size={20} color="var(--accent-color)" /> Modifier le Rendez-vous</h2>
+                <button className="btn-icon" onClick={() => setEditModal(null)}><X size={20} /></button>
+              </div>
+
+              <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div className="form-grid-dates" style={{ gap: '15px' }}>
+                  <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                    <label>Date</label>
+                    <input type="date" className="input-control" value={editModal.datePrevue} onChange={e => setEditModal({...editModal, datePrevue: e.target.value})} required />
+                  </div>
+                  <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                    <label>Heure</label>
+                    <input type="time" className="input-control" value={editModal.heurePrevue} onChange={e => setEditModal({...editModal, heurePrevue: e.target.value})} required />
+                  </div>
+                </div>
+                
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <PanierPrestations 
+                    lignes={editModal.lignes || []}
+                    setLignes={(newLignes) => setEditModal(prev => ({ 
+                      ...prev, 
+                      lignes: typeof newLignes === 'function' ? newLignes(prev.lignes || []) : newLignes 
+                    }))}
+                    services={services}
+                    employes={employes}
+                    showClientField={false}
+                    hidePayment={true}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Statut</label>
+                  <select className="input-control" value={editModal.statut} onChange={e => setEditModal({...editModal, statut: e.target.value})} required>
+                    <option value="non_paye">En attente (Non payé)</option>
+                    <option value="en_cours">En cours</option>
+                    <option value="acompte_verse">Acompte versé</option>
+                    <option value="encaisse">Encaissé</option>
+                  </select>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <button type="button" onClick={() => setEditModal(null)} className="btn" style={{ flex: 1, backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
+                    Annuler
+                  </button>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                    Enregistrer les modifications
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div style={{ display: 'flex', gap: '15px' }}>
-                <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                  <label>Date</label>
-                  <input type="date" className="input-control" value={editModal.datePrevue} onChange={e => setEditModal({...editModal, datePrevue: e.target.value})} required />
-                </div>
-                <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                  <label>Heure</label>
-                  <input type="time" className="input-control" value={editModal.heurePrevue} onChange={e => setEditModal({...editModal, heurePrevue: e.target.value})} required />
-                </div>
-              </div>
-              
-              <div style={{ gridColumn: '1 / -1' }}>
-                <PanierPrestations 
-                  lignes={editModal.lignes || []}
-                  setLignes={(newLignes) => setEditModal(prev => ({ 
-                    ...prev, 
-                    lignes: typeof newLignes === 'function' ? newLignes(prev.lignes || []) : newLignes 
-                  }))}
-                  services={services}
-                  employes={employes}
-                  showClientField={false}
-                  hidePayment={true}
-                />
-              </div>
-
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Statut</label>
-                <select className="input-control" value={editModal.statut} onChange={e => setEditModal({...editModal, statut: e.target.value})} required>
-                  <option value="non_paye">En attente (Non payé)</option>
-                  <option value="en_cours">En cours</option>
-                  <option value="acompte_verse">Acompte versé</option>
-                  <option value="encaisse">Encaissé</option>
-                </select>
-              </div>
-              
-              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button type="button" onClick={() => setEditModal(null)} className="btn" style={{ flex: 1, backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)' }}>
-                  Annuler
-                </button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                  Enregistrer les modifications
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* ── MODAL FACTURE ─────────────────────────────────────────────────── */}

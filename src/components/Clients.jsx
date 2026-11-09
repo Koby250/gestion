@@ -5,13 +5,11 @@ import {
 import { db } from '../firebase';
 import {
   Users, Plus, Search, Edit2, Trash2, X, CheckCircle,
-  Phone, Calendar, TrendingUp, Star, Award, ChevronDown, ChevronUp, User,
+  Phone, Calendar, TrendingUp, Star, Award, User,
   MessageCircle, Cake, Clock, Send, Upload, Copy, Tag, StickyNote
 } from 'lucide-react';
 import { logEvent } from '../utils/audit';
-
-const localDateStr = (d = new Date()) =>
-  `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+import ModalPortal from './ModalPortal';
 
 const getMonthFromDate = (dateStr) => {
   if (!dateStr) return null;
@@ -60,14 +58,6 @@ const Clients = ({ onNavigateToReservation }) => {
     setTimeout(() => setCopiedPhoneId(null), 2000);
   };
 
-  const handleUpdateQuickNote = async (clientId, notes) => {
-    try {
-      await updateDoc(doc(db, 'clients', clientId), { notes });
-    } catch (err) {
-      console.error("Erreur quick note:", err);
-    }
-  };
-
   const openClient = (c) => {
     setSelectedClient(c.id);
     setLocalClientData({
@@ -97,29 +87,10 @@ const Clients = ({ onNavigateToReservation }) => {
     }
   };
 
-  const handleUpdateBirthdate = async (clientId, birthDate) => {
-    try {
-      await updateDoc(doc(db, 'clients', clientId), { birthDate });
-    } catch (err) {
-      console.error("Erreur birthDate:", err);
-    }
-  };
-
   const AVAILABLE_TAGS = [
     'À rappeler', 'Ne décroche pas', 'Numéro invalide', 
     'Numéro indisponible', 'Injoignable', 'Client régulier', 'VIP'
   ];
-
-  const handleToggleTag = async (clientId, tag, currentTags = []) => {
-    const newTags = currentTags.includes(tag)
-      ? currentTags.filter(t => t !== tag)
-      : [...currentTags, tag];
-    try {
-      await updateDoc(doc(db, 'clients', clientId), { tags: newTags });
-    } catch (err) {
-      console.error("Erreur toggle tag:", err);
-    }
-  };
 
   // ── Chargement des données ────────────────────────────────────────────────
   useEffect(() => {
@@ -252,9 +223,6 @@ const Clients = ({ onNavigateToReservation }) => {
     return counts;
   }, [enrichedClients]);
 
-  // Lettres présentes, triées
-  const activeLetters = useMemo(() => Object.keys(letterCounts).sort(), [letterCounts]);
-
   // ── Filtre & tri ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = [...enrichedClients];
@@ -282,11 +250,12 @@ const Clients = ({ onNavigateToReservation }) => {
     if (sortBy === 'visites') list.sort((a, b) => b.nbVisites - a.nbVisites);
     if (sortBy === 'ca') list.sort((a, b) => b.totalCA - a.totalCA);
     if (sortBy === 'derniereVisite') list.sort((a, b) => (b.derniereVisite || '').localeCompare(a.derniereVisite || ''));
-    if (sortBy === 'relancer') list.sort((a, b) => (a.fidelite === 'À relancer' ? -1 : 1));
+    if (sortBy === 'relancer') list.sort((a, b) => (a.fidelite === 'À relancer' ? -1 : (b.fidelite === 'À relancer' ? 1 : 0)));
     return list;
   }, [enrichedClients, searchTerm, sortBy, statusFilter, letterFilter]);
 
   // Réinitialise la page à 1 dès que les filtres changent
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setCurrentPage(1); }, [searchTerm, sortBy, statusFilter, letterFilter]);
 
   // Clients de la page courante
@@ -386,7 +355,7 @@ const Clients = ({ onNavigateToReservation }) => {
           str.normalize('NFD')
              .replace(/[\u0300-\u036f]/g, '')
              .toLowerCase()
-             .replace(/[\s_\-]+/g, '');
+             .replace(/[\s_-]+/g, '');
 
         const headers = headerLine.split(delimiter).map(h =>
           normalize(h.replace(/^"|"$/g, '').trim())
@@ -422,7 +391,7 @@ const Clients = ({ onNavigateToReservation }) => {
 
         for (let i = 1; i < lines.length; i++) {
           // Gestion des champs entre guillemets contenant des virgules
-          const cols = lines[i].match(/(?:"([^"]*(?:""[^"]*)*)"|\'([^\']*)\'|([^,;]+)|(?<=,|;)(?=,|;)|^(?=,)|(?<=,)$)/g)
+          const cols = lines[i].match(/(?:"([^"]*(?:""[^"]*)*)"|'([^']*)'|([^,;]+)|(?<=,|;)(?=,|;)|^(?=,)|(?<=,)$)/g)
             ? lines[i].split(delimiter)
             : lines[i].split(delimiter);
           const parsedCols = cols.map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
@@ -433,7 +402,7 @@ const Clients = ({ onNavigateToReservation }) => {
           const d = (dateIdx   >= 0 && parsedCols[dateIdx])   ? parsedCols[dateIdx].trim()   : '';
 
           // Nettoyage du numéro de téléphone (espaces, tirets, points)
-          t = t.replace(/[\s\.\-]/g, '');
+          t = t.replace(/[\s.-]/g, '');
 
           // Ignorer uniquement si aucun numéro de téléphone valide
           if (!t) { ignoredCount++; continue; }
@@ -443,7 +412,7 @@ const Clients = ({ onNavigateToReservation }) => {
           // Parsing de date anniversaire (formats JJ/MM, MM/JJ, JJ-MM, MM-JJ)
           let finalDate = null;
           if (d) {
-            const dateParts = d.split(/[\/ \-]/);
+            const dateParts = d.split(/[/ -]/);
             if (dateParts.length >= 2) {
               const part0 = dateParts[0].padStart(2, '0');
               const part1 = dateParts[1].padStart(2, '0');
@@ -527,7 +496,7 @@ const Clients = ({ onNavigateToReservation }) => {
   // ── Détection numéro nigérien (+227) ──────────────────────────────────────
   const isNigerPhone = (phone) => {
     if (!phone) return false;
-    const cleaned = phone.replace(/[\s\.\-\(\)]/g, '');
+    const cleaned = phone.replace(/[\s.()-]/g, '');
     // Format international : +227XXXXXXXX ou 00227XXXXXXXX
     if (cleaned.startsWith('+227')) return true;
     if (cleaned.startsWith('00227')) return true;
@@ -731,7 +700,7 @@ const Clients = ({ onNavigateToReservation }) => {
                   style={{
                     position: 'relative',
                     minWidth: '32px', height: '32px', padding: '0 4px',
-                    borderRadius: '7px', border: 'none',
+                    borderRadius: '7px',
                     cursor: hasClients ? 'pointer' : 'default',
                     fontWeight: '700', fontSize: '0.8rem',
                     backgroundColor: isActive ? 'var(--btn-primary-bg)' : (hasClients ? 'var(--bg-card)' : 'transparent'),
@@ -957,92 +926,95 @@ const Clients = ({ onNavigateToReservation }) => {
 
       {/* ── MODAL FORMULAIRE ─────────────────────────────────────────────── */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => { setShowForm(false); resetForm(); }}>
-          <div className="modal-content" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>
-                <Users size={20} color="var(--accent-color)" />
-                {editingId ? 'Modifier le client' : 'Nouveau client'}
-              </h2>
-              <button className="btn-icon" onClick={() => { setShowForm(false); resetForm(); }}>
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
-                  <label>Prénom</label>
-                  <input type="text" className="input-control" placeholder="Ex : Idriss"
-                    value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} />
-                </div>
-                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
-                  <label>Nom</label>
-                  <input type="text" className="input-control" placeholder="Ex : Farouk"
-                    value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} />
-                </div>
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => { setShowForm(false); resetForm(); }}>
+            <div className="modal-content" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>
+                  <Users size={20} color="var(--accent-color)" />
+                  {editingId ? 'Modifier le client' : 'Nouveau client'}
+                </h2>
+                <button className="btn-icon" onClick={() => { setShowForm(false); resetForm(); }}>
+                  <X size={20} />
+                </button>
               </div>
-              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
-                  <label>Téléphone (WhatsApp)</label>
-                  <input type="tel" className="input-control" placeholder="Ex : +225 07..."
-                    value={form.telephone} onChange={e => setForm({ ...form, telephone: e.target.value })} />
-                </div>
-                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
-                  <label>Anniversaire (Jour / Mois)</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <select className="input-control" style={{ flex: 1 }}
-                      value={form.birthDate ? form.birthDate.split('-').pop() : ''} 
-                      onChange={e => {
-                        let currentMonth = '01';
-                        if (form.birthDate) {
-                           const parts = form.birthDate.split('-');
-                           currentMonth = parts.length === 3 ? parts[1] : parts[0];
-                        }
-                        setForm({ ...form, birthDate: e.target.value ? `${currentMonth}-${e.target.value.padStart(2, '0')}` : '' });
-                      }}>
-                      <option value="">Jour</option>
-                      {Array.from({ length: 31 }, (_, i) => <option key={i+1} value={String(i+1).padStart(2, '0')}>{i+1}</option>)}
-                    </select>
-                    <select className="input-control" style={{ flex: 2 }}
-                      value={form.birthDate ? (form.birthDate.split('-').length === 3 ? form.birthDate.split('-')[1] : form.birthDate.split('-')[0]) : ''} 
-                      onChange={e => {
-                        let currentDay = '01';
-                        if (form.birthDate) {
-                           const parts = form.birthDate.split('-');
-                           currentDay = parts[parts.length - 1];
-                        }
-                        setForm({ ...form, birthDate: e.target.value ? `${e.target.value.padStart(2, '0')}-${currentDay}` : '' });
-                      }}>
-                      <option value="">Mois</option>
-                      {['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'].map((m, i) => (
-                        <option key={i+1} value={String(i+1).padStart(2, '0')}>{m}</option>
-                      ))}
-                    </select>
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                  <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
+                    <label>Prénom</label>
+                    <input type="text" className="input-control" placeholder="Ex : Idriss"
+                      value={form.prenom} onChange={e => setForm({ ...form, prenom: e.target.value })} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
+                    <label>Nom</label>
+                    <input type="text" className="input-control" placeholder="Ex : Farouk"
+                      value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} />
                   </div>
                 </div>
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Notes & Préférences internes</label>
-                <textarea className="input-control" placeholder="Ex : Allergie au menthol, préférence rasoir droit…"
-                  value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
-                  rows={3} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ width: '100%', marginTop: '8px' }}>
-                <CheckCircle size={18} /> {isSaving ? 'Enregistrement…' : (editingId ? 'Enregistrer les modifications' : 'Ajouter le client')}
-              </button>
-            </form>
+                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                  <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
+                    <label>Téléphone (WhatsApp)</label>
+                    <input type="tel" className="input-control" placeholder="Ex : +225 07..."
+                      value={form.telephone} onChange={e => setForm({ ...form, telephone: e.target.value })} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0, flex: 1, minWidth: '150px' }}>
+                    <label>Anniversaire (Jour / Mois)</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <select className="input-control" style={{ flex: 1 }}
+                        value={form.birthDate ? form.birthDate.split('-').pop() : ''} 
+                        onChange={e => {
+                          let currentMonth = '01';
+                          if (form.birthDate) {
+                             const parts = form.birthDate.split('-');
+                             currentMonth = parts.length === 3 ? parts[1] : parts[0];
+                          }
+                          setForm({ ...form, birthDate: e.target.value ? `${currentMonth}-${e.target.value.padStart(2, '0')}` : '' });
+                        }}>
+                        <option value="">Jour</option>
+                        {Array.from({ length: 31 }, (_, i) => <option key={i+1} value={String(i+1).padStart(2, '0')}>{i+1}</option>)}
+                      </select>
+                      <select className="input-control" style={{ flex: 2 }}
+                        value={form.birthDate ? (form.birthDate.split('-').length === 3 ? form.birthDate.split('-')[1] : form.birthDate.split('-')[0]) : ''} 
+                        onChange={e => {
+                          let currentDay = '01';
+                          if (form.birthDate) {
+                             const parts = form.birthDate.split('-');
+                             currentDay = parts[parts.length - 1];
+                          }
+                          setForm({ ...form, birthDate: e.target.value ? `${e.target.value.padStart(2, '0')}-${currentDay}` : '' });
+                        }}>
+                        <option value="">Mois</option>
+                        {['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'].map((m, i) => (
+                          <option key={i+1} value={String(i+1).padStart(2, '0')}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Notes & Préférences internes</label>
+                  <textarea className="input-control" placeholder="Ex : Allergie au menthol, préférence rasoir droit…"
+                    value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
+                    rows={3} style={{ resize: 'vertical', fontFamily: 'inherit' }} />
+                </div>
+                <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ width: '100%', marginTop: '8px' }}>
+                  <CheckCircle size={18} /> {isSaving ? 'Enregistrement…' : (editingId ? 'Enregistrer les modifications' : 'Ajouter le client')}
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
 
       {/* MODAL IMPORT CSV */}
       {showCsvModal && (
-        <div className="modal-overlay" onClick={() => setShowCsvModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2><Upload size={18} color="var(--accent-color)" /> Importer des clients (CSV)</h2>
-              <button className="btn-icon" onClick={() => setShowCsvModal(false)}><X size={20} /></button>
-            </div>
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setShowCsvModal(false)}>
+            <div className="modal-content" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2><Upload size={18} color="var(--accent-color)" /> Importer des clients (CSV)</h2>
+                <button className="btn-icon" onClick={() => setShowCsvModal(false)}><X size={20} /></button>
+              </div>
             <div className="modal-body">
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.95rem' }}>
                 Importez une liste de clients depuis un fichier CSV (Outlook, Google Contacts, etc.). Fichiers de plus de 4 000 contacts supportés.
@@ -1103,6 +1075,7 @@ const Clients = ({ onNavigateToReservation }) => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── MODAL FICHE CLIENT (Modale dédiée) ──────────────────────────── */}
@@ -1121,8 +1094,9 @@ const Clients = ({ onNavigateToReservation }) => {
         const appels = client.suiviAppels || [];
 
         return (
-          <div className="modal-overlay" onClick={() => setSelectedClient(null)}>
-            <div className="modal-content client-modal-detail" style={{ maxWidth: '850px', width: '95%', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '85vh' }} onClick={e => e.stopPropagation()}>
+          <ModalPortal>
+            <div className="modal-overlay" onClick={() => setSelectedClient(null)}>
+              <div className="modal-content client-modal-detail" style={{ maxWidth: '850px', width: '95%', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '85vh' }} onClick={e => e.stopPropagation()}>
               
               <div className="modal-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -1329,8 +1303,9 @@ const Clients = ({ onNavigateToReservation }) => {
 
             </div>
           </div>
-        );
-      })()}
+        </ModalPortal>
+      );
+    })()}
 
     </div>
   );

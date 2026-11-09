@@ -10,6 +10,7 @@ import {
 import { db } from '../firebase';
 import { logEvent } from '../utils/audit';
 import SuccessModal from './SuccessModal';
+import ModalPortal from './ModalPortal';
 
 // Helper date locale YYYY-MM-DD
 const localDateStr = (d = new Date()) => {
@@ -1466,18 +1467,19 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
           MODAL 1 : CRÉATION D'UN NOUVEL ABONNEMENT
           ════════════════════════════════════════════════════════════════════ */}
       {isCreateModalOpen && (
-        <div className="modal-overlay">
-          <div
-            className="modal-content"
-            style={{
-              maxWidth: '680px',
-              width: '95vw',
-              maxHeight: '92vh',
-              overflowY: 'auto',
-              padding: '24px'
-            }}
-            onClick={e => e.stopPropagation()}
-          >
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
+            <div
+              className="modal-content"
+              style={{
+                maxWidth: '680px',
+                width: '95vw',
+                maxHeight: '92vh',
+                overflowY: 'auto',
+                padding: '24px'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: 'var(--accent-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1569,7 +1571,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                     )}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                  <div className="form-grid-client">
                     <div>
                       <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Nom</label>
                       <input
@@ -1639,119 +1641,123 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                   3. Paramètres du carnet de séances
                 </label>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                  {/* Nombre de séances N (Saisie libre et absolue : 0, 1, 2, 3...) */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Nombre de séances (N)</label>
-                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Saisie libre (0, 1, 2, 3...)</span>
+                <div className="form-grid-carnet">
+                  <div className="form-grid-dates">
+                    {/* Nombre de séances N (Saisie libre et absolue : 0, 1, 2, 3...) */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Nombre de séances (N)</label>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Saisie libre (0, 1, 2, 3...)</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curr = nombreSeances === '' ? 0 : Number(nombreSeances);
+                            handleNombreSeancesChange(Math.max(0, curr - 1));
+                          }}
+                          className="btn btn-small"
+                          style={{
+                            padding: '6px 12px',
+                            fontWeight: 800,
+                            fontSize: '1rem',
+                            backgroundColor: 'var(--bg-input)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px'
+                          }}
+                          title="Diminuer d'une séance"
+                        >
+                          –
+                        </button>
+                        <input
+                          type="number"
+                          min="0"
+                          className="input-control"
+                          style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem', padding: '6px' }}
+                          value={nombreSeances}
+                          onChange={e => handleNombreSeancesChange(e.target.value)}
+                          placeholder="0"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curr = nombreSeances === '' ? 0 : Number(nombreSeances);
+                            handleNombreSeancesChange(curr + 1);
+                          }}
+                          className="btn btn-small"
+                          style={{
+                            padding: '6px 12px',
+                            fontWeight: 800,
+                            fontSize: '1rem',
+                            backgroundColor: 'var(--bg-input)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px'
+                          }}
+                          title="Ajouter une séance"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        {nombreSeances === '' || Number(nombreSeances) === 0
+                          ? "Carnet vierge à 0 séance (ajustable à tout moment)"
+                          : `${nombreSeances} séance${Number(nombreSeances) > 1 ? 's' : ''} au total dans le carnet`}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const curr = nombreSeances === '' ? 0 : Number(nombreSeances);
-                          handleNombreSeancesChange(Math.max(0, curr - 1));
-                        }}
-                        className="btn btn-small"
-                        style={{
-                          padding: '6px 12px',
-                          fontWeight: 800,
-                          fontSize: '1rem',
-                          backgroundColor: 'var(--bg-input)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '6px'
-                        }}
-                        title="Diminuer d'une séance"
-                      >
-                        –
-                      </button>
-                      <input
-                        type="number"
-                        min="0"
+
+                    {/* Fréquence */}
+                    <div>
+                      <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Fréquence des séances</label>
+                      <select
                         className="input-control"
-                        style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem', padding: '6px' }}
-                        value={nombreSeances}
-                        onChange={e => handleNombreSeancesChange(e.target.value)}
-                        placeholder="0"
+                        value={frequence}
+                        onChange={e => handleFrequenceChange(e.target.value)}
+                      >
+                        <option value="hebdomadaire">Hebdomadaire (1 séance / sem.)</option>
+                        <option value="bimensuelle">Bimensuelle (1 séance / 2 sem.)</option>
+                        <option value="mensuelle">Mensuelle (1 séance / mois)</option>
+                        <option value="personnalisee">Personnalisée (au choix)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="form-grid-dates">
+                    {/* Date Début */}
+                    <div>
+                      <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Date de début</label>
+                      <input
+                        type="date"
+                        className="input-control"
+                        value={dateDebut}
+                        onChange={e => handleDateDebutChange(e.target.value)}
                         required
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const curr = nombreSeances === '' ? 0 : Number(nombreSeances);
-                          handleNombreSeancesChange(curr + 1);
+                    </div>
+
+                    {/* Date Fin */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Date d'expiration</label>
+                        <button
+                          type="button"
+                          onClick={handleToggleDateFinManual}
+                          style={{ background: 'none', border: 'none', fontSize: '0.68rem', color: 'var(--accent-color)', cursor: 'pointer' }}
+                        >
+                          {isDateFinManual ? "Auto" : "Personnaliser"}
+                        </button>
+                      </div>
+                      <input
+                        type="date"
+                        className="input-control"
+                        value={dateFin}
+                        onChange={e => {
+                          setDateFin(e.target.value);
+                          setIsDateFinManual(true);
                         }}
-                        className="btn btn-small"
-                        style={{
-                          padding: '6px 12px',
-                          fontWeight: 800,
-                          fontSize: '1rem',
-                          backgroundColor: 'var(--bg-input)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '6px'
-                        }}
-                        title="Ajouter une séance"
-                      >
-                        +
-                      </button>
+                        required
+                      />
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      {nombreSeances === '' || Number(nombreSeances) === 0
-                        ? "Carnet vierge à 0 séance (ajustable à tout moment)"
-                        : `${nombreSeances} séance${Number(nombreSeances) > 1 ? 's' : ''} au total dans le carnet`}
-                    </div>
-                  </div>
-
-                  {/* Fréquence */}
-                  <div>
-                    <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Fréquence des séances</label>
-                    <select
-                      className="input-control"
-                      value={frequence}
-                      onChange={e => handleFrequenceChange(e.target.value)}
-                    >
-                      <option value="hebdomadaire">Hebdomadaire (1 séance / sem.)</option>
-                      <option value="bimensuelle">Bimensuelle (1 séance / 2 sem.)</option>
-                      <option value="mensuelle">Mensuelle (1 séance / mois)</option>
-                      <option value="personnalisee">Personnalisée (au choix)</option>
-                    </select>
-                  </div>
-
-                  {/* Date Début */}
-                  <div>
-                    <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Date de début</label>
-                    <input
-                      type="date"
-                      className="input-control"
-                      value={dateDebut}
-                      onChange={e => handleDateDebutChange(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  {/* Date Fin */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Date d'expiration</label>
-                      <button
-                        type="button"
-                        onClick={handleToggleDateFinManual}
-                        style={{ background: 'none', border: 'none', fontSize: '0.68rem', color: 'var(--accent-color)', cursor: 'pointer' }}
-                      >
-                        {isDateFinManual ? "Auto" : "Personnaliser"}
-                      </button>
-                    </div>
-                    <input
-                      type="date"
-                      className="input-control"
-                      value={dateFin}
-                      onChange={e => {
-                        setDateFin(e.target.value);
-                        setIsDateFinManual(true);
-                      }}
-                      required
-                    />
                   </div>
                 </div>
               </div>
@@ -1768,7 +1774,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                   4. Tarification &amp; Réduction forfaitaire
                 </label>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', alignItems: 'flex-start' }}>
+                <div className="form-grid-tarification">
                   {/* Type remise */}
                   <div>
                     <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Type de réduction</label>
@@ -1906,18 +1912,20 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
           MODAL 2 : VALIDATION D'UNE SÉANCE (« MARQUER COMME EFFECTUÉE »)
           ════════════════════════════════════════════════════════════════════ */}
       {consumeModalAbonnement && (
-        <div className="modal-overlay">
-          <div
-            className="modal-content"
-            style={{ maxWidth: '480px', width: '92vw', padding: '22px' }}
-            onClick={e => e.stopPropagation()}
-          >
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setConsumeModalAbonnement(null)}>
+            <div
+              className="modal-content"
+              style={{ maxWidth: '480px', width: '92vw', padding: '22px' }}
+              onClick={e => e.stopPropagation()}
+            >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <CheckCircle2 size={20} color="#10b981" />
@@ -2018,24 +2026,26 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
           MODAL 3 : VUE DÉTAILLÉE DE L'ABONNEMENT
           ════════════════════════════════════════════════════════════════════ */}
       {selectedAbonnement && (
-        <div className="modal-overlay">
-          <div
-            className="modal-content"
-            style={{
-              maxWidth: '680px',
-              width: '95vw',
-              maxHeight: '92vh',
-              overflowY: 'auto',
-              padding: '24px'
-            }}
-            onClick={e => e.stopPropagation()}
-          >
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setSelectedAbonnement(null)}>
+            <div
+              className="modal-content"
+              style={{
+                maxWidth: '680px',
+                width: '95vw',
+                maxHeight: '92vh',
+                overflowY: 'auto',
+                padding: '24px'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
             {/* En-tête détaillée */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
               <div>
@@ -2334,18 +2344,20 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
           MODAL 4 : CHANGEMENT DE STATUT (SUSPENDRE / RÉACTIVER / ANNULER)
           ════════════════════════════════════════════════════════════════════ */}
       {statusChangeModal && (
-        <div className="modal-overlay">
-          <div
-            className="modal-content"
-            style={{ maxWidth: '440px', width: '90vw', padding: '20px' }}
-            onClick={e => e.stopPropagation()}
-          >
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setStatusChangeModal(null)}>
+            <div
+              className="modal-content"
+              style={{ maxWidth: '440px', width: '90vw', padding: '20px' }}
+              onClick={e => e.stopPropagation()}
+            >
             <h3 style={{ margin: '0 0 10px', fontSize: '1rem', fontWeight: 800 }}>
               Confirmer le statut : {statusChangeModal.targetStatus.toUpperCase()}
             </h3>
@@ -2391,18 +2403,20 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
           MODAL 5 : PARAMÉTRAGE DU CARNET DE SÉANCES (CONTRÔLE ABSOLU)
           ════════════════════════════════════════════════════════════════════ */}
       {editCarnetModal && (
-        <div className="modal-overlay" onClick={() => setEditCarnetModal(null)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '520px', width: '92vw', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}
-            onClick={e => e.stopPropagation()}
-          >
+        <ModalPortal>
+          <div className="modal-overlay" onClick={() => setEditCarnetModal(null)}>
+            <div
+              className="modal-content"
+              style={{ maxWidth: '520px', width: '92vw', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}
+              onClick={e => e.stopPropagation()}
+            >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2574,7 +2588,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
               </div>
 
               {/* Fréquence & Date Fin */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+              <div className="form-grid-dates" style={{ marginBottom: '14px' }}>
                 <div>
                   <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Fréquence</label>
                   <select
@@ -2650,6 +2664,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* MODAL DE SUCCÈS TEMPORAIRE */}
