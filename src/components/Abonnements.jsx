@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Repeat, PlusCircle, Search,
-  CheckCircle2, X
+  CheckCircle2, X, SlidersHorizontal
 } from 'lucide-react';
 import {
   collection, onSnapshot, addDoc, updateDoc, doc,
@@ -56,9 +56,10 @@ const formatDateTimeFr = (dateStr) => {
  * Calcule la date de fin estimée selon la date de début, le nombre de séances et la fréquence
  */
 const computeEndDate = (startDateStr, nbSeances, frequence) => {
-  if (!startDateStr || !nbSeances) return localDateStr();
+  if (!startDateStr) return localDateStr();
   const d = new Date(startDateStr);
-  const n = Math.max(1, parseInt(nbSeances, 10) || 1);
+  const rawN = parseInt(nbSeances, 10);
+  const n = (!isNaN(rawN) && rawN > 0) ? rawN : 1;
 
   if (frequence === 'hebdomadaire') {
     d.setDate(d.getDate() + (n * 7));
@@ -67,7 +68,7 @@ const computeEndDate = (startDateStr, nbSeances, frequence) => {
   } else if (frequence === 'mensuelle') {
     d.setMonth(d.getMonth() + n);
   } else {
-    // Personnalisé : 30 jours par défaut par séance
+    // Personnalisé : 30 jours par défaut
     d.setDate(d.getDate() + (n * 30));
   }
   return localDateStr(d);
@@ -106,6 +107,14 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
   const [selectedAbonnement, setSelectedAbonnement] = useState(null);
   const [consumeModalAbonnement, setConsumeModalAbonnement] = useState(null);
   const [statusChangeModal, setStatusChangeModal] = useState(null); // { abonnement, targetStatus }
+  const [editCarnetModal, setEditCarnetModal] = useState(null); // { abonnement }
+  const [editCarnetNbSeances, setEditCarnetNbSeances] = useState(0);
+  const [editCarnetDoneSeances, setEditCarnetDoneSeances] = useState(0);
+  const [editCarnetFrequence, setEditCarnetFrequence] = useState('hebdomadaire');
+  const [editCarnetDateFin, setEditCarnetDateFin] = useState(localDateStr());
+  const [editCarnetStatut, setEditCarnetStatut] = useState('actif');
+  const [editCarnetMotif, setEditCarnetMotif] = useState('');
+  const [isSavingCarnet, setIsSavingCarnet] = useState(false);
 
   // État de chargement / succès
   const [isSaving, setIsSaving] = useState(false);
@@ -121,10 +130,10 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
   const [clientTelephone, setClientTelephone] = useState('');
 
   const [selectedServiceId, setSelectedServiceId] = useState('');
-  const [nombreSeances, setNombreSeances] = useState(5);
+  const [nombreSeances, setNombreSeances] = useState(1);
   const [frequence, setFrequence] = useState('hebdomadaire'); // 'hebdomadaire' | 'bimensuelle' | 'mensuelle' | 'personnalisee'
   const [dateDebut, setDateDebut] = useState(localDateStr());
-  const [dateFin, setDateFin] = useState(computeEndDate(localDateStr(), 5, 'hebdomadaire'));
+  const [dateFin, setDateFin] = useState(computeEndDate(localDateStr(), 1, 'hebdomadaire'));
   const [isDateFinManual, setIsDateFinManual] = useState(false);
 
   // Tarification
@@ -177,24 +186,35 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
 
   // Handlers pour la synchronisation dynamique de dateFin sans effet en cascade
   const handleNombreSeancesChange = (newCount) => {
-    const n = Math.max(1, parseInt(newCount, 10) || 1);
-    setNombreSeances(n);
-    if (!isDateFinManual) {
-      setDateFin(computeEndDate(dateDebut, n, frequence));
+    if (newCount === '') {
+      setNombreSeances('');
+      if (!isDateFinManual) {
+        setDateFin(computeEndDate(dateDebut, 0, frequence));
+      }
+      return;
+    }
+    const n = parseInt(newCount, 10);
+    if (!isNaN(n) && n >= 0) {
+      setNombreSeances(n);
+      if (!isDateFinManual) {
+        setDateFin(computeEndDate(dateDebut, n, frequence));
+      }
     }
   };
 
   const handleFrequenceChange = (newFreq) => {
     setFrequence(newFreq);
     if (!isDateFinManual) {
-      setDateFin(computeEndDate(dateDebut, nombreSeances, newFreq));
+      const n = nombreSeances === '' ? 0 : Number(nombreSeances);
+      setDateFin(computeEndDate(dateDebut, n, newFreq));
     }
   };
 
   const handleDateDebutChange = (newStart) => {
     setDateDebut(newStart);
     if (!isDateFinManual) {
-      setDateFin(computeEndDate(newStart, nombreSeances, frequence));
+      const n = nombreSeances === '' ? 0 : Number(nombreSeances);
+      setDateFin(computeEndDate(newStart, n, frequence));
     }
   };
 
@@ -202,7 +222,8 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
     const nextManual = !isDateFinManual;
     setIsDateFinManual(nextManual);
     if (!nextManual) {
-      setDateFin(computeEndDate(dateDebut, nombreSeances, frequence));
+      const n = nombreSeances === '' ? 0 : Number(nombreSeances);
+      setDateFin(computeEndDate(dateDebut, n, frequence));
     }
   };
 
@@ -214,7 +235,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
   // Calculs financiers du formulaire
   const { totalStandard, remiseMontant, prixFinalPaye } = useMemo(() => {
     const unitPrice = currentService ? Number(currentService.prixDefaut || 0) : 0;
-    const n = Math.max(1, parseInt(nombreSeances, 10) || 1);
+    const n = nombreSeances === '' ? 0 : Math.max(0, parseInt(nombreSeances, 10) || 0);
     const standard = unitPrice * n;
 
     let remMontant = 0;
@@ -369,9 +390,9 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
       return;
     }
 
-    const n = parseInt(nombreSeances, 10);
-    if (!n || n < 1) {
-      alert("Veuillez renseigner un nombre de séances valide (au moins 1).");
+    const n = nombreSeances === '' ? 0 : parseInt(nombreSeances, 10);
+    if (isNaN(n) || n < 0) {
+      alert("Veuillez renseigner un nombre de séances valide (0 ou supérieur).");
       return;
     }
 
@@ -418,10 +439,14 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
       }
 
       // 2. Synchronisation financière CRITIQUE : UNE SEULE transaction enregistrée
+      const txMotif = n === 0
+        ? `Abonnement ${currentService.nom} (Carnet 0 séance)`
+        : `Abonnement ${currentService.nom} (${n} séance${n > 1 ? 's' : ''})`;
+
       const txPayload = {
         type: 'prestation',
         montant: Number(prixFinalPaye),
-        motif: `Abonnement ${currentService.nom} (${n} séances)`,
+        motif: txMotif,
         clientNom: fullClientName,
         clientId: resolvedClientId,
         clientTel: clientTelephone.trim(),
@@ -436,7 +461,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
       const txRef = await addDoc(collection(db, 'transactions'), txPayload);
 
       // 3. Création de l'abonnement immuable
-      const nextDate = computeNextSessionDate(dateDebut, frequence);
+      const nextDate = n > 0 ? computeNextSessionDate(dateDebut, frequence) : null;
       const abonnementPayload = {
         clientId: resolvedClientId,
         clientNom: clientNom.trim(),
@@ -449,7 +474,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
         serviceCategorie: currentService.categorie || 'salon',
         prixUnitaire: Number(currentService.prixDefaut || 0), // Immuable
 
-        nombreSeances: n, // N
+        nombreSeances: n, // N (peut être 0, 1, 2, 3...)
         seancesEffectuees: 0,
         frequence: frequence,
         dateDebut: dateDebut,
@@ -474,7 +499,9 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
             statut: 'actif',
             date: new Date().toISOString(),
             par: currentUserNom || 'Admin',
-            motif: 'Souscription initiale du forfait'
+            motif: n === 0
+              ? 'Souscription initiale du carnet (0 séance configurée)'
+              : `Souscription initiale du carnet (${n} séance${n > 1 ? 's' : ''})`
           }
         ],
         seancesConsommees: []
@@ -485,7 +512,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
       // 4. Audit Log
       await logEvent(
         'ABONNEMENT_CREATE',
-        `Souscription forfait [${currentService.nom}] - ${n} séances pour ${prixFinalPaye} FCFA payé via ${modePaiement}. Client : ${fullClientName}`
+        `Souscription forfait [${currentService.nom}] - ${n} séance(s) pour ${prixFinalPaye} FCFA payé via ${modePaiement}. Client : ${fullClientName}`
       );
 
       // Fermeture & Réinitialisation
@@ -508,10 +535,10 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
     setClientPrenom('');
     setClientTelephone('');
     setSelectedServiceId('');
-    setNombreSeances(5);
+    setNombreSeances(1);
     setFrequence('hebdomadaire');
     setDateDebut(localDateStr());
-    setDateFin(computeEndDate(localDateStr(), 5, 'hebdomadaire'));
+    setDateFin(computeEndDate(localDateStr(), 1, 'hebdomadaire'));
     setIsDateFinManual(false);
     setRemiseType('aucune');
     setRemiseValeur('');
@@ -526,7 +553,13 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
       alert(`Impossible de consommer une séance : cet abonnement est actuellement ${ab.statut.toUpperCase()}.`);
       return;
     }
-    const restant = Math.max(0, (ab.nombreSeances || 0) - (ab.seancesEffectuees || 0));
+    const total = Number(ab.nombreSeances !== undefined ? ab.nombreSeances : 0);
+    const done = Number(ab.seancesEffectuees || 0);
+    if (total === 0) {
+      alert("Ce carnet contient actuellement 0 séance. Veuillez paramétrer le carnet pour y ajouter des séances avant de pouvoir valider.");
+      return;
+    }
+    const restant = Math.max(0, total - done);
     if (restant <= 0) {
       alert("Toutes les séances de ce forfait ont déjà été effectuées.");
       return;
@@ -668,6 +701,95 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
     } catch (err) {
       console.error("[Abonnements] Erreur changement statut :", err);
       alert("Une erreur est survenue lors de la mise à jour du statut.");
+    }
+  };
+
+  // ── Paramétrage du Carnet de Séances (Contrôle Absolu) ─────────────────────
+  const handleOpenEditCarnet = (ab) => {
+    setEditCarnetModal(ab);
+    setEditCarnetNbSeances(ab.nombreSeances !== undefined ? ab.nombreSeances : 0);
+    setEditCarnetDoneSeances(ab.seancesEffectuees || 0);
+    setEditCarnetFrequence(ab.frequence || 'hebdomadaire');
+    setEditCarnetDateFin(ab.dateFin || localDateStr());
+    setEditCarnetStatut(ab.statut || 'actif');
+    setEditCarnetMotif('');
+  };
+
+  const handleConfirmEditCarnet = async (e) => {
+    e.preventDefault();
+    if (isSavingCarnet || !editCarnetModal) return;
+
+    const totalN = editCarnetNbSeances === '' ? 0 : parseInt(editCarnetNbSeances, 10);
+    const doneN = editCarnetDoneSeances === '' ? 0 : parseInt(editCarnetDoneSeances, 10);
+
+    if (isNaN(totalN) || totalN < 0) {
+      alert("Veuillez saisir un nombre total de séances valide (0 ou supérieur).");
+      return;
+    }
+    if (isNaN(doneN) || doneN < 0) {
+      alert("Veuillez saisir un nombre de séances effectuées valide (0 ou supérieur).");
+      return;
+    }
+    if (totalN > 0 && doneN > totalN) {
+      alert("Le nombre de séances effectuées ne peut pas dépasser le nombre total de séances du carnet.");
+      return;
+    }
+
+    setIsSavingCarnet(true);
+    try {
+      const ab = editCarnetModal;
+      let finalStatus = editCarnetStatut;
+
+      // Déduction intelligente du statut
+      if (totalN > 0 && doneN >= totalN && finalStatus === 'actif') {
+        finalStatus = 'termine';
+      } else if (doneN < totalN && finalStatus === 'termine') {
+        finalStatus = 'actif';
+      }
+
+      const nextPlanned = (totalN > doneN && finalStatus === 'actif')
+        ? computeNextSessionDate(localDateStr(), editCarnetFrequence)
+        : null;
+
+      const carnetRecord = {
+        statut: finalStatus,
+        date: new Date().toISOString(),
+        par: currentUserNom || 'Admin',
+        motif: editCarnetMotif.trim() || `Paramétrage carnet : ${totalN} séance(s) totale(s), ${doneN} effectuée(s) (Fréquence : ${editCarnetFrequence})`
+      };
+
+      const updateData = {
+        nombreSeances: totalN,
+        seancesEffectuees: doneN,
+        frequence: editCarnetFrequence,
+        dateFin: editCarnetDateFin,
+        statut: finalStatus,
+        prochaineSeancePrevue: nextPlanned,
+        statutHistorique: arrayUnion(carnetRecord)
+      };
+
+      await updateDoc(doc(db, 'abonnements', ab.id), updateData);
+
+      await logEvent(
+        'ABONNEMENT_PARAMETRAGE_CARNET',
+        `Ajustement du carnet de séances pour [${ab.serviceNom}] (Client : ${ab.clientNomComplet}) : N=${totalN}, Effectuées=${doneN}, Statut=${finalStatus}. Motif : ${editCarnetMotif.trim() || 'Paramétrage manuel'}`
+      );
+
+      if (selectedAbonnement && selectedAbonnement.id === ab.id) {
+        setSelectedAbonnement(prev => ({
+          ...prev,
+          ...updateData,
+          statutHistorique: [...(prev.statutHistorique || []), carnetRecord]
+        }));
+      }
+
+      setEditCarnetModal(null);
+      setSuccessMessage(`Carnet de séances reconfiguré : ${totalN} séance${totalN > 1 ? 's' : ''} (${doneN} effectuée${doneN > 1 ? 's' : ''})`);
+    } catch (err) {
+      console.error("[Abonnements] Erreur paramétrage carnet :", err);
+      alert("Une erreur est survenue lors du paramétrage du carnet de séances.");
+    } finally {
+      setIsSavingCarnet(false);
     }
   };
 
@@ -961,8 +1083,8 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                 <tbody>
                   {filteredAbonnements.map(ab => {
                     const done = Number(ab.seancesEffectuees || 0);
-                    const total = Number(ab.nombreSeances || 1);
-                    const pct = Math.min(100, Math.round((done / total) * 100));
+                    const total = Number(ab.nombreSeances !== undefined ? ab.nombreSeances : 0);
+                    const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
                     const restant = Math.max(0, total - done);
                     const isExpiring = ab.statut === 'actif' && ab.dateFin && ab.dateFin <= localDateStr();
 
@@ -999,11 +1121,11 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                         {/* Progression */}
                         <td style={{ padding: '12px 14px', minWidth: '160px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', marginBottom: '4px' }}>
-                            <span style={{ fontWeight: 700, color: done === total ? '#10b981' : 'var(--text-main)' }}>
-                              {done} / {total} séances
+                            <span style={{ fontWeight: 700, color: total > 0 && done >= total ? '#10b981' : 'var(--text-main)' }}>
+                              {done} / {total} séance{total > 1 ? 's' : ''}
                             </span>
                             <span style={{ color: 'var(--text-muted)' }}>
-                              {restant > 0 ? `${restant} restante${restant > 1 ? 's' : ''}` : 'Terminé'}
+                              {total === 0 ? 'Carnet 0 séance' : restant > 0 ? `${restant} restante${restant > 1 ? 's' : ''}` : 'Terminé'}
                             </span>
                           </div>
                           <div style={{ width: '100%', height: '6px', borderRadius: '4px', backgroundColor: 'var(--bg-input)', overflow: 'hidden' }}>
@@ -1011,7 +1133,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                               style={{
                                 width: `${pct}%`,
                                 height: '100%',
-                                backgroundColor: done === total ? '#10b981' : 'var(--accent-color)',
+                                backgroundColor: total > 0 && done >= total ? '#10b981' : 'var(--accent-color)',
                                 transition: 'width 0.3s ease'
                               }}
                             />
@@ -1103,6 +1225,26 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
 
                             <button
                               type="button"
+                              onClick={() => handleOpenEditCarnet(ab)}
+                              className="btn btn-small"
+                              style={{
+                                backgroundColor: 'var(--bg-input)',
+                                color: 'var(--text-main)',
+                                border: '1px solid var(--border-color)',
+                                fontSize: '0.74rem',
+                                padding: '5px 9px',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="Paramétrer le carnet de séances"
+                            >
+                              <SlidersHorizontal size={13} /> Carnet
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() => setSelectedAbonnement(ab)}
                               className="btn btn-small"
                               style={{
@@ -1129,8 +1271,8 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
             <div className="mobile-cards" style={{ padding: '12px' }}>
               {filteredAbonnements.map(ab => {
                 const done = Number(ab.seancesEffectuees || 0);
-                const total = Number(ab.nombreSeances || 1);
-                const pct = Math.min(100, Math.round((done / total) * 100));
+                const total = Number(ab.nombreSeances !== undefined ? ab.nombreSeances : 0);
+                const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
                 const restant = Math.max(0, total - done);
 
                 return (
@@ -1188,11 +1330,13 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                     {/* Barre de progression */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', marginBottom: '3px' }}>
-                        <span style={{ fontWeight: 700 }}>{done}/{total} séances</span>
-                        <span style={{ color: 'var(--text-muted)' }}>{restant} restante{restant > 1 ? 's' : ''}</span>
+                        <span style={{ fontWeight: 700 }}>{done}/{total} séance{total > 1 ? 's' : ''}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {total === 0 ? 'Carnet 0 séance' : `${restant} restante${restant > 1 ? 's' : ''}`}
+                        </span>
                       </div>
                       <div style={{ width: '100%', height: '6px', borderRadius: '4px', backgroundColor: 'var(--bg-input)', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: done === total ? '#10b981' : 'var(--accent-color)' }} />
+                        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: total > 0 && done >= total ? '#10b981' : 'var(--accent-color)' }} />
                       </div>
                     </div>
 
@@ -1202,7 +1346,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                     </div>
 
                     {/* Boutons actions mobile */}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
                       {ab.statut === 'actif' && restant > 0 && (
                         <button
                           type="button"
@@ -1210,6 +1354,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                           className="btn btn-small"
                           style={{
                             flex: 1,
+                            minWidth: '110px',
                             backgroundColor: 'rgba(16, 185, 129, 0.15)',
                             color: '#047857',
                             border: '1px solid rgba(16, 185, 129, 0.35)',
@@ -1217,22 +1362,42 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                             padding: '8px'
                           }}
                         >
-                          +1 Séance effectuée
+                          +1 Séance
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditCarnet(ab)}
+                        className="btn btn-small"
+                        style={{
+                          flex: 1,
+                          minWidth: '100px',
+                          backgroundColor: 'var(--bg-input)',
+                          color: 'var(--text-main)',
+                          border: '1px solid var(--border-color)',
+                          padding: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <SlidersHorizontal size={14} /> Carnet
+                      </button>
                       <button
                         type="button"
                         onClick={() => setSelectedAbonnement(ab)}
                         className="btn btn-small"
                         style={{
                           flex: 1,
+                          minWidth: '90px',
                           backgroundColor: 'var(--bg-input)',
                           color: 'var(--text-main)',
                           border: '1px solid var(--border-color)',
                           padding: '8px'
                         }}
                       >
-                        Voir Détails
+                        Détails
                       </button>
                     </div>
                   </div>
@@ -1418,35 +1583,66 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                 </label>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                  {/* Nombre de séances N */}
+                  {/* Nombre de séances N (Saisie libre et absolue : 0, 1, 2, 3...) */}
                   <div>
-                    <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Nombre de séances (N)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      className="input-control"
-                      value={nombreSeances}
-                      onChange={e => handleNombreSeancesChange(e.target.value)}
-                      required
-                    />
-                    <div style={{ display: 'flex', gap: '5px', marginTop: '4px' }}>
-                      {[3, 5, 8, 10].map(nPreset => (
-                        <button
-                          key={nPreset}
-                          type="button"
-                          onClick={() => handleNombreSeancesChange(nPreset)}
-                          className="btn btn-small"
-                          style={{
-                            fontSize: '0.7rem',
-                            padding: '2px 7px',
-                            backgroundColor: nombreSeances === nPreset ? 'var(--btn-primary-bg)' : 'var(--bg-input)',
-                            color: nombreSeances === nPreset ? 'var(--btn-primary-text)' : 'var(--text-muted)'
-                          }}
-                        >
-                          {nPreset}
-                        </button>
-                      ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Nombre de séances (N)</label>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Saisie libre (0, 1, 2, 3...)</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curr = nombreSeances === '' ? 0 : Number(nombreSeances);
+                          handleNombreSeancesChange(Math.max(0, curr - 1));
+                        }}
+                        className="btn btn-small"
+                        style={{
+                          padding: '6px 12px',
+                          fontWeight: 800,
+                          fontSize: '1rem',
+                          backgroundColor: 'var(--bg-input)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px'
+                        }}
+                        title="Diminuer d'une séance"
+                      >
+                        –
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        className="input-control"
+                        style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem', padding: '6px' }}
+                        value={nombreSeances}
+                        onChange={e => handleNombreSeancesChange(e.target.value)}
+                        placeholder="0"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curr = nombreSeances === '' ? 0 : Number(nombreSeances);
+                          handleNombreSeancesChange(curr + 1);
+                        }}
+                        className="btn btn-small"
+                        style={{
+                          padding: '6px 12px',
+                          fontWeight: 800,
+                          fontSize: '1rem',
+                          backgroundColor: 'var(--bg-input)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px'
+                        }}
+                        title="Ajouter une séance"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      {nombreSeances === '' || Number(nombreSeances) === 0
+                        ? "Carnet vierge à 0 séance (ajustable à tout moment)"
+                        : `${nombreSeances} séance${Number(nombreSeances) > 1 ? 's' : ''} au total dans le carnet`}
                     </div>
                   </div>
 
@@ -1627,7 +1823,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                 marginBottom: '18px',
                 lineHeight: 1.4
               }}>
-                <strong style={{ color: 'var(--accent-color)' }}>Règle de synchronisation financière :</strong> Une seule transaction de <strong>{prixFinalPaye.toLocaleString('fr-FR')} FCFA</strong> sera immédiatement enregistrée dans la caisse du jour. La consommation des {nombreSeances} séances futures n'engendrera aucun doublon financier.
+                <strong style={{ color: 'var(--accent-color)' }}>Règle de synchronisation financière :</strong> Une seule transaction de <strong>{prixFinalPaye.toLocaleString('fr-FR')} FCFA</strong> sera immédiatement enregistrée dans la caisse du jour. La consommation des {nombreSeances === '' ? 0 : nombreSeances} séances futures n'engendrera aucun doublon financier.
               </div>
 
               {/* ACTIONS MODAL */}
@@ -1821,40 +2017,71 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedAbonnement(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                <X size={20} />
-              </button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => handleOpenEditCarnet(selectedAbonnement)}
+                  className="btn btn-small"
+                  style={{
+                    backgroundColor: 'var(--bg-input)',
+                    color: 'var(--text-main)',
+                    border: '1px solid var(--border-color)',
+                    padding: '6px 12px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer'
+                  }}
+                  title="Paramétrer le carnet de séances"
+                >
+                  <SlidersHorizontal size={14} color="var(--accent-color)" /> Paramétrer le carnet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAbonnement(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             {/* Jauge de progression */}
-            <div style={{ backgroundColor: 'var(--bg-input)', padding: '14px 16px', borderRadius: '12px', marginBottom: '18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                  Progression du forfait : {selectedAbonnement.seancesEffectuees || 0} / {selectedAbonnement.nombreSeances} séances
-                </span>
-                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: selectedAbonnement.seancesEffectuees === selectedAbonnement.nombreSeances ? '#10b981' : 'var(--accent-color)' }}>
-                  {Math.round(((selectedAbonnement.seancesEffectuees || 0) / (selectedAbonnement.nombreSeances || 1)) * 100)}%
-                </span>
-              </div>
-              <div style={{ width: '100%', height: '8px', borderRadius: '6px', backgroundColor: 'var(--bg-card)', overflow: 'hidden' }}>
-                <div
-                  style={{
-                    width: `${Math.round(((selectedAbonnement.seancesEffectuees || 0) / (selectedAbonnement.nombreSeances || 1)) * 100)}%`,
-                    height: '100%',
-                    backgroundColor: selectedAbonnement.seancesEffectuees === selectedAbonnement.nombreSeances ? '#10b981' : 'var(--accent-color)',
-                    transition: 'width 0.3s ease'
-                  }}
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-                <span>Restantes : <strong>{Math.max(0, (selectedAbonnement.nombreSeances || 0) - (selectedAbonnement.seancesEffectuees || 0))}</strong></span>
-                <span>Validité : {formatDateFr(selectedAbonnement.dateDebut)} → {formatDateFr(selectedAbonnement.dateFin)}</span>
-              </div>
-            </div>
+            {(() => {
+              const selDone = Number(selectedAbonnement.seancesEffectuees || 0);
+              const selTotal = Number(selectedAbonnement.nombreSeances !== undefined ? selectedAbonnement.nombreSeances : 0);
+              const selPct = selTotal > 0 ? Math.min(100, Math.round((selDone / selTotal) * 100)) : 0;
+              const selRestant = Math.max(0, selTotal - selDone);
+
+              return (
+                <div style={{ backgroundColor: 'var(--bg-input)', padding: '14px 16px', borderRadius: '12px', marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                      Progression du forfait : {selDone} / {selTotal} séance{selTotal > 1 ? 's' : ''}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: selTotal > 0 && selDone >= selTotal ? '#10b981' : 'var(--accent-color)' }}>
+                      {selPct}%
+                    </span>
+                  </div>
+                  <div style={{ width: '100%', height: '8px', borderRadius: '6px', backgroundColor: 'var(--bg-card)', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        width: `${selPct}%`,
+                        height: '100%',
+                        backgroundColor: selTotal > 0 && selDone >= selTotal ? '#10b981' : 'var(--accent-color)',
+                        transition: 'width 0.3s ease'
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    <span>Restantes : <strong>{selTotal === 0 ? '0 (Carnet 0 séance)' : selRestant}</strong></span>
+                    <span>Validité : {formatDateFr(selectedAbonnement.dateDebut)} → {formatDateFr(selectedAbonnement.dateFin)}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Récapitulatif Financier Immuable */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '18px' }}>
@@ -1885,48 +2112,61 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
             </div>
 
             {/* Calendrier Prévisionnel des Séances */}
-            <div style={{ marginBottom: '20px' }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>
-                Calendrier Prévisionnel &amp; Fréquence ({selectedAbonnement.frequence || 'Hebdomadaire'})
-              </h4>
-              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px' }}>
-                {Array.from({ length: selectedAbonnement.nombreSeances || 1 }).map((_, i) => {
-                  const num = i + 1;
-                  const isDone = num <= (selectedAbonnement.seancesEffectuees || 0);
-                  const isNext = num === (selectedAbonnement.seancesEffectuees || 0) + 1;
+            {(() => {
+              const selDone = Number(selectedAbonnement.seancesEffectuees || 0);
+              const selTotal = Number(selectedAbonnement.nombreSeances !== undefined ? selectedAbonnement.nombreSeances : 0);
 
-                  return (
-                    <div
-                      key={num}
-                      style={{
-                        flex: '0 0 auto',
-                        minWidth: '90px',
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        textAlign: 'center',
-                        backgroundColor: isDone
-                          ? 'rgba(16, 185, 129, 0.12)'
-                          : isNext
-                            ? 'rgba(59, 130, 246, 0.12)'
-                            : 'var(--bg-input)',
-                        border: isDone
-                          ? '1px solid rgba(16, 185, 129, 0.35)'
-                          : isNext
-                            ? '1px solid var(--accent-color)'
-                            : '1px solid var(--border-color)'
-                      }}
-                    >
-                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: isDone ? '#10b981' : isNext ? 'var(--accent-color)' : 'var(--text-muted)' }}>
-                        Séance {num}
-                      </div>
-                      <div style={{ fontSize: '0.68rem', marginTop: '3px', fontWeight: 600 }}>
-                        {isDone ? "Effectuée" : isNext ? "Prochaine" : "À venir"}
-                      </div>
+              return (
+                <div style={{ marginBottom: '20px' }}>
+                  <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>
+                    Calendrier Prévisionnel &amp; Fréquence ({selectedAbonnement.frequence || 'Hebdomadaire'})
+                  </h4>
+                  {selTotal === 0 ? (
+                    <div style={{ padding: '14px', borderRadius: '8px', backgroundColor: 'var(--bg-card)', border: '1px dashed var(--border-color)', color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center' }}>
+                      Carnet configuré à 0 séance. Cliquez sur « Paramétrer le carnet » pour définir ou créditer des séances.
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '6px' }}>
+                      {Array.from({ length: selTotal }).map((_, i) => {
+                        const num = i + 1;
+                        const isDone = num <= selDone;
+                        const isNext = num === selDone + 1;
+
+                        return (
+                          <div
+                            key={num}
+                            style={{
+                              flex: '0 0 auto',
+                              minWidth: '90px',
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              textAlign: 'center',
+                              backgroundColor: isDone
+                                ? 'rgba(16, 185, 129, 0.12)'
+                                : isNext
+                                  ? 'rgba(59, 130, 246, 0.12)'
+                                  : 'var(--bg-input)',
+                              border: isDone
+                                ? '1px solid rgba(16, 185, 129, 0.35)'
+                                : isNext
+                                  ? '1px solid var(--accent-color)'
+                                  : '1px solid var(--border-color)'
+                            }}
+                          >
+                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: isDone ? '#10b981' : isNext ? 'var(--accent-color)' : 'var(--text-muted)' }}>
+                              Séance {num}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', marginTop: '3px', fontWeight: 600 }}>
+                              {isDone ? "Effectuée" : isNext ? "Prochaine" : "À venir"}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Historique daté des séances consommées */}
             <div style={{ marginBottom: '20px' }}>
@@ -1934,7 +2174,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                 <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>
                   Historique Daté des Séances Consommées
                 </h4>
-                {selectedAbonnement.statut === 'actif' && (selectedAbonnement.seancesEffectuees || 0) < selectedAbonnement.nombreSeances && (
+                {selectedAbonnement.statut === 'actif' && (Number(selectedAbonnement.nombreSeances || 0) > Number(selectedAbonnement.seancesEffectuees || 0)) && (
                   <button
                     type="button"
                     onClick={() => handleOpenConsumeModal(selectedAbonnement)}
@@ -2089,6 +2329,265 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                   }}
                 >
                   Confirmer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          MODAL 5 : PARAMÉTRAGE DU CARNET DE SÉANCES (CONTRÔLE ABSOLU)
+          ════════════════════════════════════════════════════════════════════ */}
+      {editCarnetModal && (
+        <div className="modal-overlay" onClick={() => setEditCarnetModal(null)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: '520px', width: '92vw', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <SlidersHorizontal size={18} color="var(--accent-color)" />
+                  Paramétrer le carnet de séances
+                </h3>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {editCarnetModal.clientNomComplet} • {editCarnetModal.serviceNom}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditCarnetModal(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmEditCarnet}>
+              {/* Carte résumé état actuel */}
+              <div style={{
+                backgroundColor: 'var(--bg-input)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                marginBottom: '16px',
+                border: '1px solid var(--border-color)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 700 }}>
+                  <span>Progression en direct</span>
+                  <span style={{ color: Number(editCarnetDoneSeances) >= Number(editCarnetNbSeances) && Number(editCarnetNbSeances) > 0 ? '#10b981' : 'var(--accent-color)' }}>
+                    {editCarnetDoneSeances || 0} / {editCarnetNbSeances || 0} séance{(Number(editCarnetNbSeances) || 0) > 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div style={{ width: '100%', height: '6px', borderRadius: '4px', backgroundColor: 'var(--bg-card)', marginTop: '8px', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${Number(editCarnetNbSeances) > 0 ? Math.min(100, Math.round(((Number(editCarnetDoneSeances) || 0) / (Number(editCarnetNbSeances) || 1)) * 100)) : 0}%`,
+                      height: '100%',
+                      backgroundColor: Number(editCarnetDoneSeances) >= Number(editCarnetNbSeances) && Number(editCarnetNbSeances) > 0 ? '#10b981' : 'var(--accent-color)',
+                      transition: 'width 0.3s'
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Restantes : <strong>{Math.max(0, (Number(editCarnetNbSeances) || 0) - (Number(editCarnetDoneSeances) || 0))}</strong></span>
+                  <span>Prix payé figé : <strong>{Number(editCarnetModal.prixPaye || 0).toLocaleString('fr-FR')} FCFA</strong></span>
+                </div>
+              </div>
+
+              {/* Ajustement N séances */}
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                    Nombre total de séances du carnet (N)
+                  </label>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Saisie libre (0, 1, 2, 3...)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = editCarnetNbSeances === '' ? 0 : Number(editCarnetNbSeances);
+                      const next = Math.max(0, cur - 1);
+                      setEditCarnetNbSeances(next);
+                      if (Number(editCarnetDoneSeances) > next) {
+                        setEditCarnetDoneSeances(next);
+                      }
+                    }}
+                    className="btn btn-small"
+                    style={{ padding: '8px 14px', fontWeight: 800, fontSize: '1rem', backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '6px' }}
+                    title="Diminuer d'une séance"
+                  >
+                    –
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    className="input-control"
+                    style={{ textAlign: 'center', fontWeight: 800, fontSize: '1.05rem', padding: '8px' }}
+                    value={editCarnetNbSeances}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (v === '') {
+                        setEditCarnetNbSeances('');
+                        return;
+                      }
+                      const n = parseInt(v, 10);
+                      if (!isNaN(n) && n >= 0) {
+                        setEditCarnetNbSeances(n);
+                      }
+                    }}
+                    placeholder="0"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = editCarnetNbSeances === '' ? 0 : Number(editCarnetNbSeances);
+                      setEditCarnetNbSeances(cur + 1);
+                    }}
+                    className="btn btn-small"
+                    style={{ padding: '8px 14px', fontWeight: 800, fontSize: '1rem', backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '6px' }}
+                    title="Ajouter une séance"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Ajustement Séances Déjà Consommées */}
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                    Séances effectuées / consommées
+                  </label>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Ajustement manuel (0 à N)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = editCarnetDoneSeances === '' ? 0 : Number(editCarnetDoneSeances);
+                      setEditCarnetDoneSeances(Math.max(0, cur - 1));
+                    }}
+                    className="btn btn-small"
+                    style={{ padding: '8px 14px', fontWeight: 800, fontSize: '1rem', backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '6px' }}
+                    title="Diminuer"
+                  >
+                    –
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    max={editCarnetNbSeances !== '' ? Number(editCarnetNbSeances) : undefined}
+                    className="input-control"
+                    style={{ textAlign: 'center', fontWeight: 800, fontSize: '1.05rem', padding: '8px' }}
+                    value={editCarnetDoneSeances}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (v === '') {
+                        setEditCarnetDoneSeances('');
+                        return;
+                      }
+                      const n = parseInt(v, 10);
+                      if (!isNaN(n) && n >= 0) {
+                        setEditCarnetDoneSeances(n);
+                      }
+                    }}
+                    placeholder="0"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = editCarnetDoneSeances === '' ? 0 : Number(editCarnetDoneSeances);
+                      const maxLimit = editCarnetNbSeances === '' ? 0 : Number(editCarnetNbSeances);
+                      if (maxLimit === 0 || cur < maxLimit) {
+                        setEditCarnetDoneSeances(cur + 1);
+                      }
+                    }}
+                    className="btn btn-small"
+                    style={{ padding: '8px 14px', fontWeight: 800, fontSize: '1rem', backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '6px' }}
+                    title="Augmenter"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Fréquence & Date Fin */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Fréquence</label>
+                  <select
+                    className="input-control"
+                    value={editCarnetFrequence}
+                    onChange={e => setEditCarnetFrequence(e.target.value)}
+                  >
+                    <option value="hebdomadaire">Hebdomadaire</option>
+                    <option value="bimensuelle">Bimensuelle</option>
+                    <option value="mensuelle">Mensuelle</option>
+                    <option value="personnalisee">Personnalisée</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Date d'expiration</label>
+                  <input
+                    type="date"
+                    className="input-control"
+                    value={editCarnetDateFin}
+                    onChange={e => setEditCarnetDateFin(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Statut du forfait */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Statut du carnet</label>
+                <select
+                  className="input-control"
+                  value={editCarnetStatut}
+                  onChange={e => setEditCarnetStatut(e.target.value)}
+                >
+                  <option value="actif">Actif (en cours d'utilisation)</option>
+                  <option value="termine">Terminé (consommé)</option>
+                  <option value="suspendu">Suspendu (en pause)</option>
+                  <option value="annule">Annulé</option>
+                </select>
+              </div>
+
+              {/* Motif / Commentaire */}
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Motif de l'ajustement (traçabilité)</label>
+                <input
+                  type="text"
+                  className="input-control"
+                  placeholder="Ex: Ajout de séances de rattrapage, rectification manuelle..."
+                  value={editCarnetMotif}
+                  onChange={e => setEditCarnetMotif(e.target.value)}
+                />
+              </div>
+
+              {/* Boutons actions */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditCarnetModal(null)}
+                  className="btn"
+                  style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}
+                  disabled={isSavingCarnet}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingCarnet}
+                  className="btn btn-primary"
+                >
+                  {isSavingCarnet ? "Enregistrement..." : "Appliquer le paramétrage"}
                 </button>
               </div>
             </form>
