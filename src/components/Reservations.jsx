@@ -77,7 +77,12 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
   // ── Chargement des données Firestore ──────────────────────────────────────
   useEffect(() => {
     const unsubServices = onSnapshot(collection(db, 'services'), snap =>
-      setServices(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.actif))
+      setServices(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(s => s.actif)
+          .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }))
+      )
     );
     const unsubEmployes = onSnapshot(collection(db, 'employes'), snap =>
       setEmployes(

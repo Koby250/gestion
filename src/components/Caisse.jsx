@@ -81,7 +81,12 @@ const Caisse = ({ activeDate = localDateStr(), currentUserNom = '', prefilledPro
   // Fetch reference data
   useEffect(() => {
     const unsubServices = onSnapshot(collection(db, 'services'), (snapshot) => {
-      setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(s => s.actif));
+      setServices(
+        snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(s => s.actif)
+          .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }))
+      );
     });
     
     const unsubServicesDomicile = onSnapshot(collection(db, 'services_domicile'), (snapshot) => {

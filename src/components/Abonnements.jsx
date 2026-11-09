@@ -166,7 +166,8 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
           const cat = (s.categorie || '').toLowerCase().trim();
           if (cat === 'boisson' || cat === 'boissons' || s.isBoisson) return false;
           return true;
-        });
+        })
+        .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }));
       setServices(activeServices);
     });
 
@@ -1573,6 +1574,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
                       const cat = (s.categorie || '').toLowerCase().trim();
                       return cat !== 'boisson' && cat !== 'boissons' && !s.isBoisson;
                     })
+                    .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }))
                     .map(s => (
                       <option key={s.id} value={s.id}>
                         {s.nom} — Tarif unitaire : {Number(s.prixDefaut || 0).toLocaleString('fr-FR')} FCFA

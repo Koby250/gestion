@@ -84,7 +84,10 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
   // Load Data
   useEffect(() => {
     const unsubServices = onSnapshot(collection(db, 'services'), (snapshot) => {
-      setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const svcs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }));
+      setServices(svcs);
     });
 
     const unsubServicesDomicile = onSnapshot(collection(db, 'services_domicile'), (snapshot) => {
@@ -662,6 +665,7 @@ const Parametres = ({ accentTheme = 'monochrome', onAccentChange, theme = 'dark'
         <div className="list-container">
           {services
             .filter(service => serviceCategoryFilter === 'tous' || (service.categorie || 'salon') === serviceCategoryFilter)
+            .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }))
             .map(service => {
               const cat = service.categorie || 'salon';
               const catBadge = cat === 'boisson'
