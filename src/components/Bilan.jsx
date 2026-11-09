@@ -927,7 +927,7 @@ const Bilan = ({ activeDate = localDateStr() }) => {
       </div>
 
       {/* ── INDICATEURS STRATÉGIQUES ────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '24px' }}>
         {/* Panier Moyen */}
         <div style={{
           backgroundColor: 'var(--bg-card)', borderRadius: '14px', padding: '16px 20px',
@@ -1450,7 +1450,7 @@ const Bilan = ({ activeDate = localDateStr() }) => {
         <h2 className="card-title">Répartition des Recettes — {MOIS_FR[viewMonth]} {viewYear}</h2>
 
         {/* Grille 3 colonnes */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '20px' }}>
 
           {/* Masse Salariale */}
           <div style={{ backgroundColor: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: '12px', padding: '16px' }}>

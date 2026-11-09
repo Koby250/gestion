@@ -898,7 +898,7 @@ const PanierPrestations = ({
               {/* Ligne Billard personnalisée : nombre de parties, prix par partie (500 F), total & remise */}
               {isBillard ? (
                 <div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '10px', alignItems: 'flex-start' }}>
+                  <div className="panier-billard-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '10px', alignItems: 'flex-start' }}>
                     {/* 1. Catégorie */}
                     <div className="form-group" style={{ margin: 0 }}>
                       <label>Catégorie</label>
@@ -1058,7 +1058,7 @@ const PanierPrestations = ({
                 </div>
               ) : (
                 /* Prestation classique, Boisson/Cocktail ou issue d'une promo */
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '10px' }}>
+                <div className="panier-ligne-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '10px' }}>
                   {/* 1. Sélecteur de Catégorie */}
                   <div className="form-group" style={{ margin: 0 }}>
                     <label>1. Catégorie</label>

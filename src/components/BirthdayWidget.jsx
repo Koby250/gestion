@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Cake, Phone, MessageCircle, X, ChevronDown } from 'lucide-react';
@@ -71,11 +71,22 @@ const BirthdayWidget = () => {
   if (totalBirthdays === 0 || isDismissed) return null;
 
   return (
-    <div style={{
-      position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999,
+    <div className="birthday-widget-container" style={{
+      position: 'fixed', zIndex: 980,
       display: 'flex', flexDirection: 'column', alignItems: 'flex-end'
     }}>
       <style>{`
+        .birthday-widget-container {
+          bottom: 20px;
+          right: 20px;
+        }
+        @media (max-width: 768px) {
+          .birthday-widget-container {
+            bottom: calc(72px + env(safe-area-inset-bottom, 12px)) !important;
+            right: 12px !important;
+            max-width: calc(100vw - 24px) !important;
+          }
+        }
         @keyframes birthdayBounce {
           0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
           40% { transform: translateY(-12px); }

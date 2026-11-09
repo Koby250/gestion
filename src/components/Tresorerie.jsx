@@ -952,7 +952,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
       {/* ── CARTES KPI (Trésorerie nette, Entrées, Sorties) ─────────────────── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
         gap: '16px',
         marginBottom: '20px'
       }}>
@@ -1104,7 +1104,7 @@ const Tresorerie = ({ activeDate = localDateStr(), currentUserNom = '' }) => {
             paddingTop: '16px',
             borderTop: '1px solid rgba(0,0,0,0.06)',
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
             gap: '10px'
           }}>
             {accountsList.map(acc => {

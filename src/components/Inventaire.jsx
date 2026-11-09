@@ -91,7 +91,7 @@ const Inventaire = ({ currentUserNom = '' }) => {
           <h2 className="card-title" style={{ margin: 0, padding: 0, border: 'none' }}>Stock et Inventaire</h2>
         </div>
 
-        <form onSubmit={handleAddInventaire} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '30px' }}>
+        <form onSubmit={handleAddInventaire} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '30px' }}>
           <input type="text" className="input-control" placeholder="Nom du produit" value={newInventaire.nom} onChange={e => setNewInventaire({...newInventaire, nom: e.target.value})} required />
           <input type="text" className="input-control" placeholder="Référence (optionnel)" value={newInventaire.reference} onChange={e => setNewInventaire({...newInventaire, reference: e.target.value})} />
           <select className="input-control" value={newInventaire.categorie} onChange={e => setNewInventaire({...newInventaire, categorie: e.target.value})}>

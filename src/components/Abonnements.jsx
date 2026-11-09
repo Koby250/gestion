@@ -901,7 +901,7 @@ const Abonnements = ({ currentUserNom = 'Admin' }) => {
       {/* ── CARTES KPIS EN-TÊTE ──────────────────────────────────────────── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
         gap: '12px',
         marginBottom: '20px'
       }}>

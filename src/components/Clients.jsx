@@ -615,7 +615,7 @@ const Clients = ({ onNavigateToReservation }) => {
   return (
     <div className="view-container">
       {/* ── KPI STRIP ─────────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '24px' }}>
         {[
           { label: 'Clients enregistrés', value: clients.length, icon: <Users size={20} />, color: 'var(--accent-color)' },
           { label: 'Visites totales', value: totalVisites, icon: <Calendar size={20} />, color: 'var(--success)' },
@@ -1122,7 +1122,7 @@ const Clients = ({ onNavigateToReservation }) => {
 
         return (
           <div className="modal-overlay" onClick={() => setSelectedClient(null)}>
-            <div className="modal-content" style={{ maxWidth: '850px', width: '95%', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '85vh' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-content client-modal-detail" style={{ maxWidth: '850px', width: '95%', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '85vh' }} onClick={e => e.stopPropagation()}>
               
               <div className="modal-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -1162,10 +1162,10 @@ const Clients = ({ onNavigateToReservation }) => {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', overflowY: 'auto', flex: 1, backgroundColor: 'var(--bg-primary)' }}>
+              <div className="client-modal-body" style={{ display: 'flex', flexWrap: 'wrap', overflowY: 'auto', flex: 1, backgroundColor: 'var(--bg-primary)' }}>
                 
                 {/* Colonne GAUCHE : Tags, Infos, Notes */}
-                <div style={{ flex: '1 1 300px', padding: '24px', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div className="client-modal-col-left" style={{ flex: '1 1 300px', padding: '24px', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '24px' }}>
                   
                   {/* TAGS */}
                   <div>
@@ -1250,7 +1250,7 @@ const Clients = ({ onNavigateToReservation }) => {
                 </div>
 
                 {/* Colonne DROITE : Historique Appels & Réservations */}
-                <div style={{ flex: '1.5 1 400px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div className="client-modal-col-right" style={{ flex: '1.5 1 400px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
                   
                   {/* SUIVI D'APPELS */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

@@ -338,45 +338,63 @@ function App() {
       <div className="main-wrapper">
 
         <header className="topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button className="hamburger-btn" onClick={() => setIsSidebarOpen(true)}>
-              <Menu size={22} />
-            </button>
-            <div className="topbar-date">
-              <input
-                type="date"
-                className="input-control"
-                style={{ padding: '8px 12px', width: 'auto', margin: 0, fontSize: '0.88rem' }}
-                value={activeDate}
-                max={localDateStr()}
-                onChange={e => setActiveDate(e.target.value)}
-              />
-              {activeDate !== localDateStr() && (
-                <span className="retroactif-badge">Mode Rétroactif</span>
-              )}
+          <div className="topbar-header-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                className="hamburger-btn"
+                onClick={() => setIsSidebarOpen(true)}
+                aria-label="Menu latéral"
+              >
+                <Menu size={22} />
+              </button>
+              <div className="topbar-brand-mobile">
+                <img
+                  src={theme === 'light' ? '/logos/noir.png' : '/logos/blanc.png'}
+                  alt="Logo Le Cercle"
+                  style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'contain' }}
+                />
+                <span style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '-0.01em' }}>Le Cercle</span>
+              </div>
             </div>
 
-            {/* Theme Toggle */}
-            <button
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '8px 12px', borderRadius: '10px',
-                background: 'var(--bg-input)',
-                border: '1px solid var(--border-color)',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                color: 'var(--text-main)',
-                flexShrink: 0,
-                gap: '6px',
-                fontSize: '0.8rem',
-                fontWeight: '600'
-              }}
-              title={theme === 'light' ? 'Activer le mode sombre (Noir profond & boutons blancs)' : 'Activer le mode clair (Blanc pur & boutons noirs)'}
-            >
-              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-              <span className="desktop-table">{theme === 'light' ? 'Clair' : 'Sombre'}</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="topbar-date">
+                <input
+                  type="date"
+                  className="input-control"
+                  style={{ padding: '7px 10px', width: 'auto', margin: 0, fontSize: '0.84rem' }}
+                  value={activeDate}
+                  max={localDateStr()}
+                  onChange={e => setActiveDate(e.target.value)}
+                />
+                {activeDate !== localDateStr() && (
+                  <span className="retroactif-badge">Rétro</span>
+                )}
+              </div>
+
+              {/* Theme Toggle */}
+              <button
+                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '7px 10px', borderRadius: '10px',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-color)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  color: 'var(--text-main)',
+                  flexShrink: 0,
+                  gap: '6px',
+                  fontSize: '0.8rem',
+                  fontWeight: '600'
+                }}
+                title={theme === 'light' ? 'Activer le mode sombre' : 'Activer le mode clair'}
+                aria-label="Changer le thème"
+              >
+                {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+                <span className="desktop-table">{theme === 'light' ? 'Clair' : 'Sombre'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Widget double objectif */}
@@ -414,6 +432,66 @@ function App() {
         <main className="main-content">
           {renderContent()}
         </main>
+
+        {/* ── NATIVE MOBILE BOTTOM NAVIGATION BAR ── */}
+        <nav className="mobile-bottom-nav" aria-label="Navigation principale mobile">
+          <button
+            type="button"
+            className={`bottom-nav-item ${activeTab === 'accueil' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('accueil'); setIsSidebarOpen(false); }}
+          >
+            <div className="bottom-nav-icon"><LayoutDashboard size={20} /></div>
+            <span className="bottom-nav-label">Accueil</span>
+          </button>
+
+          {(userRole === 'admin' || userPerms.accesCaisse) && (
+            <button
+              type="button"
+              className={`bottom-nav-item ${activeTab === 'caisse' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('caisse'); setIsSidebarOpen(false); }}
+            >
+              <div className="bottom-nav-icon"><Calculator size={20} /></div>
+              <span className="bottom-nav-label">Caisse</span>
+            </button>
+          )}
+
+          {(userRole === 'admin' || userPerms.accesReservations) && (
+            <button
+              type="button"
+              className={`bottom-nav-item ${activeTab === 'reservations' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('reservations'); setIsSidebarOpen(false); }}
+            >
+              <div className="bottom-nav-icon"><Calendar size={20} /></div>
+              <span className="bottom-nav-label">Résas</span>
+            </button>
+          )}
+
+          {(userRole === 'admin' || userPerms.accesAbonnements !== false) && (
+            <button
+              type="button"
+              className={`bottom-nav-item ${activeTab === 'abonnements' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('abonnements'); setIsSidebarOpen(false); }}
+            >
+              <div className="bottom-nav-icon"><Repeat size={20} /></div>
+              <span className="bottom-nav-label">Abos</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={`bottom-nav-item ${isSidebarOpen || !['accueil', 'caisse', 'reservations', 'abonnements'].includes(activeTab) ? 'active-more' : ''}`}
+            onClick={() => setIsSidebarOpen(prev => !prev)}
+            aria-label="Afficher tous les modules"
+          >
+            <div className="bottom-nav-icon">
+              <Menu size={20} />
+              {!['accueil', 'caisse', 'reservations', 'abonnements'].includes(activeTab) && (
+                <span className="bottom-nav-badge-dot" />
+              )}
+            </div>
+            <span className="bottom-nav-label">Menu</span>
+          </button>
+        </nav>
       </div>
 
       {user && <BirthdayWidget />}

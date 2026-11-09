@@ -402,7 +402,7 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '', onNavigateToAbonn
 
 
       {/* ── KPI RAPIDES DU JOUR ──────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '24px' }}>
 
         <div className="card" style={{ marginBottom: 0 }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>RDV Aujourd'hui</div>
