@@ -135,6 +135,7 @@
   /* Borders & Shadows */
   --border-color:  rgba(0, 0, 0, 0.12);
   --border-subtle: rgba(0, 0, 0, 0.06);
+  --sidebar-width: 260px;
   --shadow-card:   0 4px 20px rgba(0, 0, 0, 0.05);
   --shadow-deep:   0 12px 36px rgba(0, 0, 0, 0.1);
 }
@@ -250,6 +251,8 @@ button:active:not(:disabled),
 /* ── Sidebar ──────────────────────────────────────── */
 .sidebar {
   width: var(--sidebar-width);
+  min-width: 260px;
+  max-width: 260px;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -266,7 +269,7 @@ button:active:not(:disabled),
 }
 
 .sidebar-header {
-  padding: 22px 20px;
+  padding: 18px 20px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
@@ -274,8 +277,8 @@ button:active:not(:disabled),
 }
 
 .sidebar-header h1 {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.05rem;
+  font-weight: 800;
   color: var(--text-main);
   letter-spacing: -0.01em;
   display: flex;
@@ -289,12 +292,13 @@ button:active:not(:disabled),
 }
 
 .sidebar-nav {
-  padding: 16px 12px;
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   flex: 1;
   overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 /* Nav buttons */
@@ -305,17 +309,19 @@ button:active:not(:disabled),
   color: var(--text-muted);
   cursor: pointer;
   font-family: 'Inter', sans-serif;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 500;
-  padding: 11px 14px;
-  border-radius: 12px;
+  padding: 9px 12px;
+  min-height: 40px;
+  border-radius: 10px;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   text-align: left;
   width: 100%;
   letter-spacing: -0.01em;
+  flex-shrink: 0;
 }
 
 .nav-btn:hover {

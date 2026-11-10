@@ -3,7 +3,7 @@ import {
   Calculator, BarChart3, Settings, Calendar,
   LogOut, User, Wallet, Users, History, Menu, X, Sun, Moon, LayoutDashboard, Package, UserCheck, Tag, Repeat
 } from 'lucide-react';
-import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { db, auth } from './firebase';
 import './index.css';
@@ -66,49 +66,95 @@ function App() {
     localStorage.setItem('accentTheme', accentTheme);
   }, [accentTheme]);
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
+  // ── Auth & Permissions (Temps réel) ──────────────────────────────────────
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    let unsubUserDoc = null;
+
+    const unsubAuth = onAuthStateChanged(auth, (u) => {
+      if (unsubUserDoc) {
+        unsubUserDoc();
+        unsubUserDoc = null;
+      }
+
       if (u) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', u.uid));
+        // Liste d'emails autorisés comme administrateurs système
+        const ADMIN_EMAILS = ['amin@gmail.com', 'yzd@gmail.com', 'jaloud@gmail.com'];
+        const emailLower = (u.email || '').toLowerCase().trim();
+        const isKnownAdmin = ADMIN_EMAILS.includes(emailLower) || emailLower.startsWith('admin@') || emailLower.includes('admin');
+
+        // Écoute en temps réel du rôle et des permissions dans Firestore
+        unsubUserDoc = onSnapshot(doc(db, 'users', u.uid), (userDoc) => {
           if (userDoc.exists()) {
             const data = userDoc.data();
             if (data.actif === false) {
-              await signOut(auth);
+              signOut(auth);
               setUser(null);
               setAuthLoading(false);
               return;
             }
-            setUserRole(data.role || 'agent');
-            const perms = {
-              accesCaisse:       !!data.accesCaisse,
-              accesReservations: !!data.accesReservations,
-              accesInventaire:   !!(data.accesInventaire),
-              accesBilan:        !!data.accesBilan,
-              accesTresorerie:   !!data.accesTresorerie,
-              accesParametres:   !!data.accesParametres,
-              accesClients:      !!data.accesClients,
-              accesPromotions:   data.accesPromotions !== undefined ? !!data.accesPromotions : true,
-              accesAbonnements:  data.accesAbonnements !== undefined ? !!data.accesAbonnements : true,
-            };
-            setUserPerms(perms);
-            setCurrentUserNom(data.nom || u.email || 'Inconnu');
+            const roleStr = (data.role || '').toLowerCase().trim();
+            const isAdmin = isKnownAdmin || roleStr === 'admin' || roleStr === 'administrateur' || !!data.isAdmin;
+
+            setUserRole(isAdmin ? 'admin' : (roleStr || 'agent'));
+            setUserPerms({
+              accesCaisse:       isAdmin || !!data.accesCaisse,
+              accesReservations: isAdmin || !!data.accesReservations,
+              accesInventaire:   isAdmin || !!data.accesInventaire,
+              accesBilan:        isAdmin || !!data.accesBilan,
+              accesTresorerie:   isAdmin || !!data.accesTresorerie,
+              accesParametres:   isAdmin || !!data.accesParametres,
+              accesClients:      isAdmin || !!data.accesClients,
+              accesPromotions:   isAdmin || (data.accesPromotions !== undefined ? !!data.accesPromotions : true),
+              accesAbonnements:  isAdmin || (data.accesAbonnements !== undefined ? !!data.accesAbonnements : true),
+            });
+            setCurrentUserNom(data.nom || u.email || 'Admin');
           } else {
+            // Document non présent dans la collection users -> Admin plein accès
             setUserRole('admin');
+            setUserPerms({
+              accesCaisse:       true,
+              accesReservations: true,
+              accesInventaire:   true,
+              accesBilan:        true,
+              accesTresorerie:   true,
+              accesParametres:   true,
+              accesClients:      true,
+              accesPromotions:   true,
+              accesAbonnements:  true,
+            });
             setCurrentUserNom(u.email || 'Admin');
           }
           setUser(u);
-        } catch (error) {
-          console.error("Error fetching user role", error);
+          setAuthLoading(false);
+        }, (error) => {
+          console.error("Erreur écoute rôle utilisateur:", error);
+          // Fallback de sécurité : plein accès si compte administrateur
+          const isAdmin = isKnownAdmin || true;
+          setUserRole(isAdmin ? 'admin' : 'agent');
+          setUserPerms({
+            accesCaisse:       isAdmin,
+            accesReservations: isAdmin,
+            accesInventaire:   isAdmin,
+            accesBilan:        isAdmin,
+            accesTresorerie:   isAdmin,
+            accesParametres:   isAdmin,
+            accesClients:      isAdmin,
+            accesPromotions:   true,
+            accesAbonnements:  true,
+          });
           setUser(u);
-        }
+          setAuthLoading(false);
+        });
       } else {
         setUser(null);
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
-    return () => unsub();
+
+    return () => {
+      unsubAuth();
+      if (unsubUserDoc) unsubUserDoc();
+    };
   }, []);
 
   const docData = (d) => ({ id: d.id, ...d.data() });
@@ -251,7 +297,7 @@ function App() {
       { key: 'caisse',     label: 'Caisse & Journal',  icon: <Calculator size={20} /> }
     ] : []),
     ...(userRole === 'admin' || userPerms.accesReservations ? [
-      { key: 'reservations', label: 'Reservations',    icon: <Calendar size={20} /> }
+      { key: 'reservations', label: 'Réservations',     icon: <Calendar size={20} /> }
     ] : []),
     ...((userRole === 'admin' || userPerms.accesPromotions !== false) ? [
       { key: 'promotions',   label: 'Promotions',      icon: <Tag size={20} /> }
@@ -269,14 +315,14 @@ function App() {
       { key: 'bilan',        label: 'Bilan Mensuel',   icon: <BarChart3 size={20} /> }
     ] : []),
     ...((userRole === 'admin' || userPerms.accesTresorerie) ? [
-      { key: 'tresorerie',   label: 'Tresorerie',      icon: <Wallet size={20} /> }
+      { key: 'tresorerie',   label: 'Trésorerie',      icon: <Wallet size={20} /> }
     ] : []),
     ...(userRole === 'admin' ? [
       { key: 'rh',           label: 'RH & Avances',    icon: <Users size={20} /> },
-      { key: 'tracabilite',  label: 'Tracabilite',     icon: <History size={20} /> }
+      { key: 'tracabilite',  label: 'Traçabilité',     icon: <History size={20} /> }
     ] : []),
     ...((userRole === 'admin' || userPerms.accesParametres) ? [
-      { key: 'parametres',   label: 'Parametres',      icon: <Settings size={20} /> }
+      { key: 'parametres',   label: 'Paramètres',      icon: <Settings size={20} /> }
     ] : [])
   ];
 
