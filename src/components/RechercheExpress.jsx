@@ -79,7 +79,7 @@ const RechercheExpress = ({ reservations = [] }) => {
         <input 
           type="text" 
           className="input-control" 
-          placeholder="Recherche Express Réservation (Nom, Tel, Heure, Coiffeur)..."
+          placeholder="Recherche Express Réservation (Nom, Tel, Heure, Employé)..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{ paddingLeft: '40px', fontSize: '1rem', height: '42px', width: '100%' }}

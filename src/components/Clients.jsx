@@ -1192,7 +1192,7 @@ const Clients = ({ onNavigateToReservation }) => {
                     <textarea 
                       className="input-control"
                       style={{ margin: 0, width: '100%', resize: 'vertical', minHeight: '120px', flex: 1, backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)' }}
-                      placeholder="Ex: Coiffeur favori, allergies, style de coupe..."
+                      placeholder="Ex: Praticien favori, allergies, préférences..."
                       value={localClientData.notes}
                       onChange={(e) => setLocalClientData(prev => ({ ...prev, notes: e.target.value }))}
                     />

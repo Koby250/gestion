@@ -910,7 +910,7 @@ const Accueil = ({ activeDate = localDateStr(), userRole = '', onNavigateToAbonn
             value={filterEmploye}
             onChange={e => setFilterEmploye(e.target.value)}
           >
-            <option value="">Tous les coiffeurs</option>
+            <option value="">Tous les employés</option>
             {employes.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
           </select>
           <select

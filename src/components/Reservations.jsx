@@ -704,7 +704,7 @@ const Reservations = ({ activeDate = localDateStr(), prefilledClient, onClearPre
                   type="text" 
                   className="input-control" 
                   style={{ paddingLeft: '40px', width: '100%', minHeight: '48px', margin: 0 }}
-                  placeholder="Rechercher par client, téléphone, coiffeur..." 
+                  placeholder="Rechercher par client, téléphone, employé..." 
                   value={searchResTerm} 
                   onChange={e => setSearchResTerm(e.target.value)} 
                 />
